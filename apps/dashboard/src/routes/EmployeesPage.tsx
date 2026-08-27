@@ -53,7 +53,7 @@ export default function EmployeesPage() {
     const [employeesRes, groupsRes] = await Promise.all([
       supabase
         .from('profiles')
-        .select('id, username, full_name, is_active, group:groups(id, name)')
+        .select('id, username, full_name, is_active, group:groups!profiles_group_id_fkey(id, name)')
         .eq('role', 'employee')
         .order('created_at', { ascending: false }),
       supabase.from('groups').select('id, name').order('name'),

@@ -38,7 +38,7 @@ export default function GroupsPage() {
   const load = React.useCallback(async () => {
     const { data, error } = await supabase
       .from('groups')
-      .select('id, name, created_at, profiles(count)')
+      .select('id, name, created_at, profiles!profiles_group_id_fkey(count)')
       .order('created_at', { ascending: false });
 
     if (error) {
