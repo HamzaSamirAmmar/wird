@@ -79,7 +79,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = React.useCallback(async () => {
-    await supabase.auth.signOut();
+    // scope: 'local' clears this device only and skips the /auth/v1/logout round trip, which
+    // 403s whenever the access token has already expired — leaving the user visibly stuck on
+    // a screen they asked to leave. Session rows expire server-side on their own.
+    await supabase.auth.signOut({ scope: 'local' });
   }, []);
 
   const refreshProfile = React.useCallback(async () => {
