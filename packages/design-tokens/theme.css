@@ -1,0 +1,54 @@
+/*
+ * ورد (Wird) design tokens for Tailwind v4's CSS-first theme.
+ * Mirrors src/colors.ts, src/typography.ts, src/spacing.ts — keep both in sync.
+ * Import from an app's main CSS entry: @import "@wird/design-tokens/theme.css";
+ */
+@theme {
+  --font-sans: 'IBM Plex Sans Arabic', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --color-primary-50: #eafbf6;
+  --color-primary-100: #cff6ea;
+  --color-primary-200: #9fecd6;
+  --color-primary-300: #6bddbe;
+  --color-primary-400: #3ec7a2;
+  --color-primary-500: #1fa885;
+  --color-primary-600: #12866b;
+  --color-primary-700: #0f6b57;
+  --color-primary-800: #0d5646;
+  --color-primary-900: #0b4638;
+  --color-primary-950: #052720;
+
+  --color-accent-50: #fdf8ec;
+  --color-accent-100: #fbf0d2;
+  --color-accent-200: #f6dfa0;
+  --color-accent-300: #efcb6e;
+  --color-accent-400: #e5b84a;
+  --color-accent-500: #d8a93b;
+  --color-accent-600: #ba8a28;
+  --color-accent-700: #966d1f;
+  --color-accent-800: #785819;
+  --color-accent-900: #634a16;
+  --color-accent-950: #382809;
+
+  --color-neutral-50: #f8fafc;
+  --color-neutral-100: #f1f5f9;
+  --color-neutral-200: #e2e8f0;
+  --color-neutral-300: #cbd5e1;
+  --color-neutral-400: #94a3b8;
+  --color-neutral-500: #64748b;
+  --color-neutral-600: #475569;
+  --color-neutral-700: #334155;
+  --color-neutral-800: #1e293b;
+  --color-neutral-900: #0f172a;
+  --color-neutral-950: #020617;
+
+  --color-success: #12866b;
+  --color-warning: #d8a93b;
+  --color-danger: #dc2626;
+  --color-info: #2563eb;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+}
