@@ -8,9 +8,10 @@ import {
   RefreshCw,
   RotateCcw,
   Sparkles,
+  BookOpenText,
 } from 'lucide-react';
 import { DUTY_CATEGORY_LABELS, DUTY_CATEGORY_STEPS, type DutyCategory } from '@wird/domain';
-import { formatRange } from '@wird/quran-data';
+import { formatPage, formatRange, pagesForRange } from '@wird/quran-data';
 import {
   Badge,
   Card,
@@ -33,6 +34,7 @@ import {
 } from '../lib/duties';
 import type { CachedDuty, CachedStep } from '../lib/offline';
 import { DayStrip } from '../components/DayStrip';
+import { MushafReader } from '../components/MushafReader';
 import { formatRelativeDay, todayISO } from '../lib/dates';
 
 type DutyWithSteps = CachedDuty & { steps: CachedStep[] };
@@ -272,6 +274,19 @@ function DutyCard({
   const done = duty.steps.filter((s) => s.isCompleted).length;
   const complete = duty.steps.length > 0 && done === duty.steps.length;
   const Icon = categoryIcon[duty.category];
+  const [readerOpen, setReaderOpen] = React.useState(false);
+
+  const range = {
+    surahFrom: duty.scopeSurahFrom,
+    ayahFrom: duty.scopeAyahFrom,
+    surahTo: duty.scopeSurahTo,
+    ayahTo: duty.scopeAyahTo,
+  };
+  const pages = pagesForRange(range);
+  const pageLabel =
+    pages.length === 1
+      ? formatPage(pages[0]!)
+      : `صفحات ${pages[0]!.toLocaleString('ar-EG')}–${pages[pages.length - 1]!.toLocaleString('ar-EG')}`;
 
   return (
     <Card className={cn('overflow-hidden', complete && 'ring-mint-200')}>
@@ -292,18 +307,23 @@ function DutyCard({
                 {DUTY_CATEGORY_LABELS[duty.category]}
               </div>
               <div className="mt-0.5 text-sm text-neutral-500">
-                {formatRange({
-                  surahFrom: duty.scopeSurahFrom,
-                  ayahFrom: duty.scopeAyahFrom,
-                  surahTo: duty.scopeSurahTo,
-                  ayahTo: duty.scopeAyahTo,
-                })}
+                {formatRange(range)}
               </div>
             </div>
             <Badge variant={statusVariant[duty.status]} dot>
               {statusLabel[duty.status]}
             </Badge>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setReaderOpen(true)}
+            className="mt-2.5 flex w-full items-center gap-2 rounded-lg bg-primary-50 px-3 py-2 text-start text-sm font-medium text-primary-800 ring-1 ring-inset ring-primary-100 transition-colors active:bg-primary-100"
+          >
+            <BookOpenText className="h-4 w-4 shrink-0 text-primary-600" />
+            <span className="flex-1">قراءة الورد</span>
+            <span className="text-[11px] font-normal text-primary-600">{pageLabel}</span>
+          </button>
 
           <div className="mt-3 flex items-center gap-2">
             <ProgressBar
@@ -344,6 +364,13 @@ function DutyCard({
           );
         })}
       </div>
+
+      <MushafReader
+        open={readerOpen}
+        onOpenChange={setReaderOpen}
+        range={range}
+        title={DUTY_CATEGORY_LABELS[duty.category]}
+      />
     </Card>
   );
 }

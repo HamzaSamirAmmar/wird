@@ -2,6 +2,7 @@ import { SURAHS, type Surah } from './surahs';
 
 export type { Surah };
 export { SURAHS };
+export * from './pages';
 
 const TOTAL_SURAHS = 114;
 const TOTAL_AYAHS = 6236;
