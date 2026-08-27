@@ -1,33 +1,54 @@
 import * as React from 'react';
 import { Navigate } from 'react-router-dom';
-import { ChevronRight, ChevronLeft, LogOut, WifiOff, RefreshCw } from 'lucide-react';
-import { DUTY_CATEGORY_LABELS, DUTY_CATEGORY_STEPS } from '@wird/domain';
+import {
+  BookOpen,
+  CheckCircle2,
+  CloudOff,
+  LogOut,
+  RefreshCw,
+  RotateCcw,
+  Sparkles,
+} from 'lucide-react';
+import { DUTY_CATEGORY_LABELS, DUTY_CATEGORY_STEPS, type DutyCategory } from '@wird/domain';
 import { formatRange } from '@wird/quran-data';
-import { Badge, Checkbox, Card, CardContent, Spinner } from '@wird/ui-web';
+import {
+  Badge,
+  Card,
+  Checkbox,
+  EmptyState,
+  IconButton,
+  ProgressBar,
+  ProgressRing,
+  Skeleton,
+  cn,
+} from '@wird/ui-web';
 import { useAuth } from '../lib/auth-context';
 import { supabase } from '../lib/supabase';
-import { getCachedDuties, refreshDutiesFromServer, toggleStep, pendingOutboxCount, flushOutbox } from '../lib/duties';
+import {
+  getCachedDuties,
+  refreshDutiesFromServer,
+  toggleStep,
+  pendingOutboxCount,
+  flushOutbox,
+} from '../lib/duties';
 import type { CachedDuty, CachedStep } from '../lib/offline';
+import { DayStrip } from '../components/DayStrip';
+import { formatRelativeDay, todayISO } from '../lib/dates';
 
 type DutyWithSteps = CachedDuty & { steps: CachedStep[] };
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function addDays(iso: string, days: number) {
-  const d = new Date(iso + 'T00:00:00');
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-function formatDayLabel(iso: string) {
-  const date = new Date(iso + 'T00:00:00');
-  return date.toLocaleDateString('ar-SA', { weekday: 'long', day: 'numeric', month: 'long' });
-}
-
-const statusVariant = { pending: 'pending', in_progress: 'in_progress', completed: 'completed' } as const;
+const statusVariant = {
+  pending: 'pending',
+  in_progress: 'in_progress',
+  completed: 'completed',
+} as const;
 const statusLabel = { pending: 'لم يبدأ', in_progress: 'جارٍ', completed: 'مكتمل' } as const;
+
+const categoryIcon: Record<DutyCategory, typeof BookOpen> = {
+  new_memorization: Sparkles,
+  minor_review: RotateCcw,
+  major_review: BookOpen,
+};
 
 export default function MyDuties() {
   const { profile, signOut } = useAuth();
@@ -89,10 +110,8 @@ export default function MyDuties() {
         { event: '*', schema: 'public', table: 'duties', filter: `employee_id=eq.${employeeId}` },
         () => refresh(),
       )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'duty_step_progress' },
-        () => refresh(),
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'duty_step_progress' }, () =>
+        refresh(),
       )
       .subscribe();
     return () => {
@@ -113,8 +132,10 @@ export default function MyDuties() {
               ? d
               : {
                   ...d,
-                  steps: d.steps.map((s) => (s.id === step.id ? { ...s, isCompleted: !s.isCompleted } : s)),
-                }
+                  steps: d.steps.map((s) =>
+                    s.id === step.id ? { ...s, isCompleted: !s.isCompleted } : s,
+                  ),
+                },
           )
         : prev,
     );
@@ -122,68 +143,110 @@ export default function MyDuties() {
     await reloadFromCache();
   }
 
+  const allSteps = duties?.flatMap((d) => d.steps) ?? [];
+  const doneSteps = allSteps.filter((s) => s.isCompleted).length;
+  const allDone = allSteps.length > 0 && doneSteps === allSteps.length;
+
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col bg-neutral-50">
-      <header className="flex items-center justify-between border-b border-neutral-200 bg-white p-4">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-700 text-sm font-bold text-white">
-            و
+    <div className="mx-auto flex min-h-dvh max-w-md flex-col bg-canvas">
+      <header className="relative overflow-hidden bg-linear-to-br from-primary-700 via-primary-800 to-primary-950 px-4 pb-4 pt-safe">
+        <div className="mihrab-pattern absolute inset-0 opacity-70" />
+
+        <div className="relative flex items-center justify-between gap-3 pt-3">
+          <div className="min-w-0">
+            <div className="text-[11px] text-primary-100/70">السلام عليكم</div>
+            <div className="truncate font-medium text-white">{profile?.fullName}</div>
           </div>
-          <div>
-            <div className="text-sm font-semibold text-neutral-900">{profile?.fullName}</div>
+          <div className="flex shrink-0 items-center gap-1">
+            {!isOnline && (
+              <span className="flex items-center gap-1 rounded-full bg-white/12 px-2.5 py-1 text-[11px] text-primary-50">
+                <CloudOff className="h-3.5 w-3.5" />
+                دون اتصال
+              </span>
+            )}
+            {pendingSync > 0 && (
+              <span className="rounded-full bg-accent-400/20 px-2.5 py-1 text-[11px] font-medium text-accent-100 ring-1 ring-accent-300/30">
+                {pendingSync} بانتظار المزامنة
+              </span>
+            )}
+            <IconButton
+              aria-label="تسجيل الخروج"
+              onClick={() => signOut()}
+              className="text-primary-100 active:bg-white/10"
+            >
+              <LogOut className="h-4.5 w-4.5" />
+            </IconButton>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {!isOnline && <WifiOff className="h-4 w-4 text-neutral-400" />}
-          {pendingSync > 0 && (
-            <Badge variant="in_progress">{pendingSync} بانتظار المزامنة</Badge>
-          )}
-          <button onClick={() => signOut()} className="rounded-md p-2 text-neutral-500 hover:bg-neutral-100">
-            <LogOut className="h-4 w-4" />
-          </button>
+
+        <div className="relative mt-4 flex items-center gap-4 rounded-2xl bg-white/10 p-4 ring-1 ring-white/12">
+          <ProgressRing
+            value={doneSteps}
+            max={allSteps.length}
+            size={56}
+            strokeWidth={5}
+            className={allDone ? 'text-mint-300' : 'text-white'}
+          >
+            <span className="text-white">
+              {allSteps.length === 0 ? '—' : `${Math.round((doneSteps / allSteps.length) * 100)}%`}
+            </span>
+          </ProgressRing>
+          <div className="min-w-0 flex-1">
+            <div className="font-medium text-white">{formatRelativeDay(selectedDate)}</div>
+            <div className="mt-0.5 text-xs text-primary-100/75">
+              {duties === null
+                ? 'جارٍ التحميل…'
+                : allSteps.length === 0
+                  ? 'لا توجد خطوات لهذا اليوم'
+                  : allDone
+                    ? 'أتممت ورد اليوم — بارك الله فيك'
+                    : `${doneSteps} من ${allSteps.length} خطوة مكتملة`}
+            </div>
+          </div>
+          <IconButton
+            aria-label="تحديث"
+            onClick={refresh}
+            className="text-primary-100 active:bg-white/10"
+          >
+            <RefreshCw className={cn('h-4.5 w-4.5', refreshing && 'animate-spin')} />
+          </IconButton>
+        </div>
+
+        <div className="relative mt-3">
+          <DayStrip value={selectedDate} onChange={setSelectedDate} />
         </div>
       </header>
 
-      <div className="flex items-center justify-center gap-3 border-b border-neutral-200 bg-white py-3">
-        <button
-          onClick={() => setSelectedDate((d) => addDays(d, 1))}
-          className="rounded-md p-2 text-neutral-500 hover:bg-neutral-100"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
-        <div className="text-sm font-medium text-neutral-800">{formatDayLabel(selectedDate)}</div>
-        <button
-          onClick={() => setSelectedDate((d) => addDays(d, -1))}
-          className="rounded-md p-2 text-neutral-500 hover:bg-neutral-100"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </button>
-      </div>
-
-      <main className="flex-1 overflow-y-auto p-4">
-        <div className="mb-3 flex items-center justify-between">
-          {selectedDate !== todayISO() && (
-            <button onClick={() => setSelectedDate(todayISO())} className="text-xs font-medium text-primary-700">
-              العودة لليوم
-            </button>
-          )}
+      <main className="flex-1 px-4 py-4 pb-safe">
+        {selectedDate !== todayISO() && (
           <button
-            onClick={refresh}
-            className="ms-auto flex items-center gap-1 text-xs font-medium text-neutral-500"
+            onClick={() => setSelectedDate(todayISO())}
+            className="mb-3 text-xs font-medium text-primary-700"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            تحديث
+            العودة لليوم
           </button>
-        </div>
+        )}
 
         {duties === null ? (
-          <div className="flex justify-center p-8">
-            <Spinner />
+          <div className="flex flex-col gap-3">
+            {Array.from({ length: 2 }, (_, i) => (
+              <Card key={i} className="flex flex-col gap-3 p-4">
+                <Skeleton className="h-4 w-1/3" />
+                <Skeleton className="h-3 w-1/2" />
+                <Skeleton className="h-1.5 w-full" />
+              </Card>
+            ))}
           </div>
         ) : duties.length === 0 ? (
-          <p className="p-8 text-center text-sm text-neutral-500">لا توجد واجبات في هذا اليوم</p>
+          <Card>
+            <EmptyState
+              icon={BookOpen}
+              title="لا توجد واجبات في هذا اليوم"
+              description="راجع أياماً أخرى من الشريط أعلاه، أو انتظر إسناد المشرف."
+            />
+          </Card>
         ) : (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3">
             {duties.map((duty) => (
               <DutyCard key={duty.id} duty={duty} onToggle={handleToggle} />
             ))}
@@ -194,47 +257,89 @@ export default function MyDuties() {
   );
 }
 
-function DutyCard({ duty, onToggle }: { duty: DutyWithSteps; onToggle: (step: CachedStep) => void }) {
+function DutyCard({
+  duty,
+  onToggle,
+}: {
+  duty: DutyWithSteps;
+  onToggle: (step: CachedStep) => void;
+}) {
   const stepDefs = DUTY_CATEGORY_STEPS[duty.category];
+  const done = duty.steps.filter((s) => s.isCompleted).length;
+  const complete = duty.steps.length > 0 && done === duty.steps.length;
+  const Icon = categoryIcon[duty.category];
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-3 p-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="font-semibold text-neutral-900">{DUTY_CATEGORY_LABELS[duty.category]}</div>
-            <div className="text-sm text-neutral-500">
-              {formatRange({
-                surahFrom: duty.scopeSurahFrom,
-                ayahFrom: duty.scopeAyahFrom,
-                surahTo: duty.scopeSurahTo,
-                ayahTo: duty.scopeAyahTo,
-              })}
-            </div>
-          </div>
-          <Badge variant={statusVariant[duty.status]}>{statusLabel[duty.status]}</Badge>
-        </div>
+    <Card className={cn('overflow-hidden', complete && 'ring-mint-200')}>
+      <div className="flex items-start gap-3 p-4">
+        <span
+          className={cn(
+            'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
+            complete ? 'bg-mint-50 text-mint-600' : 'bg-primary-50 text-primary-600',
+          )}
+        >
+          {complete ? <CheckCircle2 className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
+        </span>
 
-        <div className="flex flex-col gap-2 border-t border-neutral-100 pt-3">
-          {duty.steps.map((step) => {
-            const def = stepDefs.find((s) => s.order === step.stepOrder);
-            return (
-              <label key={step.id} className="flex cursor-pointer items-start gap-3">
-                <Checkbox
-                  checked={step.isCompleted}
-                  onCheckedChange={() => onToggle(step)}
-                  className="mt-0.5"
-                />
-                <span
-                  className={`text-sm leading-relaxed ${step.isCompleted ? 'text-neutral-400 line-through' : 'text-neutral-800'}`}
-                >
-                  {def?.label ?? step.stepKey}
-                </span>
-              </label>
-            );
-          })}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="font-semibold text-neutral-900">
+                {DUTY_CATEGORY_LABELS[duty.category]}
+              </div>
+              <div className="mt-0.5 text-sm text-neutral-500">
+                {formatRange({
+                  surahFrom: duty.scopeSurahFrom,
+                  ayahFrom: duty.scopeAyahFrom,
+                  surahTo: duty.scopeSurahTo,
+                  ayahTo: duty.scopeAyahTo,
+                })}
+              </div>
+            </div>
+            <Badge variant={statusVariant[duty.status]} dot>
+              {statusLabel[duty.status]}
+            </Badge>
+          </div>
+
+          <div className="mt-3 flex items-center gap-2">
+            <ProgressBar
+              value={done}
+              max={duty.steps.length}
+              tone={complete ? 'mint' : 'brand'}
+              className="flex-1"
+            />
+            <span className="shrink-0 text-[11px] tabular-nums text-neutral-500">
+              {done}/{duty.steps.length}
+            </span>
+          </div>
         </div>
-      </CardContent>
+      </div>
+
+      <div className="flex flex-col divide-y divide-neutral-100 border-t border-neutral-100">
+        {duty.steps.map((step) => {
+          const def = stepDefs.find((s) => s.order === step.stepOrder);
+          return (
+            <label
+              key={step.id}
+              className="flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors active:bg-primary-50/60"
+            >
+              <Checkbox
+                checked={step.isCompleted}
+                onCheckedChange={() => onToggle(step)}
+                className="mt-0.5"
+              />
+              <span
+                className={cn(
+                  'text-sm leading-relaxed',
+                  step.isCompleted ? 'text-neutral-400 line-through' : 'text-neutral-700',
+                )}
+              >
+                {def?.label ?? step.stepKey}
+              </span>
+            </label>
+          );
+        })}
+      </div>
     </Card>
   );
 }

@@ -1,8 +1,42 @@
 @import 'tailwindcss';
 @import '@wird/design-tokens/theme.css';
 
-body {
-  font-family: var(--font-sans);
-  background-color: var(--color-neutral-50);
-  color: var(--color-neutral-900);
+/* @wird/ui-web is a separate workspace package resolved through node_modules, which Tailwind's
+   automatic content detection skips by default — without this, classes used only inside its
+   components (e.g. Dialog's `fixed`/`inset-0`) never make it into the generated CSS. */
+@source '../../../packages/ui-web/src/**/*.{ts,tsx}';
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--color-canvas);
+    color: var(--color-neutral-900);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background-color: var(--color-primary-200);
+    color: var(--color-primary-950);
+  }
+
+  /* Date inputs render a Latin-ordered value; keep the calendar picker on the trailing edge. */
+  input[type='date']::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.5;
+  }
+
+  /* Slim, low-contrast scrollbars so long tables and dialogs stay calm. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-neutral-300) transparent;
+  }
+}
+
+@utility mihrab-pattern {
+  background-image: var(--pattern-mihrab);
+  background-size: 150px 150px;
 }

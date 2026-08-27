@@ -11,27 +11,29 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@hookform/resolvers": "^3.9.1",
+    "@wird/brand": "workspace:*",
+    "@wird/design-tokens": "workspace:*",
     "@wird/domain": "workspace:*",
     "@wird/quran-data": "workspace:*",
     "@wird/supabase-client": "workspace:*",
+    "@wird/ui-web": "workspace:*",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-router-dom": "^7.1.1",
-    "@wird/design-tokens": "workspace:*",
-    "@wird/ui-web": "workspace:*",
-    "zod": "^3.24.1",
     "react-hook-form": "^7.54.2",
-    "@hookform/resolvers": "^3.9.1"
+    "react-router-dom": "^7.1.1",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
     "oxlint": "^1.79.0",
-    "typescript": "~6.0.2",
-    "vite": "^8.2.2",
+    "sharp": "^0.33.5",
     "tailwindcss": "^4.3.3",
-    "@tailwindcss/vite": "^4.3.3"
+    "typescript": "~6.0.2",
+    "vite": "^8.2.2"
   }
 }

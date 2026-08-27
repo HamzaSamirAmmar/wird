@@ -1,9 +1,45 @@
 @import 'tailwindcss';
 @import '@wird/design-tokens/theme.css';
 
-body {
-  font-family: var(--font-sans);
-  background-color: var(--color-neutral-50);
-  color: var(--color-neutral-900);
-  overscroll-behavior-y: none;
+/* @wird/ui-web is a separate workspace package resolved through node_modules, which Tailwind's
+   automatic content detection skips by default — without this, classes used only inside its
+   components never make it into the generated CSS. */
+@source '../../../packages/ui-web/src/**/*.{ts,tsx}';
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--color-canvas);
+    color: var(--color-neutral-900);
+    -webkit-font-smoothing: antialiased;
+    /* Standalone PWAs have no browser chrome to absorb the rubber band. */
+    overscroll-behavior-y: none;
+  }
+
+  ::selection {
+    background-color: var(--color-primary-200);
+    color: var(--color-primary-950);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-neutral-300) transparent;
+  }
+}
+
+@utility mihrab-pattern {
+  background-image: var(--pattern-mihrab);
+  background-size: 150px 150px;
+}
+
+/* Home-screen installs run under the notch/home indicator; pad the app shell, not the body. */
+@utility pt-safe {
+  padding-top: max(env(safe-area-inset-top), 0px);
+}
+@utility pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0px);
 }
