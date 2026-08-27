@@ -110,20 +110,33 @@ async function recomputeLocalDutyStatus(dutyId: string) {
   await db.duties.update(dutyId, { status });
 }
 
-/** Replays queued step updates to Supabase in order; stops at the first failure. */
+/**
+ * Replays queued step updates to Supabase in order; stops at the first failure.
+ *
+ * Never throws. This runs ahead of the duty fetch on every refresh, so letting it reject
+ * would abort the sync entirely — which is exactly what a missing index here used to do.
+ */
 export async function flushOutbox(): Promise<void> {
   if (!navigator.onLine) return;
 
-  const entries = await db.outbox.orderBy('createdAt').toArray();
-  for (const entry of entries) {
-    const { error } = await supabase
-      .from('duty_step_progress')
-      .update({ is_completed: entry.isCompleted, completed_at: entry.completedAt })
-      .eq('id', entry.stepId);
+  try {
+    // sortBy (in memory), not orderBy: `createdAt` is not an index on the outbox store, and
+    // orderBy on an unindexed keyPath throws SchemaError. The outbox only ever holds writes
+    // that have not reached the server yet, so sorting it in memory costs nothing.
+    const entries = await db.outbox.toCollection().sortBy('createdAt');
 
-    if (error) return; // keep remaining entries queued, try again next time
+    for (const entry of entries) {
+      const { error } = await supabase
+        .from('duty_step_progress')
+        .update({ is_completed: entry.isCompleted, completed_at: entry.completedAt })
+        .eq('id', entry.stepId);
 
-    if (entry.id !== undefined) await db.outbox.delete(entry.id);
+      if (error) return; // keep remaining entries queued, try again next time
+
+      if (entry.id !== undefined) await db.outbox.delete(entry.id);
+    }
+  } catch {
+    // Best-effort: the entries stay queued and the next refresh retries them.
   }
 }
 

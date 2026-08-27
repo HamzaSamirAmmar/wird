@@ -70,10 +70,14 @@ export default function MyDuties() {
   const refresh = React.useCallback(async () => {
     if (!employeeId) return;
     setRefreshing(true);
-    await flushOutbox();
-    await refreshDutiesFromServer(employeeId);
-    await reloadFromCache();
-    setRefreshing(false);
+    try {
+      await flushOutbox();
+      await refreshDutiesFromServer(employeeId);
+      await reloadFromCache();
+    } finally {
+      // Without this the spinner spins forever whenever any step above rejects.
+      setRefreshing(false);
+    }
   }, [employeeId, reloadFromCache]);
 
   React.useEffect(() => {
