@@ -1,19 +1,18 @@
 import { supabase } from './supabase';
+import { addDays, todayISO } from './dates';
 import { db, type CachedDuty, type CachedStep } from './offline';
 
-const WINDOW_DAYS_BEFORE = 1;
-const WINDOW_DAYS_AFTER = 6;
-
-function isoDate(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
+// The day rail on MyDuties shows the whole Saturday-first week containing the selected day,
+// so when today is late in the week the rail reaches six days back. Syncing a narrower window
+// than the UI can display makes real duties render as "no duties for this day".
+const WINDOW_DAYS_BEFORE = 7;
+const WINDOW_DAYS_AFTER = 7;
 
 function dateWindow() {
-  const from = new Date();
-  from.setDate(from.getDate() - WINDOW_DAYS_BEFORE);
-  const to = new Date();
-  to.setDate(to.getDate() + WINDOW_DAYS_AFTER);
-  return { from: isoDate(from), to: isoDate(to) };
+  // Local calendar dates, matching due_date (a plain DATE) and the UI's own day maths.
+  // toISOString() would resolve to the UTC day and disagree by one east of Greenwich.
+  const today = todayISO();
+  return { from: addDays(today, -WINDOW_DAYS_BEFORE), to: addDays(today, WINDOW_DAYS_AFTER) };
 }
 
 /** Pulls this employee's nearby duties + steps from Supabase and refreshes the local cache. */
@@ -62,6 +61,12 @@ export async function refreshDutiesFromServer(employeeId: string): Promise<{ err
   }
 
   await db.transaction('rw', db.duties, db.steps, async () => {
+    // Drop this employee's cached steps along with their duties. Editing an assignment makes
+    // propagate_group_assignment_update() delete and re-insert duty_step_progress rows with
+    // fresh ids, so a bulkPut alone would leave the superseded rows behind and the checklist
+    // would render twice.
+    const staleDutyIds = await db.duties.where('employeeId').equals(employeeId).primaryKeys();
+    await db.steps.where('dutyId').anyOf(staleDutyIds).delete();
     await db.duties.where('employeeId').equals(employeeId).delete();
     await db.steps.bulkPut(steps);
     await db.duties.bulkPut(duties);
@@ -72,7 +77,7 @@ export async function refreshDutiesFromServer(employeeId: string): Promise<{ err
 
 export async function getCachedDuties(employeeId: string) {
   const duties = await db.duties.where('employeeId').equals(employeeId).sortBy('dueDate');
-  const steps = await db.steps.toArray();
+  const steps = await db.steps.where('dutyId').anyOf(duties.map((d) => d.id)).toArray();
   const stepsByDuty = new Map<string, CachedStep[]>();
   for (const s of steps) {
     const list = stepsByDuty.get(s.dutyId) ?? [];
