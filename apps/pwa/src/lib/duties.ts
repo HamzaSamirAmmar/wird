@@ -1,0 +1,127 @@
+import { supabase } from './supabase';
+import { db, type CachedDuty, type CachedStep } from './offline';
+
+const WINDOW_DAYS_BEFORE = 1;
+const WINDOW_DAYS_AFTER = 6;
+
+function isoDate(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
+
+function dateWindow() {
+  const from = new Date();
+  from.setDate(from.getDate() - WINDOW_DAYS_BEFORE);
+  const to = new Date();
+  to.setDate(to.getDate() + WINDOW_DAYS_AFTER);
+  return { from: isoDate(from), to: isoDate(to) };
+}
+
+/** Pulls this employee's nearby duties + steps from Supabase and refreshes the local cache. */
+export async function refreshDutiesFromServer(employeeId: string): Promise<{ error: string | null }> {
+  if (!navigator.onLine) return { error: null };
+
+  const { from, to } = dateWindow();
+  const { data, error } = await supabase
+    .from('duties')
+    .select(
+      'id, employee_id, category, due_date, scope_surah_from, scope_ayah_from, scope_surah_to, scope_ayah_to, scope_note, status, duty_step_progress(id, duty_id, step_order, step_key, is_completed, completed_at)',
+    )
+    .eq('employee_id', employeeId)
+    .gte('due_date', from)
+    .lte('due_date', to)
+    .order('due_date');
+
+  if (error) return { error: 'تعذر تحديث البيانات' };
+
+  const duties: CachedDuty[] = [];
+  const steps: CachedStep[] = [];
+
+  for (const row of data ?? []) {
+    duties.push({
+      id: row.id,
+      employeeId: row.employee_id,
+      category: row.category,
+      dueDate: row.due_date,
+      scopeSurahFrom: row.scope_surah_from,
+      scopeAyahFrom: row.scope_ayah_from,
+      scopeSurahTo: row.scope_surah_to,
+      scopeAyahTo: row.scope_ayah_to,
+      scopeNote: row.scope_note,
+      status: row.status,
+    });
+    for (const s of row.duty_step_progress ?? []) {
+      steps.push({
+        id: s.id,
+        dutyId: s.duty_id,
+        stepOrder: s.step_order,
+        stepKey: s.step_key,
+        isCompleted: s.is_completed,
+        completedAt: s.completed_at,
+      });
+    }
+  }
+
+  await db.transaction('rw', db.duties, db.steps, async () => {
+    await db.duties.where('employeeId').equals(employeeId).delete();
+    await db.steps.bulkPut(steps);
+    await db.duties.bulkPut(duties);
+  });
+
+  return { error: null };
+}
+
+export async function getCachedDuties(employeeId: string) {
+  const duties = await db.duties.where('employeeId').equals(employeeId).sortBy('dueDate');
+  const steps = await db.steps.toArray();
+  const stepsByDuty = new Map<string, CachedStep[]>();
+  for (const s of steps) {
+    const list = stepsByDuty.get(s.dutyId) ?? [];
+    list.push(s);
+    stepsByDuty.set(s.dutyId, list);
+  }
+  return duties.map((d) => ({
+    ...d,
+    steps: (stepsByDuty.get(d.id) ?? []).sort((a, b) => a.stepOrder - b.stepOrder),
+  }));
+}
+
+/** Optimistically toggles a step locally, queues the write, and tries to sync immediately. */
+export async function toggleStep(stepId: string, isCompleted: boolean) {
+  const completedAt = isCompleted ? new Date().toISOString() : null;
+  const step = await db.steps.get(stepId);
+  await db.steps.update(stepId, { isCompleted, completedAt });
+  await db.outbox.add({ createdAt: Date.now(), stepId, isCompleted, completedAt });
+
+  if (step) await recomputeLocalDutyStatus(step.dutyId);
+  await flushOutbox();
+}
+
+// Mirrors the server-side sync_duty_status() trigger, so the UI's status badge updates
+// instantly offline instead of waiting for the next server refresh.
+async function recomputeLocalDutyStatus(dutyId: string) {
+  const steps = await db.steps.where('dutyId').equals(dutyId).toArray();
+  const completed = steps.filter((s) => s.isCompleted).length;
+  const status = completed === 0 ? 'pending' : completed === steps.length ? 'completed' : 'in_progress';
+  await db.duties.update(dutyId, { status });
+}
+
+/** Replays queued step updates to Supabase in order; stops at the first failure. */
+export async function flushOutbox(): Promise<void> {
+  if (!navigator.onLine) return;
+
+  const entries = await db.outbox.orderBy('createdAt').toArray();
+  for (const entry of entries) {
+    const { error } = await supabase
+      .from('duty_step_progress')
+      .update({ is_completed: entry.isCompleted, completed_at: entry.completedAt })
+      .eq('id', entry.stepId);
+
+    if (error) return; // keep remaining entries queued, try again next time
+
+    if (entry.id !== undefined) await db.outbox.delete(entry.id);
+  }
+}
+
+export async function pendingOutboxCount(): Promise<number> {
+  return db.outbox.count();
+}
