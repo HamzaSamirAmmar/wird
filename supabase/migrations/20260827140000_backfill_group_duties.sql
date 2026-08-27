@@ -45,6 +45,10 @@ $$;
 
 -- `of group_id, is_active, role` keeps unrelated writes (e.g. clearing
 -- must_change_password on first login) from re-running the scan.
+-- Dropped first so this file is safe to re-run: applying it by hand in the SQL editor
+-- leaves supabase_migrations unaware, and a later `supabase db push` would replay it.
+drop trigger if exists trg_backfill_group_duties on public.profiles;
+
 create trigger trg_backfill_group_duties
 after insert or update of group_id, is_active, role on public.profiles
 for each row execute function public.backfill_group_duties();
