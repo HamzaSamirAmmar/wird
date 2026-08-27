@@ -34,8 +34,10 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        // json: the muṣḥaf text asset must be precached, or the reader is online-only.
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2,json}'],
         navigateFallback: '/index.html',
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         // Data offline-ability is handled at the app level via IndexedDB (see src/lib/offline),
         // not by caching Supabase API responses in the service worker.
         runtimeCaching: [],
