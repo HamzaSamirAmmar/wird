@@ -1,0 +1,13 @@
+{
+  "name": "@wird/brand",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./mark.mjs": {
+      "types": "./src/mark.d.mts",
+      "default": "./src/mark.mjs"
+    },
+    "./icons.mjs": "./src/icons.mjs"
+  }
+}

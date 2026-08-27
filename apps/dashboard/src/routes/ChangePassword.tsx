@@ -1,8 +1,10 @@
 import * as React from 'react';
 import { Navigate } from 'react-router-dom';
+import { KeyRound } from 'lucide-react';
 import { changeOwnPassword } from '@wird/supabase-client';
 import { changePasswordSchema } from '@wird/domain';
-import { Button, Input, Label, Card, CardContent, CardHeader, CardTitle, CardDescription, Alert } from '@wird/ui-web';
+import { Alert, Button, Field, Input } from '@wird/ui-web';
+import { AuthShell } from '../components/AuthShell';
 import { useAuth } from '../lib/auth-context';
 import { supabase } from '../lib/supabase';
 
@@ -39,43 +41,40 @@ export default function ChangePassword() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-neutral-50 p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle>تغيير كلمة المرور</CardTitle>
-          <CardDescription>يجب تعيين كلمة مرور جديدة قبل المتابعة</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            {error && <Alert variant="danger">{error}</Alert>}
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="new-password">كلمة المرور الجديدة</Label>
-              <Input
-                id="new-password"
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                autoComplete="new-password"
-                required
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="confirm-password">تأكيد كلمة المرور</Label>
-              <Input
-                id="confirm-password"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                autoComplete="new-password"
-                required
-              />
-            </div>
-            <Button type="submit" disabled={submitting} className="mt-2">
-              {submitting ? 'جاري الحفظ...' : 'حفظ كلمة المرور'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+    <AuthShell title="تغيير كلمة المرور" description="يجب تعيين كلمة مرور جديدة قبل المتابعة">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        {error && <Alert variant="danger">{error}</Alert>}
+
+        <Field label="كلمة المرور الجديدة" htmlFor="new-password" hint="٨ أحرف على الأقل">
+          <Input
+            id="new-password"
+            type="password"
+            dir="ltr"
+            icon={<KeyRound className="h-4 w-4" />}
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            autoComplete="new-password"
+            required
+          />
+        </Field>
+
+        <Field label="تأكيد كلمة المرور" htmlFor="confirm-password">
+          <Input
+            id="confirm-password"
+            type="password"
+            dir="ltr"
+            icon={<KeyRound className="h-4 w-4" />}
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            autoComplete="new-password"
+            required
+          />
+        </Field>
+
+        <Button type="submit" size="lg" block loading={submitting} className="mt-2">
+          حفظ كلمة المرور
+        </Button>
+      </form>
+    </AuthShell>
   );
 }

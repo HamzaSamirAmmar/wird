@@ -11,10 +11,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@wird/brand": "workspace:*",
+    "@wird/design-tokens": "workspace:*",
     "@wird/domain": "workspace:*",
     "@wird/quran-data": "workspace:*",
     "@wird/supabase-client": "workspace:*",
-    "@wird/design-tokens": "workspace:*",
     "@wird/ui-web": "workspace:*",
     "dexie": "^4.0.11",
     "react": "^19.2.8",

@@ -1,33 +1,37 @@
 import * as React from 'react';
-import { Plus, ChevronRight, ChevronLeft, X } from 'lucide-react';
+import { BookOpen, CalendarDays, Layers, Pencil, Plus, X } from 'lucide-react';
 import { SURAHS, validateRange, formatRange } from '@wird/quran-data';
 import { DUTY_CATEGORIES, DUTY_CATEGORY_LABELS, type DutyCategory } from '@wird/domain';
 import {
-  Button,
-  Input,
-  Label,
-  Card,
-  CardContent,
   Alert,
+  Badge,
+  Button,
+  Card,
   Dialog,
+  DialogBody,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
   Select,
-  SelectTrigger,
-  SelectValue,
   SelectContent,
   SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SkeletonRows,
   Table,
-  TableHeader,
   TableBody,
-  TableRow,
-  TableHead,
   TableCell,
-  Spinner,
-  Badge,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from '@wird/ui-web';
+import { WeekStrip } from '../components/WeekStrip';
+import { addDays, formatRelativeDay, isoWeekStart, todayISO } from '../lib/dates';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth-context';
 
@@ -48,45 +52,57 @@ interface GroupOption {
   name: string;
 }
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
+const categoryBadge: Record<DutyCategory, 'brand' | 'in_progress' | 'completed'> = {
+  new_memorization: 'brand',
+  minor_review: 'in_progress',
+  major_review: 'completed',
+};
 
-function addDays(iso: string, days: number) {
-  const d = new Date(iso + 'T00:00:00');
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
+const ASSIGNMENT_COLUMNS =
+  'id, category, due_date, scope_surah_from, scope_ayah_from, scope_surah_to, scope_ayah_to, scope_note, group:groups(id, name)';
 
 export default function DutiesPage() {
   const { profile } = useAuth();
   const [selectedDate, setSelectedDate] = React.useState(todayISO());
   const [assignments, setAssignments] = React.useState<AssignmentRow[] | null>(null);
+  const [weekCounts, setWeekCounts] = React.useState<Record<string, number>>({});
   const [groups, setGroups] = React.useState<GroupOption[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<AssignmentRow | null>(null);
 
-  const loadAssignments = React.useCallback(async () => {
+  const weekStart = isoWeekStart(selectedDate);
+
+  // One query for the whole visible week: the day list and the strip's dots come from it,
+  // so switching days inside a week needs no round trip.
+  const loadWeek = React.useCallback(async () => {
     setAssignments(null);
     const { data, error } = await supabase
       .from('duty_group_assignments')
-      .select(
-        'id, category, due_date, scope_surah_from, scope_ayah_from, scope_surah_to, scope_ayah_to, scope_note, group:groups(id, name)',
-      )
-      .eq('due_date', selectedDate)
+      .select(ASSIGNMENT_COLUMNS)
+      .gte('due_date', weekStart)
+      .lte('due_date', addDays(weekStart, 6))
       .order('created_at');
 
     if (error) {
-      setError('تعذر تحميل واجبات هذا اليوم');
+      setError('تعذر تحميل واجبات هذا الأسبوع');
+      setAssignments([]);
       return;
     }
-    setAssignments(data as unknown as AssignmentRow[]);
-  }, [selectedDate]);
+    setError(null);
+    const rows = data as unknown as AssignmentRow[];
+    setAssignments(rows);
+    setWeekCounts(
+      rows.reduce<Record<string, number>>((acc, r) => {
+        acc[r.due_date] = (acc[r.due_date] ?? 0) + 1;
+        return acc;
+      }, {}),
+    );
+  }, [weekStart]);
 
   React.useEffect(() => {
-    loadAssignments();
-  }, [loadAssignments]);
+    loadWeek();
+  }, [loadWeek]);
 
   React.useEffect(() => {
     supabase
@@ -96,47 +112,91 @@ export default function DutiesPage() {
       .then(({ data }) => setGroups(data ?? []));
   }, []);
 
+  const dayAssignments = assignments?.filter((a) => a.due_date === selectedDate) ?? null;
+  const coveredGroups = new Set(dayAssignments?.map((a) => a.group.id)).size;
+
+  function openNew() {
+    setEditing(null);
+    setDialogOpen(true);
+  }
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-neutral-900">الأورد اليومية</h1>
-        <Button onClick={() => { setEditing(null); setDialogOpen(true); }} disabled={groups.length === 0}>
-          <Plus className="h-4 w-4" />
-          واجب جديد
-        </Button>
-      </div>
+      <PageHeader
+        title="الأورد اليومية"
+        description="أسند الحفظ والمراجعة لكل مجموعة على تقويم الأسبوع"
+        actions={
+          <Button onClick={openNew} disabled={groups.length === 0}>
+            <Plus className="h-4 w-4" />
+            واجب جديد
+          </Button>
+        }
+      />
 
-      {groups.length === 0 && <Alert variant="info">أنشئ مجموعة أولاً لتتمكن من إسناد الأورد</Alert>}
+      {groups.length === 0 && (
+        <Alert variant="info" title="لا توجد مجموعات بعد">
+          أنشئ مجموعة أولاً لتتمكن من إسناد الأورد.
+        </Alert>
+      )}
       {error && <Alert variant="danger">{error}</Alert>}
 
-      <div className="flex items-center justify-center gap-3">
-        <Button variant="outline" size="sm" onClick={() => setSelectedDate((d) => addDays(d, 1))}>
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-        <Input
-          type="date"
-          value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
-          className="w-44 text-center"
-        />
-        <Button variant="outline" size="sm" onClick={() => setSelectedDate((d) => addDays(d, -1))}>
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        {selectedDate !== todayISO() && (
-          <Button variant="ghost" size="sm" onClick={() => setSelectedDate(todayISO())}>
-            اليوم
-          </Button>
-        )}
-      </div>
-
-      <Card>
-        <CardContent className="p-0">
-          {assignments === null ? (
-            <div className="flex justify-center p-8">
-              <Spinner />
+      <div className="grid gap-6 lg:grid-cols-[24rem_1fr] lg:items-start">
+        <div className="flex flex-col gap-4">
+          <Card className="p-4">
+            <WeekStrip value={selectedDate} onChange={setSelectedDate} markers={weekCounts} />
+            <div className="mt-4 flex items-center gap-2 border-t border-neutral-100 pt-4">
+              <Input
+                type="date"
+                aria-label="اختيار تاريخ"
+                value={selectedDate}
+                onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
+                className="h-9 text-sm"
+              />
+              {selectedDate !== todayISO() && (
+                <Button variant="quiet" size="sm" onClick={() => setSelectedDate(todayISO())}>
+                  اليوم
+                </Button>
+              )}
             </div>
-          ) : assignments.length === 0 ? (
-            <p className="p-8 text-center text-sm text-neutral-500">لا توجد واجبات في هذا اليوم</p>
+          </Card>
+
+          <div className="grid grid-cols-2 gap-3">
+            <StatTile icon={BookOpen} label="واجبات اليوم" value={dayAssignments?.length ?? null} />
+            <StatTile
+              icon={Layers}
+              label="مجموعات مشمولة"
+              value={dayAssignments ? coveredGroups : null}
+            />
+          </div>
+        </div>
+
+        <Card className="overflow-hidden">
+          <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-5 py-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-neutral-800">
+              <CalendarDays className="h-4 w-4 text-primary-600" />
+              {formatRelativeDay(selectedDate)}
+            </div>
+            {dayAssignments && dayAssignments.length > 0 && (
+              <Badge variant="neutral">{dayAssignments.length} واجب</Badge>
+            )}
+          </div>
+
+          {dayAssignments === null ? (
+            <SkeletonRows rows={3} />
+          ) : dayAssignments.length === 0 ? (
+            <EmptyState
+              icon={BookOpen}
+              title="لا توجد واجبات في هذا اليوم"
+              description="اختر يوماً آخر من التقويم، أو أضف واجباً جديداً لهذه المجموعة."
+              action={
+                groups.length > 0 && (
+                  <Button variant="secondary" size="sm" onClick={openNew}>
+                    <Plus className="h-4 w-4" />
+                    واجب جديد
+                  </Button>
+                )
+              }
+            />
           ) : (
             <Table>
               <TableHeader>
@@ -144,17 +204,19 @@ export default function DutiesPage() {
                   <TableHead>المجموعة</TableHead>
                   <TableHead>النوع</TableHead>
                   <TableHead>النطاق</TableHead>
-                  <TableHead />
+                  <TableHead className="w-px" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {assignments.map((a) => (
+                {dayAssignments.map((a) => (
                   <TableRow key={a.id}>
                     <TableCell className="font-medium text-neutral-900">{a.group.name}</TableCell>
                     <TableCell>
-                      <Badge variant="neutral">{DUTY_CATEGORY_LABELS[a.category]}</Badge>
+                      <Badge variant={categoryBadge[a.category]} dot>
+                        {DUTY_CATEGORY_LABELS[a.category]}
+                      </Badge>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="whitespace-nowrap">
                       {formatRange({
                         surahFrom: a.scope_surah_from,
                         ayahFrom: a.scope_ayah_from,
@@ -163,7 +225,15 @@ export default function DutiesPage() {
                       })}
                     </TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="sm" onClick={() => { setEditing(a); setDialogOpen(true); }}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setEditing(a);
+                          setDialogOpen(true);
+                        }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
                         تعديل
                       </Button>
                     </TableCell>
@@ -172,8 +242,8 @@ export default function DutiesPage() {
               </TableBody>
             </Table>
           )}
-        </CardContent>
-      </Card>
+        </Card>
+      </div>
 
       <DutyFormDialog
         open={dialogOpen}
@@ -184,10 +254,32 @@ export default function DutiesPage() {
         supervisorId={profile?.id ?? ''}
         onSaved={() => {
           setDialogOpen(false);
-          loadAssignments();
+          loadWeek();
         }}
       />
     </div>
+  );
+}
+
+function StatTile({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof BookOpen;
+  label: string;
+  value: number | null;
+}) {
+  return (
+    <Card className="flex items-center gap-3 p-4">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
+        <Icon className="h-4.5 w-4.5" />
+      </span>
+      <div className="min-w-0">
+        <div className="text-lg font-semibold tabular-nums text-neutral-900">{value ?? '—'}</div>
+        <div className="truncate text-xs text-neutral-500">{label}</div>
+      </div>
+    </Card>
   );
 }
 
@@ -201,8 +293,7 @@ function SurahSelect({
   label: string;
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <Label>{label}</Label>
+    <Field label={label}>
       <Select value={String(value)} onValueChange={(v) => onChange(Number(v))}>
         <SelectTrigger>
           <SelectValue />
@@ -215,7 +306,7 @@ function SurahSelect({
           ))}
         </SelectContent>
       </Select>
-    </div>
+    </Field>
   );
 }
 
@@ -345,93 +436,108 @@ function DutyFormDialog({
         <DialogHeader>
           <DialogTitle>{isEdit ? 'تعديل الواجب' : 'واجب جديد'}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {error && <Alert variant="danger">{error}</Alert>}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label>المجموعة</Label>
-              <Select value={groupId} onValueChange={setGroupId} disabled={isEdit}>
-                <SelectTrigger>
-                  <SelectValue placeholder="اختر مجموعة" />
-                </SelectTrigger>
-                <SelectContent>
-                  {groups.map((g) => (
-                    <SelectItem key={g.id} value={g.id}>
-                      {g.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>النوع</Label>
-              <Select value={category} onValueChange={(v) => setCategory(v as DutyCategory)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DUTY_CATEGORIES.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {DUTY_CATEGORY_LABELS[c]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <DialogBody>
+            {error && <Alert variant="danger">{error}</Alert>}
 
-          <div className="grid grid-cols-2 gap-4">
-            <SurahSelect label="من سورة" value={surahFrom} onChange={setSurahFrom} />
-            <div className="flex flex-col gap-1.5">
-              <Label>من آية</Label>
-              <Input
-                type="number"
-                min={1}
-                value={ayahFrom}
-                onChange={(e) => setAyahFrom(Number(e.target.value))}
-              />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="المجموعة">
+                <Select value={groupId} onValueChange={setGroupId} disabled={isEdit}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="اختر مجموعة" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {groups.map((g) => (
+                      <SelectItem key={g.id} value={g.id}>
+                        {g.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="النوع">
+                <Select value={category} onValueChange={(v) => setCategory(v as DutyCategory)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DUTY_CATEGORIES.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {DUTY_CATEGORY_LABELS[c]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <SurahSelect label="إلى سورة" value={surahTo} onChange={setSurahTo} />
-            <div className="flex flex-col gap-1.5">
-              <Label>إلى آية</Label>
-              <Input type="number" min={1} value={ayahTo} onChange={(e) => setAyahTo(Number(e.target.value))} />
-            </div>
-          </div>
 
-          {!isEdit && (
-            <div className="flex flex-col gap-1.5">
-              <Label>التواريخ</Label>
-              <div className="flex gap-2">
-                <Input type="date" value={dateInput} onChange={(e) => setDateInput(e.target.value)} />
-                <Button type="button" variant="outline" onClick={addDate}>
-                  إضافة
-                </Button>
+            <fieldset className="rounded-xl bg-neutral-50 p-4 ring-1 ring-neutral-200">
+              <legend className="px-1 text-xs font-semibold text-neutral-500">نطاق الورد</legend>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <SurahSelect label="من سورة" value={surahFrom} onChange={setSurahFrom} />
+                <Field label="من آية">
+                  <Input
+                    type="number"
+                    min={1}
+                    value={ayahFrom}
+                    onChange={(e) => setAyahFrom(Number(e.target.value))}
+                  />
+                </Field>
+                <SurahSelect label="إلى سورة" value={surahTo} onChange={setSurahTo} />
+                <Field label="إلى آية">
+                  <Input
+                    type="number"
+                    min={1}
+                    value={ayahTo}
+                    onChange={(e) => setAyahTo(Number(e.target.value))}
+                  />
+                </Field>
               </div>
-              <div className="flex flex-wrap gap-2 pt-1">
-                {dates.map((d) => (
-                  <span
-                    key={d}
-                    className="flex items-center gap-1 rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-800"
-                  >
-                    {d}
-                    <button type="button" onClick={() => removeDate(d)}>
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
+            </fieldset>
+
+            {!isEdit && (
+              <Field label="التواريخ" hint="أضف أكثر من تاريخ لتكرار نفس الواجب على عدة أيام">
+                <div className="flex gap-2">
+                  <Input
+                    type="date"
+                    value={dateInput}
+                    onChange={(e) => setDateInput(e.target.value)}
+                  />
+                  <Button type="button" variant="outline" onClick={addDate}>
+                    إضافة
+                  </Button>
+                </div>
+                {dates.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    {dates.map((d) => (
+                      <span
+                        key={d}
+                        className="flex items-center gap-1.5 rounded-full bg-primary-50 py-1 pe-2 ps-3 text-xs font-medium text-primary-800 ring-1 ring-inset ring-primary-100"
+                      >
+                        <span dir="ltr">{d}</span>
+                        <button
+                          type="button"
+                          aria-label={`إزالة ${d}`}
+                          onClick={() => removeDate(d)}
+                          className="rounded-full p-0.5 text-primary-500 transition-colors hover:bg-primary-100 hover:text-primary-800"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </Field>
+            )}
+          </DialogBody>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               إلغاء
             </Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting ? 'جاري الحفظ...' : 'حفظ'}
+            <Button type="submit" loading={submitting}>
+              حفظ
             </Button>
           </DialogFooter>
         </form>

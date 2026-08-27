@@ -1,24 +1,20 @@
 import * as React from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, UsersRound } from 'lucide-react';
 import {
-  Button,
-  Input,
-  Label,
-  Card,
-  CardContent,
   Alert,
+  Button,
+  Card,
   Dialog,
+  DialogBody,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-  Spinner,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  Skeleton,
 } from '@wird/ui-web';
 import { createGroupSchema } from '@wird/domain';
 import { supabase } from '../lib/supabase';
@@ -43,8 +39,10 @@ export default function GroupsPage() {
 
     if (error) {
       setError('تعذر تحميل المجموعات');
+      setGroups([]);
       return;
     }
+    setError(null);
     setGroups(
       (data ?? []).map((g) => ({
         id: g.id,
@@ -61,44 +59,62 @@ export default function GroupsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-neutral-900">المجموعات</h1>
-        <Button onClick={() => setDialogOpen(true)}>
-          <Plus className="h-4 w-4" />
-          مجموعة جديدة
-        </Button>
-      </div>
+      <PageHeader
+        title="المجموعات"
+        description="كل موظف ينتمي لمجموعة واحدة، والأورد تُسند للمجموعة"
+        actions={
+          <Button onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4" />
+            مجموعة جديدة
+          </Button>
+        }
+      />
 
       {error && <Alert variant="danger">{error}</Alert>}
 
-      <Card>
-        <CardContent className="p-0">
-          {groups === null ? (
-            <div className="flex justify-center p-8">
-              <Spinner />
-            </div>
-          ) : groups.length === 0 ? (
-            <p className="p-8 text-center text-sm text-neutral-500">لا توجد مجموعات بعد</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>الاسم</TableHead>
-                  <TableHead>عدد الموظفين</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {groups.map((g) => (
-                  <TableRow key={g.id}>
-                    <TableCell className="font-medium text-neutral-900">{g.name}</TableCell>
-                    <TableCell>{g.employee_count}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {groups === null ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }, (_, i) => (
+            <Card key={i} className="flex items-center gap-4 p-5">
+              <Skeleton className="h-11 w-11 rounded-xl" />
+              <div className="flex flex-1 flex-col gap-2">
+                <Skeleton className="h-3.5 w-2/3" />
+                <Skeleton className="h-3 w-1/3" />
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : groups.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={UsersRound}
+            title="لا توجد مجموعات بعد"
+            description="ابدأ بإنشاء مجموعة، ثم أضف إليها الموظفين وأسند لها الأورد."
+            action={
+              <Button size="sm" onClick={() => setDialogOpen(true)}>
+                <Plus className="h-4 w-4" />
+                مجموعة جديدة
+              </Button>
+            }
+          />
+        </Card>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {groups.map((g) => (
+            <Card key={g.id} interactive className="flex items-center gap-4 p-5">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-700 ring-1 ring-primary-100">
+                <UsersRound className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <div className="truncate font-semibold text-neutral-900">{g.name}</div>
+                <div className="text-sm text-neutral-500">
+                  <span className="tabular-nums">{g.employee_count}</span> موظف
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <CreateGroupDialog
         open={dialogOpen}
@@ -152,22 +168,29 @@ function CreateGroupDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>مجموعة جديدة</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {error && <Alert variant="danger">{error}</Alert>}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="group-name">اسم المجموعة</Label>
-            <Input id="group-name" value={name} onChange={(e) => setName(e.target.value)} required />
-          </div>
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <DialogBody>
+            {error && <Alert variant="danger">{error}</Alert>}
+            <Field label="اسم المجموعة" htmlFor="group-name" hint="مثال: مجموعة الفجر">
+              <Input
+                id="group-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                autoFocus
+                required
+              />
+            </Field>
+          </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               إلغاء
             </Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting ? 'جاري الإنشاء...' : 'إنشاء'}
+            <Button type="submit" loading={submitting}>
+              إنشاء
             </Button>
           </DialogFooter>
         </form>
