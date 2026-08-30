@@ -8,6 +8,7 @@ import DashboardLayout from './routes/DashboardLayout';
 import DutiesPage from './routes/DutiesPage';
 import GroupsPage from './routes/GroupsPage';
 import EmployeesPage from './routes/EmployeesPage';
+import FollowupPage from './routes/FollowupPage';
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
             <Route path="/" element={<DutiesPage />} />
             <Route path="/groups" element={<GroupsPage />} />
             <Route path="/employees" element={<EmployeesPage />} />
+            <Route path="/followup" element={<FollowupPage />} />
           </Route>
         </Route>
       </Routes>

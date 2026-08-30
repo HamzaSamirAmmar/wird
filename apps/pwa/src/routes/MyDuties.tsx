@@ -223,7 +223,7 @@ export default function MyDuties() {
         </div>
       </header>
 
-      <main className="flex-1 px-4 py-4 pb-safe">
+      <main className="flex-1 px-4 py-4 pb-[calc(6rem+env(safe-area-inset-bottom))]">
         {selectedDate !== todayISO() && (
           <button
             onClick={() => setSelectedDate(todayISO())}

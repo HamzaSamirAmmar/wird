@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Users, UsersRound, CalendarDays, LogOut, Menu, X } from 'lucide-react';
+import { Users, UsersRound, CalendarDays, ClipboardCheck, LogOut, Menu, X } from 'lucide-react';
 import { cn, WirdMark, Avatar, IconButton } from '@wird/ui-web';
 import { useAuth } from '../lib/auth-context';
 
@@ -8,6 +8,7 @@ const navItems = [
   { to: '/', label: 'الأورد', icon: CalendarDays, end: true },
   { to: '/groups', label: 'المجموعات', icon: UsersRound },
   { to: '/employees', label: 'الموظفون', icon: Users },
+  { to: '/followup', label: 'المتابعة', icon: ClipboardCheck },
 ];
 
 export default function DashboardLayout() {
