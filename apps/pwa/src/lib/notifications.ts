@@ -24,6 +24,17 @@ export function pushConfigured(): boolean {
   return !!import.meta.env.VITE_FIREBASE_VAPID_KEY;
 }
 
+// The UI degrades to silence when the VAPID key is missing (deliberate — see AGENTS.md), but
+// silence in the console too is what let a hosted build ship with push entirely absent and no
+// way to tell. VITE_ vars are inlined at build time, so this fires when the *build* env lacked
+// the key, not the runtime one.
+if (!pushConfigured()) {
+  console.warn(
+    '[wird/push] VITE_FIREBASE_VAPID_KEY was not set at build time — push notifications are ' +
+      'disabled and the enable card is hidden. Set it in the build environment and redeploy.',
+  );
+}
+
 export type PushState =
   | { status: 'unsupported' }
   | { status: 'prompt' }
@@ -47,13 +58,51 @@ function messagingInstance() {
   return getMessaging(app);
 }
 
+/**
+ * Registers the FCM worker explicitly rather than relying on the SDK's implicit registration.
+ * The implicit path gives no say over when the worker is ready, and getToken() rejects if it
+ * is asked before one is active — which on a cold load competes with the Workbox worker at '/'
+ * registering at the same moment. Doing it here makes the ordering ours and the failure legible.
+ */
+async function fcmRegistration(): Promise<ServiceWorkerRegistration | undefined> {
+  if (!('serviceWorker' in navigator)) return undefined;
+  const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+    scope: '/firebase-cloud-messaging-push-scope',
+  });
+  // register() resolves as soon as the worker is installing; getToken needs it activated.
+  if (!registration.active) {
+    await new Promise<void>((resolve) => {
+      const worker = registration.installing ?? registration.waiting;
+      if (!worker) return resolve();
+      worker.addEventListener('statechange', function onChange() {
+        if (worker.state === 'activated') {
+          worker.removeEventListener('statechange', onChange);
+          resolve();
+        }
+      });
+    });
+  }
+  return registration;
+}
+
+/** Throws with the underlying reason — callers decide what to show. */
+async function requestToken(): Promise<string> {
+  const token = await getToken(messagingInstance(), {
+    vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
+    serviceWorkerRegistration: await fcmRegistration(),
+  });
+  if (!token) throw new Error('FCM returned an empty token');
+  return token;
+}
+
 async function currentToken(): Promise<string | null> {
   if (!pushConfigured()) return null;
   try {
-    return await getToken(messagingInstance(), {
-      vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
-    });
-  } catch {
+    return await requestToken();
+  } catch (e) {
+    // Not fatal on the silent path (app open), but never invisible: a wrong VAPID key or a
+    // blocked worker used to look identical to "push simply isn't on".
+    console.error('[wird/push] token request failed:', e);
     return null;
   }
 }
@@ -68,10 +117,13 @@ export async function ensurePushRegistered(profileId: string) {
   if (Notification.permission !== 'granted') return;
   const token = await currentToken();
   if (!token) return;
-  await supabase.from('fcm_tokens').upsert(
-    { token, profile_id: profileId },
-    { onConflict: 'token' },
-  );
+  const { error } = await supabase
+    .from('fcm_tokens')
+    .upsert(
+      { token, profile_id: profileId, last_seen_at: new Date().toISOString() },
+      { onConflict: 'token' },
+    );
+  if (error) console.error('[wird/push] token upsert failed:', error.message);
 }
 
 /** Request permission + register this device's token against the logged-in profile. */
@@ -82,15 +134,23 @@ export async function enablePush(profileId: string): Promise<{ error: string | n
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') return { error: 'لم يتم السماح بالإشعارات' };
 
-    const token = await currentToken();
-    if (!token) return { error: 'تعذر تسجيل الجهاز للإشعارات' };
+    // Deliberately requestToken() and not currentToken(): on the button path the reason a
+    // device could not register has to reach the console, not be swallowed into a null.
+    const token = await requestToken();
 
     const { error } = await supabase
       .from('fcm_tokens')
-      .upsert({ token, profile_id: profileId }, { onConflict: 'token' });
-    if (error) return { error: 'تعذر حفظ إعدادات الإشعارات' };
+      .upsert(
+        { token, profile_id: profileId, last_seen_at: new Date().toISOString() },
+        { onConflict: 'token' },
+      );
+    if (error) {
+      console.error('[wird/push] token upsert failed:', error.message);
+      return { error: 'تعذر حفظ إعدادات الإشعارات' };
+    }
     return { error: null };
-  } catch {
+  } catch (e) {
+    console.error('[wird/push] enablePush failed:', e);
     return { error: 'تعذر تفعيل الإشعارات على هذا الجهاز' };
   }
 }
