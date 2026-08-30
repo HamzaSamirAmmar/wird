@@ -32,7 +32,7 @@ export default function Login() {
   }
 
   return (
-    <AuthShell title="تسجيل الدخول" description="ادخل ببيانات المشرف لإدارة المجموعات والأورد">
+    <AuthShell title="تسجيل الدخول" description="ادخل ببيانات المشرف لإدارة المجموعات والأوراد">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {error && <Alert variant="danger">{error}</Alert>}
 

@@ -1,6 +1,5 @@
 import * as React from 'react';
-import { X } from 'lucide-react';
-import { SURAHS, formatRange, validateRange } from '@wird/quran-data';
+import { SURAHS, formatRange, getSurah, validateRange } from '@wird/quran-data';
 import { DUTY_CATEGORIES, DUTY_CATEGORY_LABELS, type DutyCategory } from '@wird/domain';
 import {
   Alert,
@@ -99,8 +98,7 @@ export function DayAssignmentDialog({
   const isEdit = existing.length > 0;
   const [groupId, setGroupId] = React.useState('');
   const [drafts, setDrafts] = React.useState<Record<DutyCategory, CategoryDraft>>(blankDrafts);
-  const [dates, setDates] = React.useState<string[]>([]);
-  const [dateInput, setDateInput] = React.useState(defaultDate);
+  const [date, setDate] = React.useState(defaultDate);
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -111,17 +109,11 @@ export function DayAssignmentDialog({
     for (const row of existing) next[row.category] = toDraft(row);
     setDrafts(next);
     setGroupId(existing[0]?.group.id ?? defaultGroupId ?? '');
-    setDates([existing[0]?.due_date ?? defaultDate]);
-    setDateInput(existing[0]?.due_date ?? defaultDate);
+    setDate(existing[0]?.due_date ?? defaultDate);
   }, [open, existing, defaultDate, defaultGroupId]);
 
   function patch(category: DutyCategory, changes: Partial<CategoryDraft>) {
     setDrafts((d) => ({ ...d, [category]: { ...d[category], ...changes } }));
-  }
-
-  function addDate() {
-    if (!dateInput || dates.includes(dateInput)) return;
-    setDates((d) => [...d, dateInput].sort());
   }
 
   const enabled = DUTY_CATEGORIES.filter((c) => drafts[c].enabled);
@@ -134,8 +126,9 @@ export function DayAssignmentDialog({
     setError(null);
 
     if (!groupId) return setError('يجب اختيار مجموعة');
-    if (dates.length === 0) return setError('اختر تاريخاً واحداً على الأقل');
-    if (enabled.length === 0 && removed.length === 0) return setError('اختر نوعاً واحداً على الأقل');
+    if (!date) return setError('اختر تاريخاً');
+    if (enabled.length === 0 && removed.length === 0)
+      return setError('اختر نوعاً واحداً على الأقل');
 
     for (const c of enabled) {
       const rangeError = validateRange(drafts[c]);
@@ -177,13 +170,13 @@ export function DayAssignmentDialog({
         // upsert on the uniqueness constraint: re-saving a day is idempotent rather than a
         // duplicate-key error the supervisor has to decipher.
         const { error } = await supabase.from('duty_group_assignments').upsert(
-          dates.map((due_date) => ({
+          {
             group_id: groupId,
             category: c,
-            due_date,
+            due_date: date,
             assigned_by: supervisorId,
             ...scope,
-          })),
+          },
           { onConflict: 'group_id,category,due_date' },
         );
         if (error) {
@@ -224,33 +217,8 @@ export function DayAssignmentDialog({
             </Field>
 
             {!isEdit && (
-              <Field label="التواريخ" hint="أضف أكثر من تاريخ لتكرار نفس الأورد على عدة أيام">
-                <div className="flex gap-2">
-                  <Input type="date" value={dateInput} onChange={(e) => setDateInput(e.target.value)} />
-                  <Button type="button" variant="outline" onClick={addDate}>
-                    إضافة
-                  </Button>
-                </div>
-                {dates.length > 0 && (
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    {dates.map((d) => (
-                      <span
-                        key={d}
-                        className="flex items-center gap-1.5 rounded-full bg-primary-50 py-1 pe-2 ps-3 text-xs font-medium text-primary-800 ring-1 ring-inset ring-primary-100"
-                      >
-                        <span dir="ltr">{d}</span>
-                        <button
-                          type="button"
-                          aria-label={`إزالة ${d}`}
-                          onClick={() => setDates((x) => x.filter((v) => v !== d))}
-                          className="rounded-full p-0.5 text-primary-500 hover:bg-primary-100 hover:text-primary-800"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
+              <Field label="التاريخ">
+                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
               </Field>
             )}
 
@@ -311,7 +279,9 @@ function CategorySection({
           checked={draft.enabled}
           onCheckedChange={(v) => onChange({ enabled: v === true })}
         />
-        <span className="flex-1 font-medium text-neutral-900">{DUTY_CATEGORY_LABELS[category]}</span>
+        <span className="flex-1 font-medium text-neutral-900">
+          {DUTY_CATEGORY_LABELS[category]}
+        </span>
         {draft.enabled ? (
           <span className="text-xs text-neutral-500">{formatRange(draft)}</span>
         ) : (
@@ -322,25 +292,36 @@ function CategorySection({
       {draft.enabled && (
         <div className="grid gap-4 border-t border-neutral-100 p-4 sm:grid-cols-2">
           <Field label="من سورة">
-            <SurahSelect value={draft.surahFrom} onChange={(n) => onChange({ surahFrom: n })} />
+            <SurahSelect
+              value={draft.surahFrom}
+              onChange={(n) =>
+                onChange({
+                  surahFrom: n,
+                  ayahFrom: Math.min(draft.ayahFrom, getSurah(n).ayahCount),
+                })
+              }
+            />
           </Field>
           <Field label="من آية">
-            <Input
-              type="number"
-              min={1}
+            <AyahSelect
+              surah={draft.surahFrom}
               value={draft.ayahFrom}
-              onChange={(e) => onChange({ ayahFrom: Number(e.target.value) })}
+              onChange={(n) => onChange({ ayahFrom: n })}
             />
           </Field>
           <Field label="إلى سورة">
-            <SurahSelect value={draft.surahTo} onChange={(n) => onChange({ surahTo: n })} />
+            <SurahSelect
+              value={draft.surahTo}
+              onChange={(n) =>
+                onChange({ surahTo: n, ayahTo: Math.min(draft.ayahTo, getSurah(n).ayahCount) })
+              }
+            />
           </Field>
           <Field label="إلى آية">
-            <Input
-              type="number"
-              min={1}
+            <AyahSelect
+              surah={draft.surahTo}
               value={draft.ayahTo}
-              onChange={(e) => onChange({ ayahTo: Number(e.target.value) })}
+              onChange={(n) => onChange({ ayahTo: n })}
             />
           </Field>
         </div>
@@ -359,6 +340,33 @@ function SurahSelect({ value, onChange }: { value: number; onChange: (n: number)
         {SURAHS.map((s) => (
           <SelectItem key={s.number} value={String(s.number)}>
             {s.number}. {s.nameAr}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/** Ayah picker bounded by the chosen surah's ayah count. */
+function AyahSelect({
+  surah,
+  value,
+  onChange,
+}: {
+  surah: number;
+  value: number;
+  onChange: (n: number) => void;
+}) {
+  const count = getSurah(surah).ayahCount;
+  return (
+    <Select value={String(value)} onValueChange={(v) => onChange(Number(v))}>
+      <SelectTrigger>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {Array.from({ length: count }, (_, i) => i + 1).map((n) => (
+          <SelectItem key={n} value={String(n)}>
+            {n}
           </SelectItem>
         ))}
       </SelectContent>
