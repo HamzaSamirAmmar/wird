@@ -256,16 +256,12 @@ export default function Leaderboard() {
           <Card className="mt-4">
             <EmptyState icon={Trophy} title={error} description="حاول مرة أخرى بعد قليل." />
           </Card>
-        ) : !hasData || !anyProgress ? (
+        ) : !hasData || entries.length === 0 ? (
           <Card className="mt-4">
             <EmptyState
               icon={Trophy}
               title="السباق لم يبدأ بعد"
-              description={
-                hasData
-                  ? 'لم يُكمل أحد ورده في هذه المدة — كن أول المتصدّرين.'
-                  : 'أكمل وردك اليوم، وكن أول من يتصدّر مجموعته.'
-              }
+              description="أكمل وردك اليوم، وكن أول من يتصدّر مجموعته."
             />
           </Card>
         ) : (
@@ -274,14 +270,22 @@ export default function Leaderboard() {
               <HeroCard
                 entry={myEntry}
                 rank={myIndex + 1}
-                total={entries!.length}
-                above={myIndex > 0 ? entries![myIndex - 1] : undefined}
+                total={entries.length}
+                above={myIndex > 0 ? entries[myIndex - 1] : undefined}
               />
             )}
 
+            {/* Champion board — top 3 always shown; medals/crown stay muted until someone
+                actually completes a duty (handled inside Podium). */}
             <Podium spots={podium} />
 
-            <RankTable entries={entries!} />
+            {!anyProgress && (
+              <p className="-mt-1 px-1 text-center text-xs text-neutral-400">
+                لا إنجاز بعد في هذه المدة — كن أول من يعتلي المنصة.
+              </p>
+            )}
+
+            <RankTable entries={entries} />
           </div>
         )}
       </main>
