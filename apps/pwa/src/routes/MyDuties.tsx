@@ -33,6 +33,7 @@ import {
   flushOutbox,
 } from '../lib/duties';
 import type { CachedDuty, CachedStep } from '../lib/offline';
+import { BannerRail } from '../components/BannerRail';
 import { DayStrip } from '../components/DayStrip';
 import { GroupStandings } from '../components/GroupStandings';
 import { MushafReader } from '../components/MushafReader';
@@ -229,6 +230,8 @@ export default function MyDuties() {
       </header>
 
       <main className="flex-1 px-4 py-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
+        <BannerRail />
+
         {selectedDate !== todayISO() && (
           <button
             onClick={() => setSelectedDate(todayISO())}

@@ -5,18 +5,9 @@ import {
   formatRange,
   globalAyahIndex,
   pagesForRange,
-  SURAHS,
   type QuranRange,
 } from '@wird/quran-data';
-import {
-  Alert,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  Spinner,
-  cn,
-} from '@wird/ui-web';
+import { Alert, Dialog, DialogContent, DialogHeader, DialogTitle, Spinner } from '@wird/ui-web';
 import { loadQuranText, renderPage, type RenderedAyah } from '../lib/quran-text';
 
 /**
@@ -59,14 +50,20 @@ export function MushafReader({
       .then((file) => {
         if (cancelled) return;
         setAyahs(
-          renderPage(file, page, {
-            fromIndex: globalAyahIndex(range.surahFrom, range.ayahFrom),
-            toIndex: globalAyahIndex(range.surahTo, range.ayahTo),
-          }, globalAyahIndex),
+          renderPage(
+            file,
+            page,
+            {
+              fromIndex: globalAyahIndex(range.surahFrom, range.ayahFrom),
+              toIndex: globalAyahIndex(range.surahTo, range.ayahTo),
+            },
+            globalAyahIndex,
+          ),
         );
       })
       .catch(() => {
-        if (!cancelled) setError('تعذر تحميل نص المصحف. افتح التطبيق مرة واحدة وأنت متصل بالإنترنت.');
+        if (!cancelled)
+          setError('تعذر تحميل نص المصحف. افتح التطبيق مرة واحدة وأنت متصل بالإنترنت.');
       });
 
     return () => {
@@ -95,13 +92,10 @@ export function MushafReader({
               <Spinner />
             </div>
           ) : (
-            <>
-              <PageBody ayahs={ayahs} />
-              {/* Tanzil's licence requires the text be redistributed unmodified and credited. */}
-              <p className="mt-8 text-center text-[11px] text-neutral-400">
-                نص المصحف: مشروع تنزيل — tanzil.net
-              </p>
-            </>
+            /* Tanzil's licence requires the text be redistributed unmodified and credited. */
+            <p className="mt-8 text-center text-[11px] text-neutral-400">
+              نص المصحف: مشروع تنزيل — tanzil.net
+            </p>
           )}
         </div>
 
@@ -139,54 +133,5 @@ export function MushafReader({
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function PageBody({ ayahs }: { ayahs: RenderedAyah[] }) {
-  const groups: { surah: number; items: RenderedAyah[] }[] = [];
-  for (const a of ayahs) {
-    const last = groups[groups.length - 1];
-    if (last && last.surah === a.surah) last.items.push(a);
-    else groups.push({ surah: a.surah, items: [a] });
-  }
-
-  return (
-    <div className="flex flex-col gap-6">
-      {groups.map(({ surah, items }) => (
-        <div key={surah} className="flex flex-col gap-3">
-          {/* A surah heading appears only where the page actually begins one. */}
-          {items[0]?.ayah === 1 && (
-            <div className="flex items-center gap-3 rounded-lg bg-primary-50 px-4 py-2 text-center ring-1 ring-primary-100">
-              <span className="flex-1 font-display text-base text-primary-800">
-                سورة {SURAHS[surah - 1]?.nameAr}
-              </span>
-            </div>
-          )}
-          <p className="text-justify font-[Amiri,_'Scheherazade_New',_serif] text-[1.35rem] leading-[2.4]">
-            {items.map((a) => (
-              <span
-                key={`${a.surah}:${a.ayah}`}
-                className={cn(
-                  a.inScope
-                    ? 'text-neutral-900'
-                    : // Printed on the page but outside the duty — visible for context, not emphasis.
-                      'text-neutral-400',
-                )}
-              >
-                {a.text}
-                <span
-                  className={cn(
-                    'mx-1 inline-flex h-6 w-6 shrink-0 select-none items-center justify-center rounded-full align-middle text-[11px] font-semibold tabular-nums',
-                    a.inScope ? 'bg-primary-100 text-primary-800' : 'bg-neutral-100 text-neutral-400',
-                  )}
-                >
-                  {a.ayah.toLocaleString('ar-EG')}
-                </span>
-              </span>
-            ))}
-          </p>
-        </div>
-      ))}
-    </div>
   );
 }
