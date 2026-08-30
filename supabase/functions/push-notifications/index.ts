@@ -111,6 +111,9 @@ async function getAccessToken(sa: ServiceAccount): Promise<string> {
 
 const CONCURRENCY = 30;
 
+// Must match next_campaign_run() in the migrations (Asia/Damascus, fixed +03, no DST).
+const CAMPAIGN_TIME_ZONE = 'Asia/Damascus';
+
 async function sendToAll(
   sa: ServiceAccount,
   accessToken: string,
@@ -253,10 +256,16 @@ Deno.serve(async (req) => {
       tokens = (data ?? []).map((r: { token: string }) => r.token);
     } else {
       // incomplete_today: employees with at least one duty due today that isn't completed.
+      // due_date is a local calendar day, so "today" has to be resolved in the campaign's
+      // zone. toISOString() gives the UTC day, which east of Greenwich is the *previous*
+      // day until 03:00 local — this audience silently targeted yesterday every night.
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: CAMPAIGN_TIME_ZONE }).format(
+        new Date(),
+      );
       const { data: rows } = await admin
         .from('duties')
         .select('employee_id, status')
-        .eq('due_date', new Date().toISOString().slice(0, 10));
+        .eq('due_date', today);
       const totals = new Map<string, { total: number; done: number }>();
       for (const r of rows ?? []) {
         const cur = totals.get(r.employee_id) ?? { total: 0, done: 0 };

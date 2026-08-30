@@ -69,10 +69,10 @@ export const notificationCampaignSchema = z
     audience: notificationAudiencesSchema,
     targetProfileId: z.string().uuid().nullable().optional(),
     scheduleKind: campaignScheduleKindsSchema,
-    /** Local wall-clock `YYYY-MM-DDTHH:mm` in Asia/Riyadh; the UI converts to an instant. */
+    /** Local wall-clock `YYYY-MM-DDTHH:mm` in Asia/Damascus; the UI converts to an instant. */
     scheduledLocal: z.string().optional(),
     recurWeekday: z.number().int().min(0).max(6).nullable().optional(),
-    /** `HH:mm` (Riyadh). */
+    /** `HH:mm` (Damascus). */
     recurTime: z
       .string()
       .regex(/^\d{2}:\d{2}$/, 'اختر وقت الإرسال')
