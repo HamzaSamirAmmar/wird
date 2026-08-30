@@ -68,7 +68,7 @@ export default function EmployeesPage() {
     ]);
 
     if (employeesRes.error) {
-      setError('تعذر تحميل الموظفين');
+      setError('تعذر تحميل المستخدمين');
       setEmployees([]);
     } else {
       setError(null);
@@ -94,19 +94,19 @@ export default function EmployeesPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="الموظفون"
-        description="أنشئ حسابات الموظفين وأسندهم إلى المجموعات"
+        title="المستخدمون"
+        description="أنشئ حسابات المستخدمين وأسندهم إلى المجموعات"
         actions={
           <Button onClick={() => setDialogOpen(true)} disabled={groups.length === 0}>
             <Plus className="h-4 w-4" />
-            موظف جديد
+            مستخدم جديد
           </Button>
         }
       />
 
       {groups.length === 0 && (
         <Alert variant="warning" title="أنشئ مجموعة أولاً">
-          يجب إنشاء مجموعة واحدة على الأقل قبل إضافة موظفين.
+          يجب إنشاء مجموعة واحدة على الأقل قبل إضافة مستخدمين.
         </Alert>
       )}
       {error && <Alert variant="danger">{error}</Alert>}
@@ -127,11 +127,11 @@ export default function EmployeesPage() {
         ) : visible.length === 0 ? (
           <EmptyState
             icon={Users}
-            title={needle ? 'لا نتائج مطابقة' : 'لا يوجد موظفون بعد'}
+            title={needle ? 'لا نتائج مطابقة' : 'لا يوجد مستخدمون بعد'}
             description={
               needle
                 ? 'جرّب كلمة بحث أخرى.'
-                : 'أنشئ حساب موظف؛ ستظهر بيانات الدخول مرة واحدة فقط بعد الإنشاء.'
+                : 'أنشئ حساب مستخدم؛ ستظهر بيانات الدخول مرة واحدة فقط بعد الإنشاء.'
             }
           />
         ) : (
@@ -232,7 +232,7 @@ function CreateEmployeeDialog({
     setSubmitting(false);
 
     if (error || !data || data.error) {
-      setError(data?.error ?? 'تعذر إنشاء الموظف');
+      setError(data?.error ?? 'تعذر إنشاء المستخدم');
       return;
     }
     onCreated({ username: data.username, password: data.password });
@@ -242,7 +242,7 @@ function CreateEmployeeDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>موظف جديد</DialogTitle>
+          <DialogTitle>مستخدم جديد</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <DialogBody>

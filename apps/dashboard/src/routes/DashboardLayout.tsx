@@ -7,7 +7,7 @@ import { useAuth } from '../lib/auth-context';
 const navItems = [
   { to: '/', label: 'الأورد', icon: CalendarDays, end: true },
   { to: '/groups', label: 'المجموعات', icon: UsersRound },
-  { to: '/employees', label: 'الموظفون', icon: Users },
+  { to: '/employees', label: 'المستخدمون', icon: Users },
   { to: '/followup', label: 'المتابعة', icon: ClipboardCheck },
 ];
 
