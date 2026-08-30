@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BANNER_BODY_MAX, BANNER_KINDS, BANNER_SOURCE_MAX } from './banners';
+import { BANNER_BODY_MAX, BANNER_SOURCE_MAX } from './banners';
 import { DUTY_CATEGORIES } from './dutyCategories';
 import { notificationAudiences, campaignScheduleKinds } from './notifications';
 import { USERNAME_PATTERN } from './username';
@@ -41,6 +41,11 @@ export const createEmployeeSchema = z.object({
   groupId: z.string().uuid('يجب اختيار مجموعة'),
 });
 
+export const updateEmployeeSchema = z.object({
+  fullName: z.string().trim().min(2, 'الاسم قصير جداً').max(100),
+  groupId: z.string().uuid('يجب اختيار مجموعة'),
+});
+
 export const createDutyAssignmentSchema = z
   .object({
     groupId: z.string().uuid(),
@@ -50,7 +55,6 @@ export const createDutyAssignmentSchema = z
   .and(quranScopeSchema);
 
 export const bannerSchema = z.object({
-  kind: z.enum(BANNER_KINDS),
   body: z.string().trim().min(1, 'النص مطلوب').max(BANNER_BODY_MAX, 'النص طويل جداً'),
   // Empty input means "no attribution", which the column stores as null rather than ''.
   source: z
@@ -90,6 +94,11 @@ export const notificationCampaignSchema = z
   .refine((v) => v.scheduleKind !== 'weekly' || (v.recurWeekday !== null && !!v.recurTime), {
     message: 'اختر اليوم والوقت',
     path: ['recurWeekday'],
+  })
+  // A daily rule fires every day, so it carries a time and no weekday at all.
+  .refine((v) => v.scheduleKind !== 'daily' || !!v.recurTime, {
+    message: 'اختر وقت الإرسال',
+    path: ['recurTime'],
   });
 
 export const changePasswordSchema = z

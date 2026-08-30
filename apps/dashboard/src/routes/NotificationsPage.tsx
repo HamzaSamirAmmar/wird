@@ -1,11 +1,14 @@
 import * as React from 'react';
-import { BellRing, Plus, Search, Send, Trash2, Zap } from 'lucide-react';
+import { CalendarClock, Plus, Repeat, Search, Send, Trash2, Zap } from 'lucide-react';
 import {
   NOTIFICATION_AUDIENCES,
   NOTIFICATION_AUDIENCE_LABELS,
   CAMPAIGN_SCHEDULE_KINDS,
+  CAMPAIGN_SHAPE_LABELS,
   WEEKDAY_LABELS,
+  campaignShape,
   notificationCampaignSchema,
+  type CampaignShape,
   type NotificationAudience,
   type NotificationCampaign,
   type CampaignScheduleKind,
@@ -55,6 +58,7 @@ const CAMPAIGN_COLUMNS =
 const SCHEDULE_KIND_LABELS: Record<CampaignScheduleKind, string> = {
   now: 'إرسال فوري',
   once: 'مرة واحدة',
+  daily: 'يومي',
   weekly: 'أسبوعي',
 };
 
@@ -119,22 +123,14 @@ function toCampaign(r: {
   };
 }
 
-/**
- * A 'now' campaign is a one-off send: it fires once and is thereafter a log entry. 'once' and
- * 'weekly' are standing rules that keep firing until disabled — which is why only they carry a
- * meaningful is_active, a next run, and an enable/disable toggle.
- */
-function isScheduled(c: NotificationCampaign): boolean {
-  return c.scheduleKind !== 'now';
-}
-
 function scheduleSummary(c: NotificationCampaign): string {
   if (c.scheduleKind === 'now') return SCHEDULE_KIND_LABELS.now;
   if (c.scheduleKind === 'once') {
     return c.scheduledAt ? dateTimeFormat.format(new Date(c.scheduledAt)) : '—';
   }
-  const day = c.recurWeekday !== null ? WEEKDAY_LABELS[c.recurWeekday] : '—';
   const time = c.recurTime?.slice(0, 5) ?? '—';
+  if (c.scheduleKind === 'daily') return `كل يوم ${time} (بتوقيت دمشق)`;
+  const day = c.recurWeekday !== null ? WEEKDAY_LABELS[c.recurWeekday] : '—';
   return `كل ${day} ${time} (بتوقيت دمشق)`;
 }
 
@@ -167,7 +163,7 @@ export default function NotificationsPage() {
   const [composing, setComposing] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState<NotificationCampaign | null>(null);
   const [sendingNow, setSendingNow] = React.useState<string | null>(null);
-  const [tab, setTab] = React.useState<'scheduled' | 'instant'>('scheduled');
+  const [tab, setTab] = React.useState<CampaignShape>('recurring');
   const [query, setQuery] = React.useState('');
   // '*' rather than '' — Radix Select reserves the empty string, and 'all' is already a
   // real audience ("الجميع"), so the no-filter sentinel has to be neither.
@@ -245,8 +241,11 @@ export default function NotificationsPage() {
       ) ?? null,
     [campaigns, audienceFilter, needle],
   );
-  const scheduled = filtered?.filter(isScheduled) ?? [];
-  const instant = filtered?.filter((c) => !isScheduled(c)) ?? [];
+  const byShape = (shape: CampaignShape) =>
+    filtered?.filter((c) => campaignShape(c.scheduleKind) === shape) ?? [];
+  const recurring = byShape('recurring');
+  const once = byShape('once');
+  const instant = byShape('instant');
   // Distinguishes "nothing matches your filters" from "nothing exists yet" — the second
   // wants a create button, the first wants you to widen the search.
   const filtersActive = !!needle || audienceFilter !== '*';
@@ -272,11 +271,20 @@ export default function NotificationsPage() {
         </Card>
       ) : (
         <Card className="overflow-hidden">
-          <Tabs value={tab} onValueChange={(v) => setTab(v as 'scheduled' | 'instant')}>
+          <Tabs value={tab} onValueChange={(v) => setTab(v as CampaignShape)}>
             <div className="flex flex-wrap items-center gap-3 border-b border-neutral-100 p-4">
+              {/* Three shapes, not three raw kinds: a supervisor thinks "does this repeat,
+                  does it end, or did it already go out" — not "is this row 'weekly'". */}
               <TabsList>
-                <TabsTrigger value="scheduled">المجدولة ({scheduled.length})</TabsTrigger>
-                <TabsTrigger value="instant">الفورية ({instant.length})</TabsTrigger>
+                <TabsTrigger value="recurring">
+                  {CAMPAIGN_SHAPE_LABELS.recurring} ({recurring.length})
+                </TabsTrigger>
+                <TabsTrigger value="once">
+                  {CAMPAIGN_SHAPE_LABELS.once} ({once.length})
+                </TabsTrigger>
+                <TabsTrigger value="instant">
+                  {CAMPAIGN_SHAPE_LABELS.instant} ({instant.length})
+                </TabsTrigger>
               </TabsList>
 
               <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
@@ -306,84 +314,33 @@ export default function NotificationsPage() {
               </div>
             </div>
 
-            {/* Scheduled: standing rules. Enable/disable and next-run are the whole point. */}
-            <TabsContent value="scheduled">
-              {scheduled.length === 0 ? (
-                <EmptyState
-                  icon={BellRing}
-                  title={filtersActive ? 'لا نتائج مطابقة' : 'لا توجد إشعارات مجدولة'}
-                  description={
-                    filtersActive
-                      ? 'جرّب كلمة بحث أخرى أو غيّر فئة المرسل إليهم.'
-                      : 'جدول تذكيراً أسبوعياً، أو إشعاراً لمرة واحدة في وقت تحدده.'
-                  }
-                  action={
-                    filtersActive ? undefined : (
-                      <Button size="sm" onClick={() => setComposing(true)}>
-                        <Plus className="h-4 w-4" />
-                        إشعار جديد
-                      </Button>
-                    )
-                  }
-                />
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>الإشعار</TableHead>
-                      <TableHead>المرسل إليهم</TableHead>
-                      <TableHead>الجدولة</TableHead>
-                      <TableHead>آخر إرسال</TableHead>
-                      <TableHead>مفعّل</TableHead>
-                      <TableHead>
-                        <span className="sr-only">إجراءات</span>
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {scheduled.map((campaign) => (
-                      <TableRow
-                        key={campaign.id}
-                        className={cn(!campaign.isActive && 'bg-neutral-50/70')}
-                      >
-                        <TableCell>
-                          <CampaignCell campaign={campaign} muted={!campaign.isActive} />
-                        </TableCell>
-                        <TableCell>
-                          <AudienceCell campaign={campaign} />
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-neutral-700">{scheduleSummary(campaign)}</div>
-                          {campaign.isActive && campaign.nextRunAt && (
-                            <div className="mt-0.5 text-xs text-primary-700">
-                              القادم: {compactDateTime.format(new Date(campaign.nextRunAt))}
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <LastSendCell campaign={campaign} />
-                        </TableCell>
-                        <TableCell>
-                          <Checkbox
-                            checked={campaign.isActive}
-                            onCheckedChange={() => toggleActive(campaign)}
-                            aria-label={campaign.isActive ? 'تعطيل الإشعار' : 'تفعيل الإشعار'}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <RowActions
-                            campaign={campaign}
-                            canSend={campaign.isActive && !!campaign.nextRunAt}
-                            sending={sendingNow === campaign.id}
-                            onSend={() => dispatchNow(campaign)}
-                            onDelete={() => setConfirmDelete(campaign)}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
+            {/* Standing rules: they keep firing, so enable/disable and next-run are the point. */}
+            <TabsContent value="recurring">
+              <ScheduledTable
+                shape="recurring"
+                rows={recurring}
+                filtersActive={filtersActive}
+                sendingNow={sendingNow}
+                onCompose={() => setComposing(true)}
+                onToggleActive={toggleActive}
+                onSend={dispatchNow}
+                onDelete={setConfirmDelete}
+              />
+            </TabsContent>
+
+            {/* One-offs: they end by themselves, so the question is only whether the moment
+                has passed yet — not whether the rule is still worth keeping on. */}
+            <TabsContent value="once">
+              <ScheduledTable
+                shape="once"
+                rows={once}
+                filtersActive={filtersActive}
+                sendingNow={sendingNow}
+                onCompose={() => setComposing(true)}
+                onToggleActive={toggleActive}
+                onSend={dispatchNow}
+                onDelete={setConfirmDelete}
+              />
             </TabsContent>
 
             {/* Instant: a send log. No enable/disable — a one-off send has nothing to disable
@@ -483,8 +440,8 @@ export default function NotificationsPage() {
         onSaved={(kind) => {
           setComposing(false);
           // Follow the campaign to its tab, otherwise composing an instant notification while
-          // the scheduled tab is open looks like nothing happened.
-          setTab(kind === 'now' ? 'instant' : 'scheduled');
+          // the recurring tab is open looks like nothing happened.
+          setTab(campaignShape(kind));
           load();
         }}
       />
@@ -513,6 +470,126 @@ export default function NotificationsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * The two scheduled shapes share every column but one: a recurring rule shows its repeat
+ * pattern, a one-off shows the single moment it is aimed at. Everything else — the toggle,
+ * the last send, the actions — is identical, so they share a table rather than a copy of one.
+ */
+function ScheduledTable({
+  shape,
+  rows,
+  filtersActive,
+  sendingNow,
+  onCompose,
+  onToggleActive,
+  onSend,
+  onDelete,
+}: {
+  shape: 'recurring' | 'once';
+  rows: NotificationCampaign[];
+  filtersActive: boolean;
+  sendingNow: string | null;
+  onCompose: () => void;
+  onToggleActive: (c: NotificationCampaign) => void;
+  onSend: (c: NotificationCampaign) => void;
+  onDelete: (c: NotificationCampaign) => void;
+}) {
+  const isOnce = shape === 'once';
+
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        icon={isOnce ? CalendarClock : Repeat}
+        title={
+          filtersActive
+            ? 'لا نتائج مطابقة'
+            : isOnce
+              ? 'لا توجد إشعارات لمرة واحدة'
+              : 'لا توجد إشعارات متكررة'
+        }
+        description={
+          filtersActive
+            ? 'جرّب كلمة بحث أخرى أو غيّر فئة المرسل إليهم.'
+            : isOnce
+              ? 'جدول إشعاراً لموعد محدد؛ يُرسل مرة واحدة ثم ينتهي.'
+              : 'جدول تذكيراً يومياً أو أسبوعياً يتكرر حتى تعطّله.'
+        }
+        action={
+          filtersActive ? undefined : (
+            <Button size="sm" onClick={onCompose}>
+              <Plus className="h-4 w-4" />
+              إشعار جديد
+            </Button>
+          )
+        }
+      />
+    );
+  }
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>الإشعار</TableHead>
+          <TableHead>المرسل إليهم</TableHead>
+          <TableHead>{isOnce ? 'موعد الإرسال' : 'التكرار'}</TableHead>
+          <TableHead>آخر إرسال</TableHead>
+          <TableHead>مفعّل</TableHead>
+          <TableHead>
+            <span className="sr-only">إجراءات</span>
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((campaign) => {
+          // A one-off whose moment has passed is spent, not "upcoming" — the claim nulls
+          // next_run_at on send, so that is what distinguishes the two.
+          const spent = isOnce && !campaign.nextRunAt;
+          return (
+            <TableRow key={campaign.id} className={cn(!campaign.isActive && 'bg-neutral-50/70')}>
+              <TableCell>
+                <CampaignCell campaign={campaign} muted={!campaign.isActive} />
+              </TableCell>
+              <TableCell>
+                <AudienceCell campaign={campaign} />
+              </TableCell>
+              <TableCell>
+                <div className="text-neutral-700">{scheduleSummary(campaign)}</div>
+                {campaign.isActive && campaign.nextRunAt ? (
+                  <div className="mt-0.5 text-xs text-primary-700">
+                    القادم: {compactDateTime.format(new Date(campaign.nextRunAt))}
+                  </div>
+                ) : (
+                  spent && <div className="mt-0.5 text-xs text-neutral-400">انتهى</div>
+                )}
+              </TableCell>
+              <TableCell>
+                <LastSendCell campaign={campaign} />
+              </TableCell>
+              <TableCell>
+                <Checkbox
+                  checked={campaign.isActive}
+                  onCheckedChange={() => onToggleActive(campaign)}
+                  aria-label={campaign.isActive ? 'تعطيل الإشعار' : 'تفعيل الإشعار'}
+                />
+              </TableCell>
+              <TableCell>
+                <RowActions
+                  campaign={campaign}
+                  canSend={campaign.isActive && !!campaign.nextRunAt}
+                  sending={sendingNow === campaign.id}
+                  onSend={() => onSend(campaign)}
+                  onDelete={() => onDelete(campaign)}
+                />
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
   );
 }
 
@@ -689,7 +766,8 @@ function ComposeDialog({
         schedule_kind: v.scheduleKind,
         scheduled_at: scheduledAt,
         recur_weekday: v.scheduleKind === 'weekly' ? v.recurWeekday : null,
-        recur_time: v.scheduleKind === 'weekly' ? v.recurTime : null,
+        // Both recurring kinds need the time; only the weekly one needs a weekday.
+        recur_time: v.scheduleKind === 'weekly' || v.scheduleKind === 'daily' ? v.recurTime : null,
         created_by: supervisorId,
       })
       .select('id')
@@ -795,6 +873,16 @@ function ComposeDialog({
                   type="datetime-local"
                   value={scheduledLocal}
                   onChange={(e) => setScheduledLocal(e.target.value)}
+                />
+              </Field>
+            )}
+
+            {scheduleKind === 'daily' && (
+              <Field label="الوقت (بتوقيت دمشق)" hint="يُرسل كل يوم في هذا الوقت">
+                <Input
+                  type="time"
+                  value={recurTime}
+                  onChange={(e) => setRecurTime(e.target.value)}
                 />
               </Field>
             )}

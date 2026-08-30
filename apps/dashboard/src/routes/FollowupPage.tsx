@@ -1,7 +1,16 @@
 import * as React from 'react';
-import { ChevronDown, ListChecks, TrendingUp, Trophy, UserCheck, UserX } from 'lucide-react';
 import {
-  DUTY_CATEGORIES,
+  CheckCircle2,
+  ChevronDown,
+  Circle,
+  CircleDashed,
+  ListChecks,
+  TrendingUp,
+  Trophy,
+  UserCheck,
+  UserX,
+} from 'lucide-react';
+import {
   DUTY_CATEGORY_LABELS,
   type DutyCategory,
   type DutyFollowupRow,
@@ -30,6 +39,7 @@ import {
   TableRow,
   cn,
 } from '@wird/ui-web';
+import { formatRange } from '@wird/quran-data';
 import { addDays, formatDayLabel, todayISO } from '../lib/dates';
 import { supabase } from '../lib/supabase';
 
@@ -275,7 +285,9 @@ export default function FollowupPage() {
           <EmptyState
             icon={Trophy}
             title={onlyGaps ? 'لا يوجد متعثرون في هذا المدى' : 'لا توجد بيانات'}
-            description={onlyGaps ? 'الجميع أتمّ أوراداً — أحسنوا.' : 'اختر مجموعة أو مدى زمني آخر.'}
+            description={
+              onlyGaps ? 'الجميع أتمّ أوراداً — أحسنوا.' : 'اختر مجموعة أو مدى زمني آخر.'
+            }
           />
         ) : (
           <Table>
@@ -371,10 +383,41 @@ function SortHead({
   );
 }
 
-interface DayBreakdown {
+interface DutyRow {
+  id: string;
   date: string;
-  cats: { category: DutyCategory; status: DutyStatus }[];
+  category: DutyCategory;
+  status: DutyStatus;
+  range: { surahFrom: number; ayahFrom: number; surahTo: number; ayahTo: number };
 }
+
+/**
+ * The three buckets a supervisor actually asks about, in the order they are worried about
+ * them: what was missed, what is half-done, what is finished.
+ */
+const STATUS_BUCKETS = [
+  {
+    status: 'pending' as const,
+    label: 'لم تبدأ',
+    icon: Circle,
+    panel: 'bg-danger-50/70 ring-danger-200',
+    head: 'text-danger-700',
+  },
+  {
+    status: 'in_progress' as const,
+    label: 'قيد التنفيذ',
+    icon: CircleDashed,
+    panel: 'bg-accent-50/70 ring-accent-200',
+    head: 'text-accent-800',
+  },
+  {
+    status: 'completed' as const,
+    label: 'مكتملة',
+    icon: CheckCircle2,
+    panel: 'bg-mint-50/70 ring-mint-200',
+    head: 'text-mint-800',
+  },
+];
 
 function EmployeeRows({
   row,
@@ -389,7 +432,7 @@ function EmployeeRows({
   open: boolean;
   onToggle: () => void;
 }) {
-  const [days, setDays] = React.useState<DayBreakdown[] | null>(null);
+  const [duties, setDuties] = React.useState<DutyRow[] | null>(null);
   const pct = Math.round(row.completionRate * 100);
   const nothing = row.assignedCount === 0;
 
@@ -397,23 +440,32 @@ function EmployeeRows({
     // Refetch whenever the panel opens or the active range changes under it.
     if (!open) return;
     let cancelled = false;
-    setDays(null);
+    setDuties(null);
     supabase
       .from('duties')
-      .select('due_date, category, status')
+      .select(
+        'id, due_date, category, status, scope_surah_from, scope_ayah_from, scope_surah_to, scope_ayah_to',
+      )
       .eq('employee_id', row.employeeId)
       .gte('due_date', from)
       .lte('due_date', to)
-      .order('due_date')
+      .order('due_date', { ascending: false })
       .then(({ data }) => {
         if (cancelled) return;
-        const byDay = new Map<string, DayBreakdown>();
-        for (const d of data ?? []) {
-          const entry = byDay.get(d.due_date) ?? { date: d.due_date, cats: [] };
-          entry.cats.push({ category: d.category, status: d.status });
-          byDay.set(d.due_date, entry);
-        }
-        setDays([...byDay.values()]);
+        setDuties(
+          (data ?? []).map((d) => ({
+            id: d.id,
+            date: d.due_date,
+            category: d.category,
+            status: d.status,
+            range: {
+              surahFrom: d.scope_surah_from,
+              ayahFrom: d.scope_ayah_from,
+              surahTo: d.scope_surah_to,
+              ayahTo: d.scope_ayah_to,
+            },
+          })),
+        );
       });
     return () => {
       cancelled = true;
@@ -478,15 +530,21 @@ function EmployeeRows({
 
       {open && (
         <TableRow className="hover:bg-transparent">
-          <TableCell colSpan={9} className="bg-neutral-50/60">
-            {days === null ? (
-              <div className="py-2 text-xs text-neutral-400">جارٍ تحميل التفصيل اليومي…</div>
-            ) : days.length === 0 ? (
-              <div className="py-2 text-xs text-neutral-400">لا توجد أوراد مُسندة في هذا المدى.</div>
+          <TableCell colSpan={9} className="bg-neutral-50/60 p-4">
+            {duties === null ? (
+              <div className="py-2 text-xs text-neutral-400">جارٍ تحميل تفصيل الأوراد…</div>
+            ) : duties.length === 0 ? (
+              <div className="py-2 text-xs text-neutral-400">
+                لا توجد أوراد مُسندة في هذا المدى.
+              </div>
             ) : (
-              <div className="flex flex-wrap gap-2 py-1">
-                {days.map((day) => (
-                  <DayChip key={day.date} day={day} />
+              <div className="grid gap-3 md:grid-cols-3">
+                {STATUS_BUCKETS.map((bucket) => (
+                  <StatusBucket
+                    key={bucket.status}
+                    bucket={bucket}
+                    duties={duties.filter((d) => d.status === bucket.status)}
+                  />
                 ))}
               </div>
             )}
@@ -497,41 +555,46 @@ function EmployeeRows({
   );
 }
 
-const statusDot: Record<DutyStatus, string> = {
-  completed: 'bg-mint-500',
-  in_progress: 'bg-accent-500',
-  pending: 'bg-danger-400',
-};
-
-function DayChip({ day }: { day: DayBreakdown }) {
-  const allDone = day.cats.every((c) => c.status === 'completed');
-  const noneDone = day.cats.every((c) => c.status === 'pending');
-
+function StatusBucket({
+  bucket,
+  duties,
+}: {
+  bucket: (typeof STATUS_BUCKETS)[number];
+  duties: DutyRow[];
+}) {
+  const Icon = bucket.icon;
   return (
-    <div
-      className={cn(
-        'flex flex-col gap-1 rounded-lg px-2.5 py-1.5 ring-1',
-        allDone
-          ? 'bg-mint-50 ring-mint-200'
-          : noneDone
-            ? 'bg-danger-50 ring-danger-200'
-            : 'bg-accent-50 ring-accent-200',
+    <section className={cn('flex flex-col gap-2 rounded-xl p-3 ring-1', bucket.panel)}>
+      <header className={cn('flex items-center gap-1.5 text-xs font-semibold', bucket.head)}>
+        <Icon className="h-3.5 w-3.5" />
+        {bucket.label}
+        <span className="ms-auto tabular-nums">{duties.length}</span>
+      </header>
+
+      {duties.length === 0 ? (
+        <p className="py-1 text-[11px] text-neutral-400">لا شيء</p>
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {duties.map((duty) => (
+            <li key={duty.id} className="rounded-lg bg-surface/80 px-2.5 py-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-[11px] font-medium text-neutral-700">
+                  {DUTY_CATEGORY_LABELS[duty.category]}
+                </span>
+                <span className="shrink-0 text-[10px] text-neutral-400">
+                  {formatDayLabel(duty.date)}
+                </span>
+              </div>
+              {/* The range is the duty — a date and a category alone do not tell a supervisor
+                  which passage was missed. */}
+              <div className="mt-0.5 truncate text-[11px] text-neutral-500">
+                {formatRange(duty.range)}
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
-    >
-      <span className="text-[11px] font-medium text-neutral-600">{formatDayLabel(day.date)}</span>
-      <div className="flex items-center gap-1.5">
-        {DUTY_CATEGORIES.filter((c) => day.cats.some((x) => x.category === c)).map((c) => {
-          const cat = day.cats.find((x) => x.category === c)!;
-          return (
-            <span
-              key={c}
-              title={`${DUTY_CATEGORY_LABELS[c]}: ${cat.status}`}
-              className={cn('h-2 w-2 rounded-full', statusDot[cat.status])}
-            />
-          );
-        })}
-      </div>
-    </div>
+    </section>
   );
 }
 

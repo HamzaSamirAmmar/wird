@@ -1,11 +1,12 @@
 import * as React from 'react';
-import { Check, Copy, Plus, Search, Users } from 'lucide-react';
+import { Check, Copy, Pencil, Plus, Search, Users } from 'lucide-react';
 import {
   Alert,
   Avatar,
   Badge,
   Button,
   Card,
+  Checkbox,
   Dialog,
   DialogBody,
   DialogContent,
@@ -30,7 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from '@wird/ui-web';
-import { createEmployeeSchema } from '@wird/domain';
+import { createEmployeeSchema, updateEmployeeSchema } from '@wird/domain';
 import { supabase } from '../lib/supabase';
 
 interface EmployeeRow {
@@ -56,6 +57,7 @@ export default function EmployeesPage() {
     username: string;
     password: string;
   } | null>(null);
+  const [editing, setEditing] = React.useState<EmployeeRow | null>(null);
 
   const load = React.useCallback(async () => {
     const [employeesRes, groupsRes] = await Promise.all([
@@ -142,6 +144,9 @@ export default function EmployeesPage() {
                 <TableHead>اسم المستخدم</TableHead>
                 <TableHead>المجموعة</TableHead>
                 <TableHead>الحالة</TableHead>
+                <TableHead>
+                  <span className="sr-only">إجراءات</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -164,6 +169,13 @@ export default function EmployeesPage() {
                       {e.is_active ? 'نشط' : 'موقوف'}
                     </Badge>
                   </TableCell>
+                  <TableCell>
+                    <div className="flex justify-end">
+                      <IconButton aria-label={`تعديل ${e.full_name}`} onClick={() => setEditing(e)}>
+                        <Pencil className="h-4 w-4" />
+                      </IconButton>
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -183,6 +195,16 @@ export default function EmployeesPage() {
       />
 
       <CredentialsDialog creds={createdCreds} onClose={() => setCreatedCreds(null)} />
+
+      <EditEmployeeDialog
+        employee={editing}
+        groups={groups}
+        onClose={() => setEditing(null)}
+        onSaved={() => {
+          setEditing(null);
+          load();
+        }}
+      />
     </div>
   );
 }
@@ -291,6 +313,135 @@ function CreateEmployeeDialog({
             </Button>
             <Button type="submit" loading={submitting}>
               إنشاء
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Edits the two things about an employee that actually change: their display name and which
+ * group they belong to. Username is deliberately not editable — it is the auth identity
+ * (`<username>@wird.local`) that the account was created against, so renaming it here would
+ * silently lock the employee out.
+ *
+ * Moving a group only changes future fan-out: `duties` rows already created for this employee
+ * are theirs and stay put, which is why nothing else has to be rewritten here.
+ */
+function EditEmployeeDialog({
+  employee,
+  groups,
+  onClose,
+  onSaved,
+}: {
+  employee: EmployeeRow | null;
+  groups: GroupOption[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [fullName, setFullName] = React.useState('');
+  const [groupId, setGroupId] = React.useState('');
+  const [isActive, setIsActive] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [submitting, setSubmitting] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!employee) return;
+    setFullName(employee.full_name);
+    setGroupId(employee.group?.id ?? '');
+    setIsActive(employee.is_active);
+    setError(null);
+  }, [employee]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!employee) return;
+
+    const parsed = updateEmployeeSchema.safeParse({ fullName, groupId });
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? 'خطأ في البيانات');
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        full_name: parsed.data.fullName,
+        group_id: parsed.data.groupId,
+        is_active: isActive,
+      })
+      .eq('id', employee.id);
+    setSubmitting(false);
+
+    if (error) {
+      setError('تعذر حفظ التعديلات');
+      return;
+    }
+    onSaved();
+  }
+
+  const movingGroup = !!employee && groupId !== (employee.group?.id ?? '');
+
+  return (
+    <Dialog open={!!employee} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>تعديل المستخدم</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <DialogBody>
+            {error && <Alert variant="danger">{error}</Alert>}
+
+            <Field label="الاسم الكامل" htmlFor="edit-full-name">
+              <Input
+                id="edit-full-name"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                autoFocus
+                required
+              />
+            </Field>
+
+            <Field label="اسم المستخدم" hint="لا يمكن تغييره — هو معرّف الدخول للحساب">
+              <Input dir="ltr" value={employee?.username ?? ''} disabled readOnly />
+            </Field>
+
+            <Field label="المجموعة">
+              <Select value={groupId} onValueChange={setGroupId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="اختر مجموعة" />
+                </SelectTrigger>
+                <SelectContent>
+                  {groups.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {g.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            {movingGroup && (
+              <Alert variant="info">
+                الأوراد المُسندة سابقاً تبقى كما هي؛ التغيير يسري على الإسناد القادم لهذه المجموعة.
+              </Alert>
+            )}
+
+            <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-neutral-700">
+              <Checkbox checked={isActive} onCheckedChange={(v) => setIsActive(v === true)} />
+              الحساب نشط
+            </label>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              إلغاء
+            </Button>
+            <Button type="submit" loading={submitting}>
+              حفظ
             </Button>
           </DialogFooter>
         </form>

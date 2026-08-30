@@ -305,14 +305,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Stamp results. Weekly campaigns get their next occurrence; once/now are done
-    // (next_run_at already null from the claim).
+    // Stamp results. Recurring campaigns get their next occurrence; once/now are done
+    // (next_run_at already null from the claim). Missing 'daily' here would let a daily rule
+    // fire exactly once and then go quiet, which is indistinguishable from it working.
     const patch: Record<string, unknown> = {
       last_sent_at: new Date().toISOString(),
       last_sent_count: sent,
       last_error: errorMessage,
     };
-    if (campaign.schedule_kind === 'weekly') {
+    if (campaign.schedule_kind === 'weekly' || campaign.schedule_kind === 'daily') {
       const { data: nextRun } = await admin.rpc('next_campaign_run', {
         p_kind: campaign.schedule_kind,
         p_scheduled_at: null,
