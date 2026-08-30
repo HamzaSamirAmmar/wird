@@ -3,7 +3,7 @@ import { ListChecks, Trophy } from 'lucide-react';
 import { cn } from '@wird/ui-web';
 
 const tabs = [
-  { to: '/', label: 'الأورد', icon: ListChecks, end: true },
+  { to: '/', label: 'الأوراد', icon: ListChecks, end: true },
   { to: '/leaderboard', label: 'الصدارة', icon: Trophy, end: false },
 ];
 

@@ -61,7 +61,7 @@ export default function GroupsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="المجموعات"
-        description="كل موظف ينتمي لمجموعة واحدة، والأورد تُسند للمجموعة"
+        description="كل موظف ينتمي لمجموعة واحدة، والأوراد تُسند للمجموعة"
         actions={
           <Button onClick={() => setDialogOpen(true)}>
             <Plus className="h-4 w-4" />
@@ -89,7 +89,7 @@ export default function GroupsPage() {
           <EmptyState
             icon={UsersRound}
             title="لا توجد مجموعات بعد"
-            description="ابدأ بإنشاء مجموعة، ثم أضف إليها الموظفين وأسند لها الأورد."
+            description="ابدأ بإنشاء مجموعة، ثم أضف إليها الموظفين وأسند لها الأوراد."
             action={
               <Button size="sm" onClick={() => setDialogOpen(true)}>
                 <Plus className="h-4 w-4" />

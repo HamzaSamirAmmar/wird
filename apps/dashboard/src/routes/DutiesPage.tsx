@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { BookOpen, CalendarDays, Layers, Pencil, Plus } from 'lucide-react';
+import { BookOpen, CalendarDays, Pencil, Plus } from 'lucide-react';
 import { formatRange } from '@wird/quran-data';
 import { DUTY_CATEGORIES, DUTY_CATEGORY_LABELS, type DutyCategory } from '@wird/domain';
 import {
@@ -108,7 +108,7 @@ export default function DutiesPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="الأورد اليومية"
+        title="الأوراد اليومية"
         description="لكل مجموعة يوم واحد يجمع أنواع الورد الثلاثة، ولكل نوع نطاقه الخاص"
         actions={
           <Button onClick={() => openFor(null)} disabled={groups.length === 0}>
@@ -120,7 +120,7 @@ export default function DutiesPage() {
 
       {groups.length === 0 && (
         <Alert variant="info" title="لا توجد مجموعات بعد">
-          أنشئ مجموعة أولاً لتتمكن من إسناد الأورد.
+          أنشئ مجموعة أولاً لتتمكن من إسناد الأوراد.
         </Alert>
       )}
       {error && <Alert variant="danger">{error}</Alert>}
@@ -144,11 +144,6 @@ export default function DutiesPage() {
               )}
             </div>
           </Card>
-
-          <div className="grid grid-cols-2 gap-3">
-            <StatTile icon={Layers} label="مجموعات لها ورد" value={byGroup?.length ?? null} />
-            <StatTile icon={BookOpen} label="أنواع مُسندة" value={dayRows?.length ?? null} />
-          </div>
         </div>
 
         <Card className="overflow-hidden">
@@ -233,27 +228,5 @@ export default function DutiesPage() {
         }}
       />
     </div>
-  );
-}
-
-function StatTile({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: typeof BookOpen;
-  label: string;
-  value: number | null;
-}) {
-  return (
-    <Card className="flex items-center gap-3 p-4">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
-        <Icon className="h-4.5 w-4.5" />
-      </span>
-      <div className="min-w-0">
-        <div className="text-lg font-semibold tabular-nums text-neutral-900">{value ?? '—'}</div>
-        <div className="truncate text-xs text-neutral-500">{label}</div>
-      </div>
-    </Card>
   );
 }

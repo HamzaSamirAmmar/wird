@@ -8,7 +8,7 @@ export default function SupervisorNotice() {
   return (
     <AuthShell
       title="هذا التطبيق للموظفين"
-      description="لإدارة المجموعات والموظفين وإسناد الأورد، استخدم لوحة التحكم من المتصفح."
+      description="لإدارة المجموعات والموظفين وإسناد الأوراد، استخدم لوحة التحكم من المتصفح."
     >
       <div className="flex flex-col gap-5">
         <div className="flex items-center gap-3 rounded-xl bg-primary-50 p-4 ring-1 ring-primary-100">
