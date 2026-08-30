@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import { BANNER_BODY_MAX, BANNER_KINDS, BANNER_SOURCE_MAX } from './banners';
 import { DUTY_CATEGORIES } from './dutyCategories';
+import { notificationAudiences, campaignScheduleKinds } from './notifications';
 import { USERNAME_PATTERN } from './username';
+
+export const notificationAudiencesSchema = z.enum(notificationAudiences);
+export const campaignScheduleKindsSchema = z.enum(campaignScheduleKinds);
 
 export const usernameSchema = z
   .string()
@@ -57,6 +61,36 @@ export const bannerSchema = z.object({
     .nullable(),
   isActive: z.boolean(),
 });
+
+export const notificationCampaignSchema = z
+  .object({
+    title: z.string().trim().min(2, 'العنوان قصير جداً').max(100),
+    body: z.string().trim().min(2, 'النص قصير جداً').max(500),
+    audience: notificationAudiencesSchema,
+    targetProfileId: z.string().uuid().nullable().optional(),
+    scheduleKind: campaignScheduleKindsSchema,
+    /** Local wall-clock `YYYY-MM-DDTHH:mm` in Asia/Riyadh; the UI converts to an instant. */
+    scheduledLocal: z.string().optional(),
+    recurWeekday: z.number().int().min(0).max(6).nullable().optional(),
+    /** `HH:mm` (Riyadh). */
+    recurTime: z
+      .string()
+      .regex(/^\d{2}:\d{2}$/, 'اختر وقت الإرسال')
+      .nullable()
+      .optional(),
+  })
+  .refine((v) => v.audience !== 'user' || !!v.targetProfileId, {
+    message: 'اختر المستخدم',
+    path: ['targetProfileId'],
+  })
+  .refine((v) => v.scheduleKind !== 'once' || !!v.scheduledLocal, {
+    message: 'اختر تاريخ ووقت الإرسال',
+    path: ['scheduledLocal'],
+  })
+  .refine((v) => v.scheduleKind !== 'weekly' || (v.recurWeekday !== null && !!v.recurTime), {
+    message: 'اختر اليوم والوقت',
+    path: ['recurWeekday'],
+  });
 
 export const changePasswordSchema = z
   .object({

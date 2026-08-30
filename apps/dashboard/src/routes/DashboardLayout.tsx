@@ -6,6 +6,7 @@ import {
   CalendarDays,
   ClipboardCheck,
   MessageSquareQuote,
+  BellRing,
   LogOut,
   Menu,
   X,
@@ -19,6 +20,7 @@ const navItems = [
   { to: '/employees', label: 'المستخدمون', icon: Users },
   { to: '/followup', label: 'المتابعة', icon: ClipboardCheck },
   { to: '/banners', label: 'البطاقات', icon: MessageSquareQuote },
+  { to: '/notifications', label: 'الإشعارات', icon: BellRing },
 ];
 
 export default function DashboardLayout() {

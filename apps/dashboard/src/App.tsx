@@ -10,6 +10,7 @@ import GroupsPage from './routes/GroupsPage';
 import EmployeesPage from './routes/EmployeesPage';
 import FollowupPage from './routes/FollowupPage';
 import BannersPage from './routes/BannersPage';
+import NotificationsPage from './routes/NotificationsPage';
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
             <Route path="/employees" element={<EmployeesPage />} />
             <Route path="/followup" element={<FollowupPage />} />
             <Route path="/banners" element={<BannersPage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
           </Route>
         </Route>
       </Routes>
