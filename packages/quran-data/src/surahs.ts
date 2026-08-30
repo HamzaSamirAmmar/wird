@@ -15,7 +15,7 @@ export interface Surah {
 export const SURAHS: Surah[] = [
   { number: 1, nameAr: 'الفاتحة', nameTransliterated: 'Al-Fatihah', ayahCount: 7 },
   { number: 2, nameAr: 'البقرة', nameTransliterated: 'Al-Baqarah', ayahCount: 286 },
-  { number: 3, nameAr: 'آل عمران', nameTransliterated: "Aal-E-Imran", ayahCount: 200 },
+  { number: 3, nameAr: 'آل عمران', nameTransliterated: 'Aal-E-Imran', ayahCount: 200 },
   { number: 4, nameAr: 'النساء', nameTransliterated: 'An-Nisa', ayahCount: 176 },
   { number: 5, nameAr: 'المائدة', nameTransliterated: "Al-Ma'idah", ayahCount: 120 },
   { number: 6, nameAr: 'الأنعام', nameTransliterated: "Al-An'am", ayahCount: 165 },

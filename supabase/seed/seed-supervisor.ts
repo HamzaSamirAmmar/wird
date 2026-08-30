@@ -16,7 +16,9 @@ const password = requireEnv('SEED_SUPERVISOR_PASSWORD');
 const fullName = process.env.SEED_SUPERVISOR_NAME?.trim() || 'المشرف الرئيسي';
 
 if (!/^[a-z0-9_.]{3,32}$/.test(username)) {
-  console.error('SEED_SUPERVISOR_USERNAME must be 3-32 chars: lowercase letters, digits, "_" or "."');
+  console.error(
+    'SEED_SUPERVISOR_USERNAME must be 3-32 chars: lowercase letters, digits, "_" or "."',
+  );
   process.exit(1);
 }
 if (password.length < 8) {
@@ -55,7 +57,9 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`Seeded supervisor "${username}" — log in with that username and the password you set.`);
+  console.log(
+    `Seeded supervisor "${username}" — log in with that username and the password you set.`,
+  );
 }
 
 function requireEnv(name: string): string {

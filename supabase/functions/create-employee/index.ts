@@ -60,7 +60,9 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const username = String(body.username ?? '').trim().toLowerCase();
+    const username = String(body.username ?? '')
+      .trim()
+      .toLowerCase();
     const fullName = String(body.fullName ?? '').trim();
     const groupId = String(body.groupId ?? '').trim();
 

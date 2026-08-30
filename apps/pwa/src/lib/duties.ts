@@ -16,7 +16,9 @@ function dateWindow() {
 }
 
 /** Pulls this employee's nearby duties + steps from Supabase and refreshes the local cache. */
-export async function refreshDutiesFromServer(employeeId: string): Promise<{ error: string | null }> {
+export async function refreshDutiesFromServer(
+  employeeId: string,
+): Promise<{ error: string | null }> {
   if (!navigator.onLine) return { error: null };
 
   const { from, to } = dateWindow();
@@ -77,7 +79,10 @@ export async function refreshDutiesFromServer(employeeId: string): Promise<{ err
 
 export async function getCachedDuties(employeeId: string) {
   const duties = await db.duties.where('employeeId').equals(employeeId).sortBy('dueDate');
-  const steps = await db.steps.where('dutyId').anyOf(duties.map((d) => d.id)).toArray();
+  const steps = await db.steps
+    .where('dutyId')
+    .anyOf(duties.map((d) => d.id))
+    .toArray();
   const stepsByDuty = new Map<string, CachedStep[]>();
   for (const s of steps) {
     const list = stepsByDuty.get(s.dutyId) ?? [];
@@ -106,7 +111,8 @@ export async function toggleStep(stepId: string, isCompleted: boolean) {
 async function recomputeLocalDutyStatus(dutyId: string) {
   const steps = await db.steps.where('dutyId').equals(dutyId).toArray();
   const completed = steps.filter((s) => s.isCompleted).length;
-  const status = completed === 0 ? 'pending' : completed === steps.length ? 'completed' : 'in_progress';
+  const status =
+    completed === 0 ? 'pending' : completed === steps.length ? 'completed' : 'in_progress';
   await db.duties.update(dutyId, { status });
 }
 

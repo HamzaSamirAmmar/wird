@@ -29,6 +29,10 @@ export const DUTY_CATEGORY_STEPS: Record<DutyCategory, DutyStepDefinition[]> = {
     },
     { order: 4, key: 'read_by_heart_7', label: 'قراءة الحفظ الجديد سبع مرات غيباً' },
   ],
-  minor_review: [{ order: 1, key: 'read_once', label: 'قراءة ما تم تحديده كمراجعة صغرى مرة واحدة غيباً' }],
-  major_review: [{ order: 1, key: 'read_once', label: 'قراءة ما تم تحديده كمراجعة كبرى مرة واحدة غيباً' }],
+  minor_review: [
+    { order: 1, key: 'read_once', label: 'قراءة ما تم تحديده كمراجعة صغرى مرة واحدة غيباً' },
+  ],
+  major_review: [
+    { order: 1, key: 'read_once', label: 'قراءة ما تم تحديده كمراجعة كبرى مرة واحدة غيباً' },
+  ],
 };

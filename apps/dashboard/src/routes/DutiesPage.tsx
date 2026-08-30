@@ -168,7 +168,8 @@ export default function DutiesPage() {
                 groups.length > 0 && (
                   <Button variant="secondary" size="sm" onClick={() => openFor(null)}>
                     <Plus className="h-4 w-4" />
-                    ورد جديد                  </Button>
+                    ورد جديد{' '}
+                  </Button>
                 )
               }
             />
