@@ -55,7 +55,7 @@ export default function DutiesPage() {
       .order('created_at');
 
     if (error) {
-      setError('تعذر تحميل أورد هذا الأسبوع');
+      setError('تعذر تحميل أوراد هذا الأسبوع');
       setAssignments([]);
       return;
     }
@@ -113,7 +113,7 @@ export default function DutiesPage() {
         actions={
           <Button onClick={() => openFor(null)} disabled={groups.length === 0}>
             <Plus className="h-4 w-4" />
-            أورد جديدة
+            ورد جديد
           </Button>
         }
       />
@@ -162,14 +162,13 @@ export default function DutiesPage() {
           ) : byGroup.length === 0 ? (
             <EmptyState
               icon={BookOpen}
-              title="لا توجد أورد في هذا اليوم"
-              description="اختر يوماً آخر من التقويم، أو أسند أورداً جديدة لمجموعة."
+              title="لا توجد أوراد في هذا اليوم"
+              description="اختر يوماً آخر من التقويم، أو أسند أوراداً جديدة لمجموعة."
               action={
                 groups.length > 0 && (
                   <Button variant="secondary" size="sm" onClick={() => openFor(null)}>
                     <Plus className="h-4 w-4" />
-                    أورد جديدة
-                  </Button>
+                    ورد جديد                  </Button>
                 )
               }
             />
