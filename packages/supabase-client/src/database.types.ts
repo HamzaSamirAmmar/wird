@@ -279,6 +279,38 @@ export type Database = {
     }
     Functions: {
       is_supervisor: { Args: never; Returns: boolean }
+      employee_current_streak: {
+        Args: { p_employee_id: string; p_asof?: string }
+        Returns: number
+      }
+      group_leaderboard: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          employee_id: string
+          full_name: string
+          assigned_count: number
+          completed_count: number
+          completion_rate: number
+          current_streak: number
+          is_me: boolean
+        }[]
+      }
+      duty_followup: {
+        Args: { p_from: string; p_to: string; p_group_id?: string | null }
+        Returns: {
+          employee_id: string
+          full_name: string
+          group_id: string
+          group_name: string
+          assigned_count: number
+          completed_count: number
+          incomplete_count: number
+          days_assigned: number
+          days_all_complete: number
+          completion_rate: number
+          current_streak: number
+        }[]
+      }
     }
     Enums: {
       duty_category: "new_memorization" | "minor_review" | "major_review"
