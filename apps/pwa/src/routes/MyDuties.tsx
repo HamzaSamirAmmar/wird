@@ -34,6 +34,7 @@ import {
 } from '../lib/duties';
 import type { CachedDuty, CachedStep } from '../lib/offline';
 import { DayStrip } from '../components/DayStrip';
+import { GroupStandings } from '../components/GroupStandings';
 import { MushafReader } from '../components/MushafReader';
 import { formatRelativeDay, todayISO } from '../lib/dates';
 
@@ -59,6 +60,9 @@ export default function MyDuties() {
   const [isOnline, setIsOnline] = React.useState(navigator.onLine);
   const [pendingSync, setPendingSync] = React.useState(0);
   const [refreshing, setRefreshing] = React.useState(false);
+  // Bumped after every server sync so the standings below refetch on the same signal,
+  // instead of opening a second realtime subscription of their own.
+  const [syncTick, setSyncTick] = React.useState(0);
 
   const employeeId = profile?.id ?? '';
 
@@ -76,6 +80,7 @@ export default function MyDuties() {
       await flushOutbox();
       await refreshDutiesFromServer(employeeId);
       await reloadFromCache();
+      setSyncTick((t) => t + 1);
     } finally {
       // Without this the spinner spins forever whenever any step above rejects.
       setRefreshing(false);
@@ -223,7 +228,7 @@ export default function MyDuties() {
         </div>
       </header>
 
-      <main className="flex-1 px-4 py-4 pb-[calc(6rem+env(safe-area-inset-bottom))]">
+      <main className="flex-1 px-4 py-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
         {selectedDate !== todayISO() && (
           <button
             onClick={() => setSelectedDate(todayISO())}
@@ -258,6 +263,9 @@ export default function MyDuties() {
             ))}
           </div>
         )}
+
+        {/* Secondary to the checklist above, and deliberately below the fold. */}
+        <GroupStandings reloadKey={syncTick} />
       </main>
     </div>
   );
@@ -306,9 +314,7 @@ function DutyCard({
               <div className="font-semibold text-neutral-900">
                 {DUTY_CATEGORY_LABELS[duty.category]}
               </div>
-              <div className="mt-0.5 text-sm text-neutral-500">
-                {formatRange(range)}
-              </div>
+              <div className="mt-0.5 text-sm text-neutral-500">{formatRange(range)}</div>
             </div>
             <Badge variant={statusVariant[duty.status]} dot>
               {statusLabel[duty.status]}
