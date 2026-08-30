@@ -15,7 +15,6 @@ export type Database = {
           created_by: string | null;
           id: string;
           is_active: boolean;
-          kind: Database['public']['Enums']['banner_kind'];
           sort_order: number;
           source: string | null;
           updated_at: string;
@@ -26,7 +25,6 @@ export type Database = {
           created_by?: string | null;
           id?: string;
           is_active?: boolean;
-          kind?: Database['public']['Enums']['banner_kind'];
           sort_order?: number;
           source?: string | null;
           updated_at?: string;
@@ -37,7 +35,6 @@ export type Database = {
           created_by?: string | null;
           id?: string;
           is_active?: boolean;
-          kind?: Database['public']['Enums']['banner_kind'];
           sort_order?: number;
           source?: string | null;
           updated_at?: string;
@@ -418,6 +415,16 @@ export type Database = {
     };
     Functions: {
       is_supervisor: { Args: never; Returns: boolean };
+      next_campaign_run: {
+        Args: {
+          p_kind: string;
+          p_scheduled_at: string | null;
+          p_weekday: number | null;
+          p_time: string | null;
+          p_after?: string;
+        };
+        Returns: string | null;
+      };
       employee_current_streak: {
         Args: { p_employee_id: string; p_asof?: string };
         Returns: number;
@@ -452,7 +459,6 @@ export type Database = {
       };
     };
     Enums: {
-      banner_kind: 'ayah' | 'hadith' | 'hikmah' | 'note';
       duty_category: 'new_memorization' | 'minor_review' | 'major_review';
       duty_status: 'pending' | 'in_progress' | 'completed';
       user_role: 'employee' | 'supervisor';

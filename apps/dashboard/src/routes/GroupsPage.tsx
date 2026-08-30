@@ -1,7 +1,9 @@
 import * as React from 'react';
-import { Plus, UsersRound } from 'lucide-react';
+import { ChevronLeft, Plus, UserRound, UsersRound } from 'lucide-react';
 import {
   Alert,
+  Avatar,
+  Badge,
   Button,
   Card,
   Dialog,
@@ -15,6 +17,7 @@ import {
   Input,
   PageHeader,
   Skeleton,
+  SkeletonRows,
 } from '@wird/ui-web';
 import { createGroupSchema } from '@wird/domain';
 import { supabase } from '../lib/supabase';
@@ -30,6 +33,7 @@ export default function GroupsPage() {
   const [groups, setGroups] = React.useState<GroupRow[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [viewing, setViewing] = React.useState<GroupRow | null>(null);
 
   const load = React.useCallback(async () => {
     const { data, error } = await supabase
@@ -101,20 +105,29 @@ export default function GroupsPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {groups.map((g) => (
-            <Card key={g.id} interactive className="flex items-center gap-4 p-5">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-700 ring-1 ring-primary-100">
-                <UsersRound className="h-5 w-5" />
-              </span>
-              <div className="min-w-0">
-                <div className="truncate font-semibold text-neutral-900">{g.name}</div>
-                <div className="text-sm text-neutral-500">
-                  <span className="tabular-nums">{g.employee_count}</span> موظف
+            <Card key={g.id} interactive className="overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setViewing(g)}
+                className="flex w-full items-center gap-4 p-5 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
+              >
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-700 ring-1 ring-primary-100">
+                  <UsersRound className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-semibold text-neutral-900">{g.name}</div>
+                  <div className="text-sm text-neutral-500">
+                    <span className="tabular-nums">{g.employee_count}</span> موظف
+                  </div>
                 </div>
-              </div>
+                <ChevronLeft className="h-4 w-4 shrink-0 text-neutral-300" />
+              </button>
             </Card>
           ))}
         </div>
       )}
+
+      <GroupMembersDialog group={viewing} onClose={() => setViewing(null)} />
 
       <CreateGroupDialog
         open={dialogOpen}
@@ -125,6 +138,90 @@ export default function GroupsPage() {
         }}
       />
     </div>
+  );
+}
+
+interface MemberRow {
+  id: string;
+  full_name: string;
+  username: string;
+  is_active: boolean;
+}
+
+/**
+ * The roster behind a group card. Fetched on open rather than joined into the group list —
+ * the list only ever needed counts, and pulling every member of every group up front would
+ * make the page cost grow with headcount for data that is usually not looked at.
+ */
+function GroupMembersDialog({ group, onClose }: { group: GroupRow | null; onClose: () => void }) {
+  const [members, setMembers] = React.useState<MemberRow[] | null>(null);
+
+  React.useEffect(() => {
+    if (!group) return;
+    let cancelled = false;
+    setMembers(null);
+    supabase
+      .from('profiles')
+      .select('id, full_name, username, is_active')
+      .eq('role', 'employee')
+      .eq('group_id', group.id)
+      .order('full_name')
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        setMembers(error ? [] : ((data ?? []) as MemberRow[]));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [group]);
+
+  return (
+    <Dialog open={!!group} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{group?.name}</DialogTitle>
+        </DialogHeader>
+        <DialogBody>
+          {members === null ? (
+            <SkeletonRows rows={4} />
+          ) : members.length === 0 ? (
+            <EmptyState
+              icon={UserRound}
+              title="لا يوجد أعضاء"
+              description="أضف مستخدمين إلى هذه المجموعة من صفحة المستخدمين."
+            />
+          ) : (
+            <div className="flex flex-col gap-1">
+              {members.map((m) => (
+                <div
+                  key={m.id}
+                  className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-neutral-50"
+                >
+                  <Avatar name={m.full_name} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-neutral-900">
+                      {m.full_name}
+                    </div>
+                    <div
+                      dir="ltr"
+                      className="truncate text-start font-mono text-[11px] text-neutral-500"
+                    >
+                      {m.username}
+                    </div>
+                  </div>
+                  {!m.is_active && <Badge variant="neutral">موقوف</Badge>}
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            إغلاق
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -1,14 +1,15 @@
 import * as React from 'react';
-import { ArrowDown, ArrowUp, MessageSquareQuote, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
-  BANNER_BODY_MAX,
-  BANNER_KINDS,
-  BANNER_KIND_LABELS,
-  BANNER_KIND_PLACEHOLDERS,
-  bannerSchema,
-  type Banner,
-  type BannerKind,
-} from '@wird/domain';
+  ArrowDown,
+  ArrowUp,
+  Eye,
+  EyeOff,
+  MessageSquareQuote,
+  Pencil,
+  Plus,
+  Trash2,
+} from 'lucide-react';
+import { BANNER_BODY_MAX, BANNER_SOURCE_MAX, bannerSchema, type Banner } from '@wird/domain';
 import {
   Alert,
   Badge,
@@ -26,11 +27,6 @@ import {
   IconButton,
   Input,
   PageHeader,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   SkeletonRows,
   Textarea,
   cn,
@@ -39,18 +35,10 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth-context';
 
 const BANNER_COLUMNS =
-  'id, kind, body, source, is_active, sort_order, created_by, created_at, updated_at';
-
-const kindBadge: Record<BannerKind, 'brand' | 'completed' | 'in_progress' | 'neutral'> = {
-  ayah: 'brand',
-  hadith: 'completed',
-  hikmah: 'in_progress',
-  note: 'neutral',
-};
+  'id, body, source, is_active, sort_order, created_by, created_at, updated_at';
 
 function toBanner(r: {
   id: string;
-  kind: BannerKind;
   body: string;
   source: string | null;
   is_active: boolean;
@@ -61,7 +49,6 @@ function toBanner(r: {
 }): Banner {
   return {
     id: r.id,
-    kind: r.kind,
     body: r.body,
     source: r.source,
     isActive: r.is_active,
@@ -115,7 +102,7 @@ export default function BannersPage() {
     }
   }
 
-  /** Reorders by swapping this card's sort_order with its neighbour's. */
+  /** Reorders by swapping this card's position with its neighbour's. */
   async function move(index: number, delta: -1 | 1) {
     if (!banners) return;
     const a = banners[index];
@@ -129,10 +116,11 @@ export default function BannersPage() {
 
     // Ties on sort_order are broken by created_at, so equal values would not actually swap —
     // rewrite the whole list's positions instead of trading two numbers.
-    const updates = next.map((banner, i) =>
-      supabase.from('banners').update({ sort_order: i }).eq('id', banner.id),
+    const results = await Promise.all(
+      next.map((banner, i) =>
+        supabase.from('banners').update({ sort_order: i }).eq('id', banner.id),
+      ),
     );
-    const results = await Promise.all(updates);
     if (results.some((r) => r.error)) {
       setError('تعذر إعادة الترتيب');
       load();
@@ -149,11 +137,13 @@ export default function BannersPage() {
     load();
   }
 
+  const visibleCount = banners?.filter((b) => b.isActive).length ?? 0;
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="البطاقات"
-        description="آية أو حديث أو حكمة تظهر للموظفين أعلى شاشة الأوراد"
+        description="رسائل قصيرة تظهر للموظفين أعلى شاشة الأوراد — آية، حديث، حكمة، أو أي تذكير"
         actions={
           <Button onClick={() => setEditing('new')}>
             <Plus className="h-4 w-4" />
@@ -173,7 +163,7 @@ export default function BannersPage() {
           <EmptyState
             icon={MessageSquareQuote}
             title="لا توجد بطاقات بعد"
-            description="أضف آية أو حديثاً أو حكمة؛ ستظهر للموظفين في شريط أعلى شاشة الأوراد."
+            description="اكتب تذكيراً قصيراً؛ سيظهر للموظفين في شريط أعلى شاشة الأوراد."
             action={
               <Button size="sm" onClick={() => setEditing('new')}>
                 <Plus className="h-4 w-4" />
@@ -183,76 +173,104 @@ export default function BannersPage() {
           />
         </Card>
       ) : (
-        <div className="flex flex-col gap-3">
-          {banners.map((banner, i) => (
-            <Card
-              key={banner.id}
-              className={cn('flex items-start gap-4 p-4', !banner.isActive && 'bg-neutral-50')}
-            >
-              <div className="flex shrink-0 flex-col gap-1">
-                <IconButton
-                  aria-label="تحريك لأعلى"
-                  disabled={i === 0}
-                  onClick={() => move(i, -1)}
-                  className="h-7 w-7 disabled:opacity-30"
-                >
-                  <ArrowUp className="h-3.5 w-3.5" />
-                </IconButton>
-                <IconButton
-                  aria-label="تحريك لأسفل"
-                  disabled={i === banners.length - 1}
-                  onClick={() => move(i, 1)}
-                  className="h-7 w-7 disabled:opacity-30"
-                >
-                  <ArrowDown className="h-3.5 w-3.5" />
-                </IconButton>
-              </div>
+        <>
+          <div className="flex items-center justify-between gap-3 text-sm text-neutral-500">
+            <span>
+              <span className="font-medium text-neutral-700">{visibleCount}</span> من{' '}
+              <span className="tabular-nums">{banners.length}</span> ظاهرة للموظفين
+            </span>
+            <span className="text-xs">الترتيب هنا هو ترتيب ظهورها في التطبيق</span>
+          </div>
 
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={kindBadge[banner.kind]} dot>
-                    {BANNER_KIND_LABELS[banner.kind]}
-                  </Badge>
-                  {!banner.isActive && <Badge variant="neutral">مخفية</Badge>}
+          <div className="flex flex-col gap-3">
+            {banners.map((banner, i) => (
+              <Card
+                key={banner.id}
+                className={cn(
+                  'group relative flex items-stretch gap-4 overflow-hidden p-4 transition-colors',
+                  !banner.isActive && 'bg-neutral-50/80',
+                )}
+              >
+                {/* Accent rail doubles as the visible/hidden signal, readable at a glance
+                    down the whole list without reading any badge. */}
+                <span
+                  aria-hidden
+                  className={cn(
+                    'absolute inset-y-0 start-0 w-1',
+                    banner.isActive ? 'bg-primary-500' : 'bg-neutral-200',
+                  )}
+                />
+
+                <div className="flex shrink-0 flex-col items-center gap-1 ps-2">
+                  <IconButton
+                    aria-label="تحريك لأعلى"
+                    disabled={i === 0}
+                    onClick={() => move(i, -1)}
+                    className="h-7 w-7 disabled:opacity-25"
+                  >
+                    <ArrowUp className="h-3.5 w-3.5" />
+                  </IconButton>
+                  <span className="text-[11px] font-semibold tabular-nums text-neutral-400">
+                    {i + 1}
+                  </span>
+                  <IconButton
+                    aria-label="تحريك لأسفل"
+                    disabled={i === banners.length - 1}
+                    onClick={() => move(i, 1)}
+                    className="h-7 w-7 disabled:opacity-25"
+                  >
+                    <ArrowDown className="h-3.5 w-3.5" />
+                  </IconButton>
                 </div>
 
-                <p
-                  className={cn(
-                    'mt-2 whitespace-pre-line text-sm leading-relaxed',
-                    banner.isActive ? 'text-neutral-800' : 'text-neutral-400',
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={cn(
+                      'whitespace-pre-line text-[15px] leading-[1.9]',
+                      banner.isActive ? 'text-neutral-800' : 'text-neutral-400',
+                    )}
+                  >
+                    {banner.body}
+                  </p>
+                  {banner.source && (
+                    <div className="mt-2 text-xs font-medium text-neutral-500">
+                      — {banner.source}
+                    </div>
                   )}
-                >
-                  {banner.body}
-                </p>
+                  {!banner.isActive && (
+                    <Badge variant="neutral" className="mt-2.5">
+                      <EyeOff className="h-3 w-3" />
+                      مخفية
+                    </Badge>
+                  )}
+                </div>
 
-                {banner.source && (
-                  <div className="mt-1.5 text-xs text-neutral-500">— {banner.source}</div>
-                )}
-              </div>
-
-              <div className="flex shrink-0 items-center gap-1">
-                <label className="flex cursor-pointer items-center gap-2 pe-2 text-xs text-neutral-500">
-                  <Checkbox
-                    checked={banner.isActive}
-                    onCheckedChange={() => toggleActive(banner)}
-                    aria-label="ظاهرة للموظفين"
-                  />
-                  ظاهرة
-                </label>
-                <IconButton aria-label="تعديل" onClick={() => setEditing(banner)}>
-                  <Pencil className="h-4 w-4" />
-                </IconButton>
-                <IconButton
-                  aria-label="حذف"
-                  onClick={() => setConfirmDelete(banner)}
-                  className="text-danger-600 hover:bg-danger-50"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </IconButton>
-              </div>
-            </Card>
-          ))}
-        </div>
+                <div className="flex shrink-0 flex-col items-end justify-between gap-2">
+                  <div className="flex items-center gap-1">
+                    <IconButton aria-label="تعديل" onClick={() => setEditing(banner)}>
+                      <Pencil className="h-4 w-4" />
+                    </IconButton>
+                    <IconButton
+                      aria-label="حذف"
+                      onClick={() => setConfirmDelete(banner)}
+                      className="text-danger-600 hover:bg-danger-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </IconButton>
+                  </div>
+                  <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-500">
+                    <Checkbox
+                      checked={banner.isActive}
+                      onCheckedChange={() => toggleActive(banner)}
+                      aria-label="ظاهرة للموظفين"
+                    />
+                    ظاهرة
+                  </label>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </>
       )}
 
       <BannerDialog
@@ -294,6 +312,44 @@ export default function BannersPage() {
   );
 }
 
+/**
+ * Mirrors the employee app's BannerRail card closely enough to be worth trusting — the
+ * supervisor is writing for a phone, so showing the desktop textarea alone hides how the
+ * text will actually break.
+ */
+function EmployeePreview({ body, source }: { body: string; source: string }) {
+  const empty = !body.trim();
+  return (
+    <div className="rounded-xl bg-neutral-100 p-3">
+      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-neutral-500">
+        <Eye className="h-3.5 w-3.5" />
+        كما ستظهر للموظف
+      </div>
+      <article className="relative overflow-hidden rounded-xl bg-primary-50 px-4 py-3.5 ring-1 ring-primary-100">
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -top-3 start-2 select-none font-serif text-6xl leading-none text-primary-200/60"
+        >
+          ”
+        </span>
+        <p
+          className={cn(
+            'relative whitespace-pre-line text-[15px] leading-[1.95]',
+            empty ? 'text-neutral-400' : 'text-neutral-800',
+          )}
+        >
+          {empty ? 'سيظهر نص البطاقة هنا…' : body}
+        </p>
+        {source.trim() && (
+          <div className="relative mt-2 text-[11px] font-medium text-primary-700">
+            — {source.trim()}
+          </div>
+        )}
+      </article>
+    </div>
+  );
+}
+
 function BannerDialog({
   target,
   supervisorId,
@@ -308,7 +364,6 @@ function BannerDialog({
   onSaved: () => void;
 }) {
   const existing = target && target !== 'new' ? target : null;
-  const [kind, setKind] = React.useState<BannerKind>('ayah');
   const [body, setBody] = React.useState('');
   const [source, setSource] = React.useState('');
   const [isActive, setIsActive] = React.useState(true);
@@ -317,7 +372,6 @@ function BannerDialog({
 
   React.useEffect(() => {
     if (!target) return;
-    setKind(existing?.kind ?? 'ayah');
     setBody(existing?.body ?? '');
     setSource(existing?.source ?? '');
     setIsActive(existing?.isActive ?? true);
@@ -326,7 +380,7 @@ function BannerDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const parsed = bannerSchema.safeParse({ kind, body, source, isActive });
+    const parsed = bannerSchema.safeParse({ body, source, isActive });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'خطأ في البيانات');
       return;
@@ -335,7 +389,6 @@ function BannerDialog({
     setSubmitting(true);
     setError(null);
     const values = {
-      kind: parsed.data.kind,
       body: parsed.data.body,
       source: parsed.data.source,
       is_active: parsed.data.isActive,
@@ -365,21 +418,6 @@ function BannerDialog({
           <DialogBody>
             {error && <Alert variant="danger">{error}</Alert>}
 
-            <Field label="النوع">
-              <Select value={kind} onValueChange={(v) => setKind(v as BannerKind)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {BANNER_KINDS.map((k) => (
-                    <SelectItem key={k} value={k}>
-                      {BANNER_KIND_LABELS[k]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-
             <Field
               label="النص"
               htmlFor="banner-body"
@@ -389,9 +427,9 @@ function BannerDialog({
                 id="banner-body"
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                placeholder={BANNER_KIND_PLACEHOLDERS[kind]}
+                placeholder="اكتب آية أو حديثاً أو حكمة أو أي تذكير للموظفين…"
                 maxLength={BANNER_BODY_MAX}
-                className="min-h-32"
+                className="min-h-36 leading-[1.9]"
                 autoFocus
                 required
               />
@@ -403,8 +441,11 @@ function BannerDialog({
                 value={source}
                 onChange={(e) => setSource(e.target.value)}
                 placeholder="البقرة: ٢٥٥"
+                maxLength={BANNER_SOURCE_MAX}
               />
             </Field>
+
+            <EmployeePreview body={body} source={source} />
 
             <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-neutral-700">
               <Checkbox checked={isActive} onCheckedChange={(v) => setIsActive(v === true)} />
