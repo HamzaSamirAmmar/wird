@@ -8,7 +8,19 @@ import {
   type LeaderboardEntry,
   type LeaderboardWindow,
 } from '@wird/domain';
-import { Avatar, Card, EmptyState, ProgressBar, Skeleton, cn } from '@wird/ui-web';
+import {
+  Avatar,
+  Card,
+  EmptyState,
+  Skeleton,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  cn,
+} from '@wird/ui-web';
 import { useAuth } from '../lib/auth-context';
 import { supabase } from '../lib/supabase';
 import { todayISO } from '../lib/dates';
@@ -49,6 +61,7 @@ function motivation(
   above: LeaderboardEntry | undefined,
 ): string {
   if (me.assignedCount === 0) return 'لم تبدأ بعد — أكمل ورد اليوم لتدخل السباق.';
+  if (me.completedCount === 0) return 'لم تُكمل أي ورد بعد — ابدأ الآن وستصعد سريعًا.';
   if (rank === 1) return 'أنت في الصدارة، ما شاء الله — واصِل التقدّم.';
   if (me.completionRate >= 1) return 'أتممت كل أوردك — ثبِّت مركزك بالمواظبة.';
   if (above) {
@@ -173,10 +186,12 @@ export default function Leaderboard() {
   }
 
   const hasData = entries !== null && entries.some((e) => e.assignedCount > 0);
+  // Duties may be assigned yet nothing completed — a podium of 0%s crowning nobody is worse
+  // than an honest "no one has started" prompt.
+  const anyProgress = entries !== null && entries.some((e) => e.completedCount > 0);
   const myIndex = entries?.findIndex((e) => e.isMe) ?? -1;
   const myEntry = myIndex >= 0 && entries ? entries[myIndex]! : null;
   const podium = entries?.slice(0, 3) ?? [];
-  const rest = entries?.slice(3) ?? [];
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col bg-canvas">
@@ -241,12 +256,16 @@ export default function Leaderboard() {
           <Card className="mt-4">
             <EmptyState icon={Trophy} title={error} description="حاول مرة أخرى بعد قليل." />
           </Card>
-        ) : !hasData ? (
+        ) : !hasData || !anyProgress ? (
           <Card className="mt-4">
             <EmptyState
               icon={Trophy}
               title="السباق لم يبدأ بعد"
-              description="أكمل وردك اليوم، وكن أول من يتصدّر مجموعته."
+              description={
+                hasData
+                  ? 'لم يُكمل أحد ورده في هذه المدة — كن أول المتصدّرين.'
+                  : 'أكمل وردك اليوم، وكن أول من يتصدّر مجموعته.'
+              }
             />
           </Card>
         ) : (
@@ -262,18 +281,7 @@ export default function Leaderboard() {
 
             <Podium spots={podium} />
 
-            {rest.length > 0 && (
-              <div>
-                <div className="mb-2 px-1 text-xs font-semibold text-neutral-500">
-                  بقية المجموعة
-                </div>
-                <ol className="flex flex-col gap-2">
-                  {rest.map((entry, i) => (
-                    <LeaderRow key={entry.employeeId} rank={i + 4} entry={entry} delayMs={i * 40} />
-                  ))}
-                </ol>
-              </div>
-            )}
+            <RankTable entries={entries!} />
           </div>
         )}
       </main>
@@ -294,7 +302,7 @@ function HeroCard({
 }) {
   const pct = Math.round(entry.completionRate * 100);
   const shownPct = Math.round(useCountUp(pct));
-  const leading = rank === 1;
+  const leading = rank === 1 && entry.completedCount > 0;
   const milestone = streakMilestone(entry.currentStreak);
 
   return (
@@ -397,17 +405,22 @@ function Podium({ spots }: { spots: LeaderboardEntry[] }) {
 function PodiumSpot({ entry, place }: { entry: LeaderboardEntry; place: number }) {
   const s = podiumStyle[place]!;
   const pct = Math.round(entry.completionRate * 100);
-  const nothing = entry.assignedCount === 0;
+  // Someone can land on the podium with nothing done (small group, everyone else at 0 too):
+  // don't dress a 0 up with a medal ring.
+  const nothing = entry.completedCount === 0;
 
   return (
     <div className={cn('flex w-1/3 flex-col items-center', s.height)}>
-      {place === 1 && <Crown className="mb-1 h-5 w-5 text-accent-500" />}
+      {place === 1 && !nothing && <Crown className="mb-1 h-5 w-5 text-accent-500" />}
 
       <div className="relative">
         <Avatar
           name={entry.fullName}
           size={place === 1 ? 'lg' : 'md'}
-          className={cn(s.ring, place === 1 && 'shadow-glow')}
+          className={cn(
+            nothing ? 'ring-2 ring-neutral-200' : s.ring,
+            place === 1 && !nothing && 'shadow-glow',
+          )}
         />
         {entry.isMe && (
           <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-primary-700 px-1.5 py-0.5 text-[9px] font-medium text-white">
@@ -448,68 +461,88 @@ function PodiumSpot({ entry, place }: { entry: LeaderboardEntry; place: number }
   );
 }
 
-function LeaderRow({
-  rank,
-  entry,
-  delayMs,
-}: {
-  rank: number;
-  entry: LeaderboardEntry;
-  delayMs: number;
-}) {
-  const pct = Math.round(entry.completionRate * 100);
-  const nothing = entry.assignedCount === 0;
+const rankTint: Record<number, string> = {
+  1: 'text-accent-700',
+  2: 'text-neutral-500',
+  3: 'text-accent-600',
+};
 
+/** The complete group ranking, every member, below the podium. */
+function RankTable({ entries }: { entries: LeaderboardEntry[] }) {
   return (
-    <li className="animate-slide-up" style={{ animationDelay: `${delayMs}ms` }}>
-      <Card className={cn('flex items-center gap-3 p-3', entry.isMe && 'ring-2 ring-primary-300')}>
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-sm font-bold tabular-nums text-neutral-500 ring-1 ring-neutral-200">
-          {rank.toLocaleString('ar-EG')}
-        </span>
-
-        <Avatar name={entry.fullName} size="sm" />
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-semibold text-neutral-900">
-              {entry.fullName}
-            </span>
-            {entry.isMe && (
-              <span className="shrink-0 rounded-full bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-700">
-                أنت
-              </span>
-            )}
-          </div>
-          <div className="mt-1.5 flex items-center gap-2">
-            <ProgressBar
-              value={entry.completedCount}
-              max={entry.assignedCount || 1}
-              tone={pct === 100 ? 'mint' : 'brand'}
-              className="flex-1"
-            />
-            <span className="shrink-0 text-[11px] tabular-nums text-neutral-500">
-              {nothing ? '—' : `${entry.completedCount}/${entry.assignedCount}`}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <span
-            className={cn(
-              'text-sm font-bold tabular-nums',
-              nothing ? 'text-neutral-300' : pct === 100 ? 'text-mint-600' : 'text-neutral-800',
-            )}
-          >
-            {nothing ? '—' : `${pct.toLocaleString('ar-EG')}%`}
-          </span>
-          {entry.currentStreak > 0 && (
-            <span className="flex items-center gap-0.5 text-[11px] font-medium text-accent-600">
-              <Flame className="h-3 w-3" />
-              {entry.currentStreak.toLocaleString('ar-EG')}
-            </span>
-          )}
-        </div>
+    <div>
+      <div className="mb-2 px-1 text-xs font-semibold text-neutral-500">الترتيب الكامل</div>
+      <Card className="animate-fade-in overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-9 px-2 text-center">#</TableHead>
+              <TableHead className="px-2">الاسم</TableHead>
+              <TableHead className="px-2 text-center">مكتمل</TableHead>
+              <TableHead className="px-2 text-center">الإنجاز</TableHead>
+              <TableHead className="px-2 text-center">
+                <Flame className="mx-auto h-3.5 w-3.5" />
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {entries.map((entry, i) => {
+              const rank = i + 1;
+              const pct = Math.round(entry.completionRate * 100);
+              const nothing = entry.completedCount === 0;
+              return (
+                <TableRow key={entry.employeeId} className={cn(entry.isMe && 'bg-primary-50')}>
+                  <TableCell
+                    className={cn(
+                      'px-2 text-center text-sm font-bold tabular-nums',
+                      rankTint[rank] ?? 'text-neutral-400',
+                    )}
+                  >
+                    {rank.toLocaleString('ar-EG')}
+                  </TableCell>
+                  <TableCell className="px-2">
+                    <div className="flex items-center gap-2">
+                      <Avatar name={entry.fullName} size="sm" />
+                      <span className="truncate font-medium text-neutral-900">
+                        {firstName(entry.fullName)}
+                      </span>
+                      {entry.isMe && (
+                        <span className="shrink-0 rounded-full bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-700">
+                          أنت
+                        </span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="px-2 text-center text-xs tabular-nums text-neutral-500">
+                    {nothing ? '—' : `${entry.completedCount}/${entry.assignedCount}`}
+                  </TableCell>
+                  <TableCell
+                    className={cn(
+                      'px-2 text-center text-sm font-bold tabular-nums',
+                      nothing
+                        ? 'text-neutral-300'
+                        : pct === 100
+                          ? 'text-mint-600'
+                          : 'text-neutral-800',
+                    )}
+                  >
+                    {nothing ? '—' : `${pct.toLocaleString('ar-EG')}%`}
+                  </TableCell>
+                  <TableCell className="px-2 text-center">
+                    {entry.currentStreak > 0 ? (
+                      <span className="text-xs font-medium tabular-nums text-accent-600">
+                        {entry.currentStreak.toLocaleString('ar-EG')}
+                      </span>
+                    ) : (
+                      <span className="text-neutral-300">—</span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
       </Card>
-    </li>
+    </div>
   );
 }
