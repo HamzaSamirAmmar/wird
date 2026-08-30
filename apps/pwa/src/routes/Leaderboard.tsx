@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Navigate } from 'react-router-dom';
-import { CloudOff, Flame, Trophy } from 'lucide-react';
+import { CloudOff, Crown, Flame, Trophy } from 'lucide-react';
 import {
   LEADERBOARD_WINDOWS,
   LEADERBOARD_WINDOW_LABELS,
@@ -23,6 +23,66 @@ function readSavedWindow(): LeaderboardWindow {
     /* private mode / disabled storage — fall through to the default */
   }
   return '7d';
+}
+
+function firstName(full: string) {
+  return full.trim().split(/\s+/)[0] ?? full;
+}
+
+/** A short milestone label once a streak crosses a meaningful threshold, else null. */
+function streakMilestone(n: number): string | null {
+  if (n >= 30) return 'شهر كامل من الإتمام 🔥';
+  if (n >= 14) return 'أسبوعان متتاليان';
+  if (n >= 7) return 'أسبوع كامل متتالٍ';
+  return null;
+}
+
+function ordinal(rank: number): string {
+  const words = ['', 'الأول', 'الثاني', 'الثالث', 'الرابع', 'الخامس', 'السادس', 'السابع', 'الثامن'];
+  return words[rank] ?? `المركز ${rank.toLocaleString('ar-EG')}`;
+}
+
+/** Encouraging one-liner tuned to where the viewer sits. */
+function motivation(
+  me: LeaderboardEntry,
+  rank: number,
+  above: LeaderboardEntry | undefined,
+): string {
+  if (me.assignedCount === 0) return 'لم تبدأ بعد — أكمل ورد اليوم لتدخل السباق.';
+  if (rank === 1) return 'أنت في الصدارة، ما شاء الله — واصِل التقدّم.';
+  if (me.completionRate >= 1) return 'أتممت كل أوردك — ثبِّت مركزك بالمواظبة.';
+  if (above) {
+    const gap = Math.round((above.completionRate - me.completionRate) * 100);
+    if (gap <= 0) return `أنت على بُعد خطوة من ${ordinal(rank - 1)}.`;
+    if (gap <= 15)
+      return `يفصلك ${gap.toLocaleString('ar-EG')}% فقط عن ${firstName(above.fullName)} — تقدَّم!`;
+  }
+  return 'واصِل، كل واجب يقرّبك من القمة.';
+}
+
+/** Eases a number toward its target across ~0.65s; animates on mount and on every change. */
+function useCountUp(target: number, duration = 650) {
+  const [value, setValue] = React.useState(0);
+  const prev = React.useRef(0);
+
+  React.useEffect(() => {
+    const from = prev.current;
+    prev.current = target;
+    if (from === target) return;
+
+    let raf = 0;
+    const start = performance.now();
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setValue(from + (target - from) * eased);
+      if (t < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+
+  return value;
 }
 
 export default function Leaderboard() {
@@ -114,10 +174,13 @@ export default function Leaderboard() {
 
   const hasData = entries !== null && entries.some((e) => e.assignedCount > 0);
   const myIndex = entries?.findIndex((e) => e.isMe) ?? -1;
+  const myEntry = myIndex >= 0 && entries ? entries[myIndex]! : null;
+  const podium = entries?.slice(0, 3) ?? [];
+  const rest = entries?.slice(3) ?? [];
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col bg-canvas">
-      <header className="relative overflow-hidden bg-linear-to-br from-primary-700 via-primary-800 to-primary-950 px-4 pb-5 pt-safe">
+      <header className="relative overflow-hidden bg-linear-to-br from-primary-700 via-primary-800 to-primary-950 px-4 pb-6 pt-safe">
         <div className="mihrab-pattern absolute inset-0 opacity-70" />
 
         <div className="relative pt-3">
@@ -152,9 +215,9 @@ export default function Leaderboard() {
         </div>
       </header>
 
-      <main className="flex-1 px-4 py-4 pb-[calc(6rem+env(safe-area-inset-bottom))]">
+      <main className="flex-1 px-4 pb-[calc(6rem+env(safe-area-inset-bottom))]">
         {!isOnline && entries === null ? (
-          <Card>
+          <Card className="mt-4">
             <EmptyState
               icon={CloudOff}
               title="لوحة الصدارة تحتاج اتصالاً"
@@ -162,8 +225,9 @@ export default function Leaderboard() {
             />
           </Card>
         ) : entries === null ? (
-          <div className="flex flex-col gap-2">
-            {Array.from({ length: 5 }, (_, i) => (
+          <div className="mt-4 flex flex-col gap-2">
+            <Skeleton className="h-28 w-full rounded-2xl" />
+            {Array.from({ length: 4 }, (_, i) => (
               <Card key={i} className="flex items-center gap-3 p-3">
                 <Skeleton className="h-8 w-8 rounded-full" />
                 <div className="flex flex-1 flex-col gap-2">
@@ -174,63 +238,233 @@ export default function Leaderboard() {
             ))}
           </div>
         ) : error ? (
-          <Card>
+          <Card className="mt-4">
             <EmptyState icon={Trophy} title={error} description="حاول مرة أخرى بعد قليل." />
           </Card>
         ) : !hasData ? (
-          <Card>
+          <Card className="mt-4">
             <EmptyState
               icon={Trophy}
-              title="لا توجد بيانات كافية بعد"
-              description="أكمل وردك اليومي، وستظهر النتائج هنا."
+              title="السباق لم يبدأ بعد"
+              description="أكمل وردك اليوم، وكن أول من يتصدّر مجموعته."
             />
           </Card>
         ) : (
-          <ol className="flex flex-col gap-2">
-            {entries.map((entry, i) => (
-              <LeaderRow key={entry.employeeId} rank={i + 1} entry={entry} />
-            ))}
-          </ol>
+          <div className="flex flex-col gap-4 pt-4">
+            {myEntry && (
+              <HeroCard
+                entry={myEntry}
+                rank={myIndex + 1}
+                total={entries!.length}
+                above={myIndex > 0 ? entries![myIndex - 1] : undefined}
+              />
+            )}
+
+            <Podium spots={podium} />
+
+            {rest.length > 0 && (
+              <div>
+                <div className="mb-2 px-1 text-xs font-semibold text-neutral-500">
+                  بقية المجموعة
+                </div>
+                <ol className="flex flex-col gap-2">
+                  {rest.map((entry, i) => (
+                    <LeaderRow key={entry.employeeId} rank={i + 4} entry={entry} delayMs={i * 40} />
+                  ))}
+                </ol>
+              </div>
+            )}
+          </div>
         )}
       </main>
+    </div>
+  );
+}
 
-      {myIndex >= 5 && entries && (
-        <div className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] mx-auto max-w-md px-4">
-          <div className="rounded-xl bg-primary-800 px-4 py-2.5 text-white shadow-lg ring-1 ring-primary-900/20">
-            <div className="flex items-center gap-3 text-sm">
-              <span className="font-semibold tabular-nums">#{myIndex + 1}</span>
-              <span className="flex-1 truncate">مركزك</span>
-              <span className="tabular-nums">
-                {Math.round(entries[myIndex]!.completionRate * 100)}%
+function HeroCard({
+  entry,
+  rank,
+  total,
+  above,
+}: {
+  entry: LeaderboardEntry;
+  rank: number;
+  total: number;
+  above: LeaderboardEntry | undefined;
+}) {
+  const pct = Math.round(entry.completionRate * 100);
+  const shownPct = Math.round(useCountUp(pct));
+  const leading = rank === 1;
+  const milestone = streakMilestone(entry.currentStreak);
+
+  return (
+    <div
+      className={cn(
+        'relative overflow-hidden rounded-2xl p-4 text-white shadow-md animate-slide-up',
+        leading
+          ? 'bg-linear-to-br from-accent-500 to-accent-700'
+          : 'bg-linear-to-br from-primary-700 to-primary-950',
+      )}
+    >
+      <div className="mihrab-pattern absolute inset-0 opacity-40" />
+      {leading && <Crown className="absolute -left-2 -top-2 h-16 w-16 rotate-12 text-white/10" />}
+
+      <div className="relative flex items-center gap-4">
+        <div className="flex shrink-0 flex-col items-center">
+          <span className="text-[11px] text-white/70">مركزك</span>
+          <span className="font-display text-3xl font-bold leading-none tabular-nums">
+            {rank.toLocaleString('ar-EG')}
+          </span>
+          <span className="text-[11px] text-white/60">من {total.toLocaleString('ar-EG')}</span>
+        </div>
+
+        <div className="h-14 w-px shrink-0 bg-white/15" />
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-2xl font-bold tabular-nums">{shownPct}%</span>
+            <span className="text-xs text-white/70">إنجاز</span>
+            {entry.currentStreak > 0 && (
+              <span className="ms-auto flex items-center gap-1 rounded-full bg-white/15 px-2 py-0.5 text-xs font-medium">
+                <Flame className="h-3.5 w-3.5" />
+                {entry.currentStreak.toLocaleString('ar-EG')}
               </span>
-            </div>
+            )}
           </div>
+
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/15">
+            <div
+              className="h-full rounded-full bg-white transition-[width] duration-700 ease-(--ease-out-soft)"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+
+          <p className="mt-2 text-xs leading-relaxed text-white/90">
+            {motivation(entry, rank, above)}
+          </p>
+        </div>
+      </div>
+
+      {milestone && (
+        <div className="relative mt-3 flex items-center gap-1.5 rounded-lg bg-white/12 px-2.5 py-1.5 text-xs font-medium">
+          <Flame className="h-3.5 w-3.5" />
+          {milestone}
         </div>
       )}
     </div>
   );
 }
 
-const rankAccent: Record<number, string> = {
-  1: 'bg-accent-100 text-accent-800 ring-accent-300',
-  2: 'bg-neutral-200 text-neutral-700 ring-neutral-300',
-  3: 'bg-accent-50 text-accent-700 ring-accent-200',
+const podiumStyle: Record<
+  number,
+  { ring: string; pedestal: string; medal: string; height: string }
+> = {
+  1: {
+    ring: 'ring-2 ring-accent-400',
+    pedestal: 'bg-linear-to-b from-accent-200 to-accent-100 h-20',
+    medal: 'text-accent-700',
+    height: '',
+  },
+  2: {
+    ring: 'ring-2 ring-neutral-300',
+    pedestal: 'bg-neutral-200 h-14',
+    medal: 'text-neutral-500',
+    height: 'mt-6',
+  },
+  3: {
+    ring: 'ring-2 ring-accent-200',
+    pedestal: 'bg-accent-50 h-11',
+    medal: 'text-accent-600',
+    height: 'mt-9',
+  },
 };
 
-function LeaderRow({ rank, entry }: { rank: number; entry: LeaderboardEntry }) {
+function Podium({ spots }: { spots: LeaderboardEntry[] }) {
+  // Classic podium order: 2nd, 1st, 3rd — so the winner sits centre and tallest.
+  const ordered = [spots[1], spots[0], spots[2]];
+
+  return (
+    <div className="flex items-end justify-center gap-2 animate-fade-in">
+      {ordered.map((entry, i) => {
+        const place = i === 0 ? 2 : i === 1 ? 1 : 3;
+        if (!entry) return <div key={place} className="w-1/4" />;
+        return <PodiumSpot key={entry.employeeId} entry={entry} place={place} />;
+      })}
+    </div>
+  );
+}
+
+function PodiumSpot({ entry, place }: { entry: LeaderboardEntry; place: number }) {
+  const s = podiumStyle[place]!;
   const pct = Math.round(entry.completionRate * 100);
   const nothing = entry.assignedCount === 0;
 
   return (
-    <li>
+    <div className={cn('flex w-1/3 flex-col items-center', s.height)}>
+      {place === 1 && <Crown className="mb-1 h-5 w-5 text-accent-500" />}
+
+      <div className="relative">
+        <Avatar
+          name={entry.fullName}
+          size={place === 1 ? 'lg' : 'md'}
+          className={cn(s.ring, place === 1 && 'shadow-glow')}
+        />
+        {entry.isMe && (
+          <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-primary-700 px-1.5 py-0.5 text-[9px] font-medium text-white">
+            أنت
+          </span>
+        )}
+      </div>
+
+      <div className="mt-2 max-w-full truncate text-center text-xs font-semibold text-neutral-800">
+        {firstName(entry.fullName)}
+      </div>
+      <div
+        className={cn(
+          'text-sm font-bold tabular-nums',
+          nothing ? 'text-neutral-300' : pct === 100 ? 'text-mint-600' : 'text-neutral-700',
+        )}
+      >
+        {nothing ? '—' : `${pct.toLocaleString('ar-EG')}%`}
+      </div>
+      {entry.currentStreak > 0 && (
+        <div className="flex items-center gap-0.5 text-[10px] font-medium text-accent-600">
+          <Flame className="h-2.5 w-2.5" />
+          {entry.currentStreak.toLocaleString('ar-EG')}
+        </div>
+      )}
+
+      <div
+        className={cn(
+          'mt-2 flex w-full items-start justify-center rounded-t-lg pt-1.5',
+          s.pedestal,
+        )}
+      >
+        <span className={cn('font-display text-lg font-bold tabular-nums', s.medal)}>
+          {place.toLocaleString('ar-EG')}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function LeaderRow({
+  rank,
+  entry,
+  delayMs,
+}: {
+  rank: number;
+  entry: LeaderboardEntry;
+  delayMs: number;
+}) {
+  const pct = Math.round(entry.completionRate * 100);
+  const nothing = entry.assignedCount === 0;
+
+  return (
+    <li className="animate-slide-up" style={{ animationDelay: `${delayMs}ms` }}>
       <Card className={cn('flex items-center gap-3 p-3', entry.isMe && 'ring-2 ring-primary-300')}>
-        <span
-          className={cn(
-            'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold tabular-nums ring-1',
-            rankAccent[rank] ?? 'bg-neutral-100 text-neutral-500 ring-neutral-200',
-          )}
-        >
-          {rank}
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-sm font-bold tabular-nums text-neutral-500 ring-1 ring-neutral-200">
+          {rank.toLocaleString('ar-EG')}
         </span>
 
         <Avatar name={entry.fullName} size="sm" />
@@ -266,12 +500,12 @@ function LeaderRow({ rank, entry }: { rank: number; entry: LeaderboardEntry }) {
               nothing ? 'text-neutral-300' : pct === 100 ? 'text-mint-600' : 'text-neutral-800',
             )}
           >
-            {nothing ? '—' : `${pct}%`}
+            {nothing ? '—' : `${pct.toLocaleString('ar-EG')}%`}
           </span>
           {entry.currentStreak > 0 && (
             <span className="flex items-center gap-0.5 text-[11px] font-medium text-accent-600">
               <Flame className="h-3 w-3" />
-              {entry.currentStreak}
+              {entry.currentStreak.toLocaleString('ar-EG')}
             </span>
           )}
         </div>
