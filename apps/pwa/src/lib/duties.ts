@@ -1,18 +1,14 @@
 import { supabase } from './supabase';
-import { addDays, todayISO } from './dates';
-import { db, type CachedDuty, type CachedStep } from './offline';
-
-// The day rail on MyDuties shows the whole Saturday-first week containing the selected day,
-// so when today is late in the week the rail reaches six days back. Syncing a narrower window
-// than the UI can display makes real duties render as "no duties for this day".
-const WINDOW_DAYS_BEFORE = 7;
-const WINDOW_DAYS_AFTER = 7;
+import { earliestVisibleDay, todayISO } from './dates';
+import { db, setLastSyncedAt, type CachedDuty, type CachedStep } from './offline';
 
 function dateWindow() {
-  // Local calendar dates, matching due_date (a plain DATE) and the UI's own day maths.
-  // toISOString() would resolve to the UTC day and disagree by one east of Greenwich.
-  const today = todayISO();
-  return { from: addDays(today, -WINDOW_DAYS_BEFORE), to: addDays(today, WINDOW_DAYS_AFTER) };
+  // Exactly the range the day rail can display — HISTORY_DAYS back through today, nothing
+  // ahead. Syncing narrower than the UI shows makes real duties render as "no duties"; syncing
+  // wider would cache upcoming duties the employee is deliberately not allowed to see.
+  // Local calendar dates, matching due_date (a plain DATE): toISOString() would resolve to the
+  // UTC day and disagree by one east of Greenwich.
+  return { from: earliestVisibleDay(), to: todayISO() };
 }
 
 /** Pulls this employee's nearby duties + steps from Supabase and refreshes the local cache. */
@@ -73,6 +69,10 @@ export async function refreshDutiesFromServer(
     await db.steps.bulkPut(steps);
     await db.duties.bulkPut(duties);
   });
+
+  // Stamped only on a completed sync, so the freshness the UI reports is the truth: a failed
+  // or skipped refresh leaves the previous timestamp standing.
+  await setLastSyncedAt();
 
   return { error: null };
 }
