@@ -242,7 +242,6 @@ export default function MyDuties() {
       <main className="flex-1 px-4 py-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
         <BannerRail />
         <PushNotice />
-        <PushNotice />
 
         {selectedDate !== todayISO() && (
           <button

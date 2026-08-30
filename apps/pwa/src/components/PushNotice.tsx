@@ -5,9 +5,11 @@ import { enablePush, getPushState, type PushState } from '../lib/notifications';
 import { useAuth } from '../lib/auth-context';
 
 /**
- * One-line card on the home screen asking to enable push. Shown only while permission
- * hasn't been decided — the OS prompt must originate from a tap (an iOS requirement),
- * so this is never requested automatically on first load.
+ * One-line card on the home screen asking to enable push. Shown while permission hasn't been
+ * decided — the OS prompt must originate from a tap (an iOS requirement), so this is never
+ * requested automatically on first load — and also when permission is granted but this device
+ * still has no row in fcm_tokens, which is otherwise a silent dead end: the card is the only
+ * way back, and without it a device that failed to register once never registers again.
  */
 export function PushNotice() {
   const { profile } = useAuth();
@@ -35,7 +37,8 @@ export function PushNotice() {
     refresh();
   }
 
-  if (dismissed || state?.status !== 'prompt') return null;
+  const needsRegistration = state?.status === 'granted' && !state.registered;
+  if (dismissed || (state?.status !== 'prompt' && !needsRegistration)) return null;
 
   return (
     <div
@@ -49,7 +52,10 @@ export function PushNotice() {
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium text-neutral-900">تفعيل الإشعارات</div>
         <div className="text-xs leading-relaxed text-neutral-600">
-          {error ?? 'تذكيرات وردك اليومي تصلك حتى مع إغلاق التطبيق'}
+          {error ??
+            (needsRegistration
+              ? 'لم يُسجَّل هذا الجهاز بعد — أعد المحاولة لتصلك التذكيرات'
+              : 'تذكيرات وردك اليومي تصلك حتى مع إغلاق التطبيق')}
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1">
@@ -60,7 +66,7 @@ export function PushNotice() {
           لاحقاً
         </button>
         <Button size="sm" disabled={busy} onClick={handleEnable}>
-          {busy ? 'جارٍ…' : 'تفعيل'}
+          {busy ? 'جارٍ…' : needsRegistration ? 'إعادة المحاولة' : 'تفعيل'}
         </Button>
       </div>
     </div>
