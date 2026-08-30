@@ -10,7 +10,11 @@ export interface CreateWirdClientOptions {
   storage?: SupportedStorage;
 }
 
-export function createWirdClient({ url, anonKey, storage }: CreateWirdClientOptions): WirdSupabaseClient {
+export function createWirdClient({
+  url,
+  anonKey,
+  storage,
+}: CreateWirdClientOptions): WirdSupabaseClient {
   return createClient<Database>(url, anonKey, {
     auth: {
       persistSession: true,

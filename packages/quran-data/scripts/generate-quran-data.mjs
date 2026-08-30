@@ -28,9 +28,9 @@ async function get(url) {
 const [metaXml, textRaw] = await Promise.all([get(META), get(TEXT)]);
 
 // ── page index ──────────────────────────────────────────────────────────────
-const pageStarts = [...metaXml.matchAll(/<page\s+index="(\d+)"\s+sura="(\d+)"\s+aya="(\d+)"\s*\/>/g)].map(
-  (m) => [Number(m[2]), Number(m[3])],
-);
+const pageStarts = [
+  ...metaXml.matchAll(/<page\s+index="(\d+)"\s+sura="(\d+)"\s+aya="(\d+)"\s*\/>/g),
+].map((m) => [Number(m[2]), Number(m[3])]);
 if (pageStarts.length !== TOTAL_PAGES) {
   throw new Error(`Expected ${TOTAL_PAGES} pages, parsed ${pageStarts.length}`);
 }
@@ -58,7 +58,9 @@ if (count !== TOTAL_AYAHS) throw new Error(`Expected ${TOTAL_AYAHS} ayahs, parse
 const { SURAHS } = await import('../src/surahs.ts');
 for (const s of SURAHS) {
   if (bySurah[s.number - 1].length !== s.ayahCount) {
-    throw new Error(`Surah ${s.number}: table says ${s.ayahCount}, text has ${bySurah[s.number - 1].length}`);
+    throw new Error(
+      `Surah ${s.number}: table says ${s.ayahCount}, text has ${bySurah[s.number - 1].length}`,
+    );
   }
 }
 
@@ -82,4 +84,6 @@ writeFileSync(
   }),
 );
 
-console.log(`wrote pageStarts.ts (${pageStarts.length} pages) and quran-uthmani.json (${count} ayahs)`);
+console.log(
+  `wrote pageStarts.ts (${pageStarts.length} pages) and quran-uthmani.json (${count} ayahs)`,
+);

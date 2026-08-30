@@ -60,7 +60,8 @@ export interface AyahRef {
 export function ayahsOnPage(page: number): AyahRef[] {
   const startIndex = PAGE_START_INDEXES[page - 1];
   if (startIndex === undefined) throw new Error(`Invalid page number: ${page}`);
-  const endIndex = (PAGE_START_INDEXES[page] ?? SURAH_OFFSETS[113]! + SURAHS[113]!.ayahCount + 1) - 1;
+  const endIndex =
+    (PAGE_START_INDEXES[page] ?? SURAH_OFFSETS[113]! + SURAHS[113]!.ayahCount + 1) - 1;
 
   const refs: AyahRef[] = [];
   // Walk surah by surah rather than converting each ordinal back, which would be O(n log n).

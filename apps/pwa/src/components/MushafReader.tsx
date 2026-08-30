@@ -8,15 +8,7 @@ import {
   SURAHS,
   type QuranRange,
 } from '@wird/quran-data';
-import {
-  Alert,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  Spinner,
-  cn,
-} from '@wird/ui-web';
+import { Alert, Dialog, DialogContent, DialogHeader, DialogTitle, Spinner, cn } from '@wird/ui-web';
 import { loadQuranText, renderPage, type RenderedAyah } from '../lib/quran-text';
 
 /**
