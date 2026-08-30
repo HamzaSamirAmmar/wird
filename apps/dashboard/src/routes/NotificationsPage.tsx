@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { BellRing, Plus, Send, Trash2 } from 'lucide-react';
+import { BellRing, Plus, Search, Send, Trash2, Zap } from 'lucide-react';
 import {
   NOTIFICATION_AUDIENCES,
   NOTIFICATION_AUDIENCE_LABELS,
@@ -39,6 +39,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
   Textarea,
   cn,
 } from '@wird/ui-web';
@@ -115,6 +119,15 @@ function toCampaign(r: {
   };
 }
 
+/**
+ * A 'now' campaign is a one-off send: it fires once and is thereafter a log entry. 'once' and
+ * 'weekly' are standing rules that keep firing until disabled — which is why only they carry a
+ * meaningful is_active, a next run, and an enable/disable toggle.
+ */
+function isScheduled(c: NotificationCampaign): boolean {
+  return c.scheduleKind !== 'now';
+}
+
 function scheduleSummary(c: NotificationCampaign): string {
   if (c.scheduleKind === 'now') return SCHEDULE_KIND_LABELS.now;
   if (c.scheduleKind === 'once') {
@@ -122,7 +135,7 @@ function scheduleSummary(c: NotificationCampaign): string {
   }
   const day = c.recurWeekday !== null ? WEEKDAY_LABELS[c.recurWeekday] : '—';
   const time = c.recurTime?.slice(0, 5) ?? '—';
-  return `كل ${day} ${time} (بتوقيت الرياض)`;
+  return `كل ${day} ${time} (بتوقيت دمشق)`;
 }
 
 /** Immediate dispatch of a campaign through the push-notifications edge function. */
@@ -154,6 +167,11 @@ export default function NotificationsPage() {
   const [composing, setComposing] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState<NotificationCampaign | null>(null);
   const [sendingNow, setSendingNow] = React.useState<string | null>(null);
+  const [tab, setTab] = React.useState<'scheduled' | 'instant'>('scheduled');
+  const [query, setQuery] = React.useState('');
+  // '*' rather than '' — Radix Select reserves the empty string, and 'all' is already a
+  // real audience ("الجميع"), so the no-filter sentinel has to be neither.
+  const [audienceFilter, setAudienceFilter] = React.useState<NotificationAudience | '*'>('*');
 
   const load = React.useCallback(async () => {
     const { data, error } = await supabase
@@ -215,6 +233,24 @@ export default function NotificationsPage() {
     load();
   }
 
+  const needle = query.trim().toLowerCase();
+  const filtered = React.useMemo(
+    () =>
+      campaigns?.filter(
+        (c) =>
+          (audienceFilter === '*' || c.audience === audienceFilter) &&
+          (!needle ||
+            c.title.toLowerCase().includes(needle) ||
+            c.body.toLowerCase().includes(needle)),
+      ) ?? null,
+    [campaigns, audienceFilter, needle],
+  );
+  const scheduled = filtered?.filter(isScheduled) ?? [];
+  const instant = filtered?.filter((c) => !isScheduled(c)) ?? [];
+  // Distinguishes "nothing matches your filters" from "nothing exists yet" — the second
+  // wants a create button, the first wants you to widen the search.
+  const filtersActive = !!needle || audienceFilter !== '*';
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -230,138 +266,225 @@ export default function NotificationsPage() {
 
       {notice && <Alert variant={notice.tone}>{notice.text}</Alert>}
 
-      <Card className="overflow-hidden">
-        {campaigns === null ? (
+      {campaigns === null ? (
+        <Card>
           <SkeletonRows rows={3} />
-        ) : campaigns.length === 0 ? (
-          <EmptyState
-            icon={BellRing}
-            title="لا توجد إشعارات بعد"
-            description="أرسل إشعاراً فورياً للجميع، أو جدول تذكيراً أسبوعياً لمن لم يُتمّ واجبه."
-            action={
-              <Button size="sm" onClick={() => setComposing(true)}>
-                <Plus className="h-4 w-4" />
-                إشعار جديد
-              </Button>
-            }
-          />
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>الإشعار</TableHead>
-                <TableHead>المرسل إليهم</TableHead>
-                <TableHead>الجدولة</TableHead>
-                <TableHead>آخر إرسال</TableHead>
-                <TableHead>مفعّل</TableHead>
-                <TableHead>
-                  <span className="sr-only">إجراءات</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {campaigns.map((campaign) => (
-                <TableRow
-                  key={campaign.id}
-                  className={cn(!campaign.isActive && 'bg-neutral-50/70')}
+        </Card>
+      ) : (
+        <Card className="overflow-hidden">
+          <Tabs value={tab} onValueChange={(v) => setTab(v as 'scheduled' | 'instant')}>
+            <div className="flex flex-wrap items-center gap-3 border-b border-neutral-100 p-4">
+              <TabsList>
+                <TabsTrigger value="scheduled">المجدولة ({scheduled.length})</TabsTrigger>
+                <TabsTrigger value="instant">الفورية ({instant.length})</TabsTrigger>
+              </TabsList>
+
+              <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
+                <Input
+                  icon={<Search className="h-4 w-4" />}
+                  placeholder="ابحث في العنوان أو النص"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className="h-10 w-full max-w-xs"
+                />
+                <Select
+                  value={audienceFilter}
+                  onValueChange={(v) => setAudienceFilter(v as NotificationAudience | '*')}
                 >
-                  <TableCell>
-                    <div
-                      className={cn(
-                        'font-medium text-neutral-900',
-                        !campaign.isActive && 'text-neutral-500',
-                      )}
-                    >
-                      {campaign.title}
-                    </div>
-                    {/* Bodies run to 500 chars; two lines is enough to tell campaigns apart. */}
-                    <p className="mt-0.5 line-clamp-2 max-w-sm text-xs leading-relaxed text-neutral-500">
-                      {campaign.body}
-                    </p>
-                  </TableCell>
+                  <SelectTrigger className="h-10 w-48">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="*">كل الفئات</SelectItem>
+                    {NOTIFICATION_AUDIENCES.map((a) => (
+                      <SelectItem key={a} value={a}>
+                        {NOTIFICATION_AUDIENCE_LABELS[a]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
 
-                  <TableCell>
-                    <Badge variant={audienceBadge[campaign.audience]} dot>
-                      {NOTIFICATION_AUDIENCE_LABELS[campaign.audience]}
-                    </Badge>
-                  </TableCell>
-
-                  <TableCell>
-                    <div className="text-neutral-700">{scheduleSummary(campaign)}</div>
-                    {campaign.isActive && campaign.nextRunAt && (
-                      <div className="mt-0.5 text-xs text-primary-700">
-                        القادم: {compactDateTime.format(new Date(campaign.nextRunAt))}
-                      </div>
-                    )}
-                  </TableCell>
-
-                  <TableCell>
-                    {campaign.lastSentAt ? (
-                      <>
-                        <div className="text-neutral-700">
-                          {compactDateTime.format(new Date(campaign.lastSentAt))}
-                        </div>
-                        <div className="mt-0.5 text-xs tabular-nums text-neutral-500">
-                          {campaign.lastSentCount ?? 0} جهاز
-                        </div>
-                      </>
-                    ) : (
-                      <span className="text-neutral-400">—</span>
-                    )}
-                    {campaign.lastError && (
-                      /* The message itself was never surfaced anywhere before — only a badge
-                         saying an error existed, which is unactionable on its own. */
-                      <div className="mt-1" title={campaign.lastError}>
-                        <Badge variant="danger" dot>
-                          فشل الإرسال
-                        </Badge>
-                      </div>
-                    )}
-                  </TableCell>
-
-                  <TableCell>
-                    <Checkbox
-                      checked={campaign.isActive}
-                      onCheckedChange={() => toggleActive(campaign)}
-                      aria-label={campaign.isActive ? 'تعطيل الإشعار' : 'تفعيل الإشعار'}
-                    />
-                  </TableCell>
-
-                  <TableCell>
-                    <div className="flex items-center justify-end gap-1">
-                      {campaign.isActive && campaign.nextRunAt && (
-                        <IconButton
-                          aria-label="إرسال الآن"
-                          disabled={sendingNow === campaign.id}
-                          onClick={() => dispatchNow(campaign)}
-                        >
-                          <Send
-                            className={cn('h-4 w-4', sendingNow === campaign.id && 'animate-pulse')}
-                          />
-                        </IconButton>
-                      )}
-                      <IconButton
-                        aria-label="حذف"
-                        onClick={() => setConfirmDelete(campaign)}
-                        className="text-danger-600 hover:bg-danger-50"
+            {/* Scheduled: standing rules. Enable/disable and next-run are the whole point. */}
+            <TabsContent value="scheduled">
+              {scheduled.length === 0 ? (
+                <EmptyState
+                  icon={BellRing}
+                  title={filtersActive ? 'لا نتائج مطابقة' : 'لا توجد إشعارات مجدولة'}
+                  description={
+                    filtersActive
+                      ? 'جرّب كلمة بحث أخرى أو غيّر فئة المرسل إليهم.'
+                      : 'جدول تذكيراً أسبوعياً، أو إشعاراً لمرة واحدة في وقت تحدده.'
+                  }
+                  action={
+                    filtersActive ? undefined : (
+                      <Button size="sm" onClick={() => setComposing(true)}>
+                        <Plus className="h-4 w-4" />
+                        إشعار جديد
+                      </Button>
+                    )
+                  }
+                />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>الإشعار</TableHead>
+                      <TableHead>المرسل إليهم</TableHead>
+                      <TableHead>الجدولة</TableHead>
+                      <TableHead>آخر إرسال</TableHead>
+                      <TableHead>مفعّل</TableHead>
+                      <TableHead>
+                        <span className="sr-only">إجراءات</span>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {scheduled.map((campaign) => (
+                      <TableRow
+                        key={campaign.id}
+                        className={cn(!campaign.isActive && 'bg-neutral-50/70')}
                       >
-                        <Trash2 className="h-4 w-4" />
-                      </IconButton>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </Card>
+                        <TableCell>
+                          <CampaignCell campaign={campaign} muted={!campaign.isActive} />
+                        </TableCell>
+                        <TableCell>
+                          <AudienceCell campaign={campaign} />
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-neutral-700">{scheduleSummary(campaign)}</div>
+                          {campaign.isActive && campaign.nextRunAt && (
+                            <div className="mt-0.5 text-xs text-primary-700">
+                              القادم: {compactDateTime.format(new Date(campaign.nextRunAt))}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <LastSendCell campaign={campaign} />
+                        </TableCell>
+                        <TableCell>
+                          <Checkbox
+                            checked={campaign.isActive}
+                            onCheckedChange={() => toggleActive(campaign)}
+                            aria-label={campaign.isActive ? 'تعطيل الإشعار' : 'تفعيل الإشعار'}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <RowActions
+                            campaign={campaign}
+                            canSend={campaign.isActive && !!campaign.nextRunAt}
+                            sending={sendingNow === campaign.id}
+                            onSend={() => dispatchNow(campaign)}
+                            onDelete={() => setConfirmDelete(campaign)}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </TabsContent>
+
+            {/* Instant: a send log. No enable/disable — a one-off send has nothing to disable
+                once it has fired, and toggling it off before it fires just loses it silently. */}
+            <TabsContent value="instant">
+              {instant.length === 0 ? (
+                <EmptyState
+                  icon={Zap}
+                  title={filtersActive ? 'لا نتائج مطابقة' : 'لا توجد إشعارات فورية'}
+                  description={
+                    filtersActive
+                      ? 'جرّب كلمة بحث أخرى أو غيّر فئة المرسل إليهم.'
+                      : 'الإشعارات التي ترسلها فوراً تظهر هنا مع نتيجة كل إرسال.'
+                  }
+                  action={
+                    filtersActive ? undefined : (
+                      <Button size="sm" onClick={() => setComposing(true)}>
+                        <Plus className="h-4 w-4" />
+                        إشعار جديد
+                      </Button>
+                    )
+                  }
+                />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>الإشعار</TableHead>
+                      <TableHead>المرسل إليهم</TableHead>
+                      <TableHead>أُرسل في</TableHead>
+                      <TableHead>النتيجة</TableHead>
+                      <TableHead>
+                        <span className="sr-only">إجراءات</span>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {instant.map((campaign) => (
+                      <TableRow key={campaign.id}>
+                        <TableCell>
+                          <CampaignCell campaign={campaign} />
+                        </TableCell>
+                        <TableCell>
+                          <AudienceCell campaign={campaign} />
+                        </TableCell>
+                        <TableCell>
+                          {campaign.lastSentAt ? (
+                            <span className="text-neutral-700">
+                              {compactDateTime.format(new Date(campaign.lastSentAt))}
+                            </span>
+                          ) : (
+                            /* Created but the immediate dispatch did not land; the cron
+                               dispatcher still owns it while next_run_at is set. */
+                            <Badge variant="in_progress" dot>
+                              بانتظار الإرسال
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {campaign.lastError ? (
+                            <div title={campaign.lastError}>
+                              <Badge variant="danger" dot>
+                                فشل الإرسال
+                              </Badge>
+                            </div>
+                          ) : campaign.lastSentAt ? (
+                            <span className="tabular-nums text-neutral-700">
+                              {campaign.lastSentCount ?? 0} جهاز
+                            </span>
+                          ) : (
+                            <span className="text-neutral-400">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <RowActions
+                            campaign={campaign}
+                            canSend={!!campaign.nextRunAt}
+                            sending={sendingNow === campaign.id}
+                            onSend={() => dispatchNow(campaign)}
+                            onDelete={() => setConfirmDelete(campaign)}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </TabsContent>
+          </Tabs>
+        </Card>
+      )}
 
       <ComposeDialog
         open={composing}
         supervisorId={profile?.id ?? ''}
         onClose={() => setComposing(false)}
-        onSaved={() => {
+        onSaved={(kind) => {
           setComposing(false);
+          // Follow the campaign to its tab, otherwise composing an instant notification while
+          // the scheduled tab is open looks like nothing happened.
+          setTab(kind === 'now' ? 'instant' : 'scheduled');
           load();
         }}
       />
@@ -393,6 +516,87 @@ export default function NotificationsPage() {
   );
 }
 
+function CampaignCell({ campaign, muted }: { campaign: NotificationCampaign; muted?: boolean }) {
+  return (
+    <>
+      <div className={cn('font-medium text-neutral-900', muted && 'text-neutral-500')}>
+        {campaign.title}
+      </div>
+      {/* Bodies run to 500 chars; two lines is enough to tell campaigns apart. */}
+      <p className="mt-0.5 line-clamp-2 max-w-sm text-xs leading-relaxed text-neutral-500">
+        {campaign.body}
+      </p>
+    </>
+  );
+}
+
+function AudienceCell({ campaign }: { campaign: NotificationCampaign }) {
+  return (
+    <Badge variant={audienceBadge[campaign.audience]} dot>
+      {NOTIFICATION_AUDIENCE_LABELS[campaign.audience]}
+    </Badge>
+  );
+}
+
+function LastSendCell({ campaign }: { campaign: NotificationCampaign }) {
+  return (
+    <>
+      {campaign.lastSentAt ? (
+        <>
+          <div className="text-neutral-700">
+            {compactDateTime.format(new Date(campaign.lastSentAt))}
+          </div>
+          <div className="mt-0.5 text-xs tabular-nums text-neutral-500">
+            {campaign.lastSentCount ?? 0} جهاز
+          </div>
+        </>
+      ) : (
+        <span className="text-neutral-400">—</span>
+      )}
+      {campaign.lastError && (
+        /* The message itself was never surfaced anywhere before — only a badge saying an
+           error existed, which is unactionable on its own. */
+        <div className="mt-1" title={campaign.lastError}>
+          <Badge variant="danger" dot>
+            فشل الإرسال
+          </Badge>
+        </div>
+      )}
+    </>
+  );
+}
+
+function RowActions({
+  campaign,
+  canSend,
+  sending,
+  onSend,
+  onDelete,
+}: {
+  campaign: NotificationCampaign;
+  canSend: boolean;
+  sending: boolean;
+  onSend: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-end gap-1">
+      {canSend && (
+        <IconButton aria-label="إرسال الآن" disabled={sending} onClick={onSend}>
+          <Send className={cn('h-4 w-4', sending && 'animate-pulse')} />
+        </IconButton>
+      )}
+      <IconButton
+        aria-label={`حذف ${campaign.title}`}
+        onClick={onDelete}
+        className="text-danger-600 hover:bg-danger-50"
+      >
+        <Trash2 className="h-4 w-4" />
+      </IconButton>
+    </div>
+  );
+}
+
 function ComposeDialog({
   open,
   supervisorId,
@@ -402,7 +606,7 @@ function ComposeDialog({
   open: boolean;
   supervisorId: string;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (kind: CampaignScheduleKind) => void;
 }) {
   const [title, setTitle] = React.useState('');
   const [body, setBody] = React.useState('');
@@ -469,7 +673,7 @@ function ComposeDialog({
     setError(null);
     const v = parsed.data;
 
-    // datetime-local carries no timezone; supervisors mean Riyadh wall time (+03:00, no DST).
+    // datetime-local carries no timezone; supervisors mean Damascus wall time (+03:00, no DST).
     const scheduledAt =
       v.scheduleKind === 'once' && v.scheduledLocal
         ? new Date(`${v.scheduledLocal}:00+03:00`).toISOString()
@@ -506,7 +710,7 @@ function ComposeDialog({
       }
     }
     setSubmitting(false);
-    onSaved();
+    onSaved(v.scheduleKind);
   }
 
   return (
@@ -586,7 +790,7 @@ function ComposeDialog({
             </Field>
 
             {scheduleKind === 'once' && (
-              <Field label="تاريخ ووقت الإرسال (بتوقيت الرياض)">
+              <Field label="تاريخ ووقت الإرسال (بتوقيت دمشق)">
                 <Input
                   type="datetime-local"
                   value={scheduledLocal}
@@ -614,7 +818,7 @@ function ComposeDialog({
                     </SelectContent>
                   </Select>
                 </Field>
-                <Field label="الوقت (بتوقيت الرياض)">
+                <Field label="الوقت (بتوقيت دمشق)">
                   <Input
                     type="time"
                     value={recurTime}
