@@ -33,6 +33,12 @@ import {
   SelectTrigger,
   SelectValue,
   SkeletonRows,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
   Textarea,
   cn,
 } from '@wird/ui-web';
@@ -58,6 +64,14 @@ const dateTimeFormat = new Intl.DateTimeFormat('ar', {
   weekday: 'long',
   day: 'numeric',
   month: 'long',
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
+// The long form above wraps to three lines in a table cell; rows need the compact one.
+const compactDateTime = new Intl.DateTimeFormat('ar', {
+  day: 'numeric',
+  month: 'short',
   hour: 'numeric',
   minute: '2-digit',
 });
@@ -132,7 +146,11 @@ async function dispatchCampaign(
 export default function NotificationsPage() {
   const { profile } = useAuth();
   const [campaigns, setCampaigns] = React.useState<NotificationCampaign[] | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
+  // Success and failure both used to render as <Alert variant="danger">, so a good send
+  // ("تم الإرسال إلى 12 جهاز") looked like a failure. The tone travels with the message.
+  const [notice, setNotice] = React.useState<{ text: string; tone: 'success' | 'danger' } | null>(
+    null,
+  );
   const [composing, setComposing] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState<NotificationCampaign | null>(null);
   const [sendingNow, setSendingNow] = React.useState<string | null>(null);
@@ -144,11 +162,11 @@ export default function NotificationsPage() {
       .order('created_at', { ascending: false });
 
     if (error) {
-      setError('تعذر تحميل الإشعارات');
+      setNotice({ text: 'تعذر تحميل الإشعارات', tone: 'danger' });
       setCampaigns([]);
       return;
     }
-    setError(null);
+    setNotice(null);
     setCampaigns((data ?? []).map(toCampaign));
   }, []);
 
@@ -167,7 +185,7 @@ export default function NotificationsPage() {
       .update({ is_active: !campaign.isActive })
       .eq('id', campaign.id);
     if (error) {
-      setError('تعذر تغيير حالة الإشعار');
+      setNotice({ text: 'تعذر تغيير حالة الإشعار', tone: 'danger' });
       load();
     }
   }
@@ -176,7 +194,7 @@ export default function NotificationsPage() {
     setConfirmDelete(null);
     const { error } = await supabase.from('notification_campaigns').delete().eq('id', campaign.id);
     if (error) {
-      setError('تعذر حذف الإشعار');
+      setNotice({ text: 'تعذر حذف الإشعار', tone: 'danger' });
       return;
     }
     load();
@@ -184,12 +202,16 @@ export default function NotificationsPage() {
 
   async function dispatchNow(campaign: NotificationCampaign) {
     setSendingNow(campaign.id);
-    setError(null);
+    setNotice(null);
     const result = await dispatchCampaign(campaign.id);
     setSendingNow(null);
-    if (!result.ok) setError('تعذر الإرسال الآن — سيعيد المجدول المحاولة تلقائياً');
-    else if (result.skipped) setError('الإشعار أُرسل للتو من مجدول آخر');
-    else setError(`تم الإرسال إلى ${result.sent ?? 0} جهاز`);
+    if (!result.ok) {
+      setNotice({ text: 'تعذر الإرسال الآن — سيعيد المجدول المحاولة تلقائياً', tone: 'danger' });
+    } else if (result.skipped) {
+      setNotice({ text: 'الإشعار أُرسل للتو من مجدول آخر', tone: 'danger' });
+    } else {
+      setNotice({ text: `تم الإرسال إلى ${result.sent ?? 0} جهاز`, tone: 'success' });
+    }
     load();
   }
 
@@ -206,14 +228,12 @@ export default function NotificationsPage() {
         }
       />
 
-      {error && <Alert variant="danger">{error}</Alert>}
+      {notice && <Alert variant={notice.tone}>{notice.text}</Alert>}
 
-      {campaigns === null ? (
-        <Card>
+      <Card className="overflow-hidden">
+        {campaigns === null ? (
           <SkeletonRows rows={3} />
-        </Card>
-      ) : campaigns.length === 0 ? (
-        <Card>
+        ) : campaigns.length === 0 ? (
           <EmptyState
             icon={BellRing}
             title="لا توجد إشعارات بعد"
@@ -225,74 +245,116 @@ export default function NotificationsPage() {
               </Button>
             }
           />
-        </Card>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {campaigns.map((campaign) => (
-            <Card
-              key={campaign.id}
-              className={cn('flex items-start gap-4 p-4', !campaign.isActive && 'bg-neutral-50')}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={audienceBadge[campaign.audience]} dot>
-                    {NOTIFICATION_AUDIENCE_LABELS[campaign.audience]}
-                  </Badge>
-                  <Badge variant="neutral">{scheduleSummary(campaign)}</Badge>
-                  {!campaign.isActive && <Badge variant="neutral">معطّل</Badge>}
-                  {campaign.lastError && <Badge variant="pending">خطأ في آخر إرسال</Badge>}
-                </div>
-
-                <div className="mt-2 text-sm font-medium text-neutral-900">{campaign.title}</div>
-                <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-neutral-600">
-                  {campaign.body}
-                </p>
-
-                {campaign.lastSentAt && (
-                  <div className="mt-1.5 text-xs text-neutral-500">
-                    آخر إرسال: {dateTimeFormat.format(new Date(campaign.lastSentAt))}
-                    {campaign.lastSentCount !== null && ` — ${campaign.lastSentCount} جهاز`}
-                  </div>
-                )}
-                {campaign.isActive && campaign.nextRunAt && (
-                  <div className="mt-0.5 text-xs text-primary-700">
-                    الإرسال القادم: {dateTimeFormat.format(new Date(campaign.nextRunAt))}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex shrink-0 items-center gap-1">
-                <label className="flex cursor-pointer items-center gap-2 pe-2 text-xs text-neutral-500">
-                  <Checkbox
-                    checked={campaign.isActive}
-                    onCheckedChange={() => toggleActive(campaign)}
-                    aria-label="مفعّل"
-                  />
-                  مفعّل
-                </label>
-                {campaign.isActive && campaign.nextRunAt && (
-                  <IconButton
-                    aria-label="إرسال الآن"
-                    disabled={sendingNow === campaign.id}
-                    onClick={() => dispatchNow(campaign)}
-                  >
-                    <Send
-                      className={cn('h-4 w-4', sendingNow === campaign.id && 'animate-pulse')}
-                    />
-                  </IconButton>
-                )}
-                <IconButton
-                  aria-label="حذف"
-                  onClick={() => setConfirmDelete(campaign)}
-                  className="text-danger-600 hover:bg-danger-50"
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>الإشعار</TableHead>
+                <TableHead>المرسل إليهم</TableHead>
+                <TableHead>الجدولة</TableHead>
+                <TableHead>آخر إرسال</TableHead>
+                <TableHead>مفعّل</TableHead>
+                <TableHead>
+                  <span className="sr-only">إجراءات</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {campaigns.map((campaign) => (
+                <TableRow
+                  key={campaign.id}
+                  className={cn(!campaign.isActive && 'bg-neutral-50/70')}
                 >
-                  <Trash2 className="h-4 w-4" />
-                </IconButton>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
+                  <TableCell>
+                    <div
+                      className={cn(
+                        'font-medium text-neutral-900',
+                        !campaign.isActive && 'text-neutral-500',
+                      )}
+                    >
+                      {campaign.title}
+                    </div>
+                    {/* Bodies run to 500 chars; two lines is enough to tell campaigns apart. */}
+                    <p className="mt-0.5 line-clamp-2 max-w-sm text-xs leading-relaxed text-neutral-500">
+                      {campaign.body}
+                    </p>
+                  </TableCell>
+
+                  <TableCell>
+                    <Badge variant={audienceBadge[campaign.audience]} dot>
+                      {NOTIFICATION_AUDIENCE_LABELS[campaign.audience]}
+                    </Badge>
+                  </TableCell>
+
+                  <TableCell>
+                    <div className="text-neutral-700">{scheduleSummary(campaign)}</div>
+                    {campaign.isActive && campaign.nextRunAt && (
+                      <div className="mt-0.5 text-xs text-primary-700">
+                        القادم: {compactDateTime.format(new Date(campaign.nextRunAt))}
+                      </div>
+                    )}
+                  </TableCell>
+
+                  <TableCell>
+                    {campaign.lastSentAt ? (
+                      <>
+                        <div className="text-neutral-700">
+                          {compactDateTime.format(new Date(campaign.lastSentAt))}
+                        </div>
+                        <div className="mt-0.5 text-xs tabular-nums text-neutral-500">
+                          {campaign.lastSentCount ?? 0} جهاز
+                        </div>
+                      </>
+                    ) : (
+                      <span className="text-neutral-400">—</span>
+                    )}
+                    {campaign.lastError && (
+                      /* The message itself was never surfaced anywhere before — only a badge
+                         saying an error existed, which is unactionable on its own. */
+                      <div className="mt-1" title={campaign.lastError}>
+                        <Badge variant="danger" dot>
+                          فشل الإرسال
+                        </Badge>
+                      </div>
+                    )}
+                  </TableCell>
+
+                  <TableCell>
+                    <Checkbox
+                      checked={campaign.isActive}
+                      onCheckedChange={() => toggleActive(campaign)}
+                      aria-label={campaign.isActive ? 'تعطيل الإشعار' : 'تفعيل الإشعار'}
+                    />
+                  </TableCell>
+
+                  <TableCell>
+                    <div className="flex items-center justify-end gap-1">
+                      {campaign.isActive && campaign.nextRunAt && (
+                        <IconButton
+                          aria-label="إرسال الآن"
+                          disabled={sendingNow === campaign.id}
+                          onClick={() => dispatchNow(campaign)}
+                        >
+                          <Send
+                            className={cn('h-4 w-4', sendingNow === campaign.id && 'animate-pulse')}
+                          />
+                        </IconButton>
+                      )}
+                      <IconButton
+                        aria-label="حذف"
+                        onClick={() => setConfirmDelete(campaign)}
+                        className="text-danger-600 hover:bg-danger-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </IconButton>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </Card>
 
       <ComposeDialog
         open={composing}
