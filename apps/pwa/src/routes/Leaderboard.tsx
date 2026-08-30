@@ -37,10 +37,6 @@ function readSavedWindow(): LeaderboardWindow {
   return '7d';
 }
 
-function firstName(full: string) {
-  return full.trim().split(/\s+/)[0] ?? full;
-}
-
 /** A short milestone label once a streak crosses a meaningful threshold, else null. */
 function streakMilestone(n: number): string | null {
   if (n >= 30) return 'شهر كامل من الإتمام 🔥';
@@ -68,7 +64,7 @@ function motivation(
     const gap = Math.round((above.completionRate - me.completionRate) * 100);
     if (gap <= 0) return `أنت على بُعد خطوة من ${ordinal(rank - 1)}.`;
     if (gap <= 15)
-      return `يفصلك ${gap.toLocaleString('ar-EG')}% فقط عن ${firstName(above.fullName)} — تقدَّم!`;
+      return `يفصلك ${gap.toLocaleString('ar-EG')}% فقط عن ${above.fullName} — تقدَّم!`;
   }
   return 'واصِل، كل واجب يقرّبك من القمة.';
 }
@@ -433,8 +429,8 @@ function PodiumSpot({ entry, place }: { entry: LeaderboardEntry; place: number }
         )}
       </div>
 
-      <div className="mt-2 max-w-full truncate text-center text-xs font-semibold text-neutral-800">
-        {firstName(entry.fullName)}
+      <div className="mt-2 line-clamp-2 max-w-full text-center text-xs font-semibold leading-tight text-neutral-800">
+        {entry.fullName}
       </div>
       <div
         className={cn(
@@ -507,9 +503,7 @@ function RankTable({ entries }: { entries: LeaderboardEntry[] }) {
                   <TableCell className="px-2">
                     <div className="flex items-center gap-2">
                       <Avatar name={entry.fullName} size="sm" />
-                      <span className="truncate font-medium text-neutral-900">
-                        {firstName(entry.fullName)}
-                      </span>
+                      <span className="font-medium text-neutral-900">{entry.fullName}</span>
                       {entry.isMe && (
                         <span className="shrink-0 rounded-full bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-700">
                           أنت

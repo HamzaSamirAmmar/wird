@@ -258,7 +258,7 @@ export default function FollowupPage() {
       </Card>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatTile icon={ListChecks} label="الموظفون" value={totals?.employees ?? null} />
+        <StatTile icon={ListChecks} label="المستخدمون" value={totals?.employees ?? null} />
         <StatTile icon={UserCheck} label="مكتمِلون بالكامل" value={totals?.fullyComplete ?? null} />
         <StatTile icon={UserX} label="لديهم تعثّر" value={totals?.withGaps ?? null} />
         <StatTile
