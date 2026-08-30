@@ -10,8 +10,13 @@ const monthFormat = new Intl.DateTimeFormat('ar', { month: 'short' });
  *
  * Was a Saturday-first week grid that could page into the future. Employees may now only look
  * backwards — today is always the newest day — so a fixed seven-cell grid no longer fits: the
- * range is HISTORY_DAYS + 1 days ending today, newest first (which in RTL puts today at the
- * right, where the eye starts).
+ * range is HISTORY_DAYS + 1 days ending today.
+ *
+ * The rail is explicitly `dir="ltr"` inside an otherwise RTL app, which puts today at the far
+ * LEFT and walks backwards to the right. Dates are the one strip here that reads as a number
+ * line rather than as prose, and left-anchoring keeps the newest day in a fixed spot instead of
+ * having it sit at whichever edge the surrounding direction happens to start from. It also
+ * makes scrollLeft = 0 mean "today", which is what the reset below relies on.
  */
 export function DayStrip({ value, onChange }: { value: string; onChange: (iso: string) => void }) {
   const today = todayISO();
@@ -33,6 +38,7 @@ export function DayStrip({ value, onChange }: { value: string; onChange: (iso: s
   return (
     <div
       ref={scrollRef}
+      dir="ltr"
       className={cn(
         'flex gap-1 overflow-x-auto pb-1',
         '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
