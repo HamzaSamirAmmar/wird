@@ -1,9 +1,13 @@
 // Sends FCM web-push notifications for a notification_campaigns row.
 //
-// Called two ways:
+// Called three ways:
 //   1. Dashboard (supervisor): Authorization = the caller's session JWT. Verified against profiles.
 //   2. pg_cron dispatcher (dispatch_due_campaigns): Authorization = the service-role key
 //      stored in Vault as 'wird_dispatch_key'.
+//   3. System pings ({ auto: … }), service-role only: fired by the notify_new_duties trigger
+//      when a supervisor assigns a duty for *today*. These carry no campaign row — they are
+//      not something a supervisor authored, scheduled or can disable, and logging them as
+//      campaigns would bury the real ones under machine noise.
 //
 // Sends atomically "claims" the campaign (advances next_run_at) before delivering, so a
 // concurrent cron tick + dashboard click can never double-send the same campaign.
@@ -120,6 +124,9 @@ async function sendToAll(
   tokens: string[],
   title: string,
   body: string,
+  // Collapses re-sends of the *same* campaign, while letting different campaigns stack.
+  // A single shared tag would make a duty reminder silently replace a supervisor's message.
+  tag: string,
 ): Promise<{ sent: number; failed: number; invalidTokens: string[] }> {
   const invalidTokens: string[] = [];
   let sent = 0;
@@ -137,8 +144,19 @@ async function sendToAll(
               Authorization: `Bearer ${accessToken}`,
               'Content-Type': 'application/json',
             },
+            // DATA-ONLY, deliberately. A `notification` payload makes FCM's own service-worker
+            // handler display the notification automatically — and firebase-messaging-sw.js
+            // also displays one from onBackgroundMessage, so every push arrived twice. With
+            // data-only there is exactly one displayer: our own handler.
             body: JSON.stringify({
-              message: { token, notification: { title, body } },
+              message: {
+                token,
+                data: { title, body, tag },
+                webpush: {
+                  headers: { Urgency: 'high', TTL: '86400' },
+                  fcm_options: { link: '/' },
+                },
+              },
             }),
           },
         );
@@ -159,6 +177,35 @@ async function sendToAll(
   }
 
   return { sent, failed, invalidTokens };
+}
+
+// ─── System pings ─────────────────────────────────────────────────────────────
+
+const AUTO_MESSAGES = {
+  new_duty: {
+    title: 'ورد جديد اليوم',
+    body: 'أسند إليك المشرف ورداً جديداً لليوم — بارك الله فيك',
+  },
+} as const;
+
+type AutoKind = keyof typeof AUTO_MESSAGES;
+
+function isAutoKind(v: unknown): v is AutoKind {
+  return typeof v === 'string' && v in AUTO_MESSAGES;
+}
+
+/** Live device tokens for a set of profiles, skipping deactivated accounts. */
+async function tokensForProfiles(
+  admin: ReturnType<typeof createClient>,
+  profileIds: string[],
+): Promise<string[]> {
+  if (profileIds.length === 0) return [];
+  const { data } = await admin
+    .from('fcm_tokens')
+    .select('token, profiles!inner(is_active)')
+    .eq('profiles.is_active', true)
+    .in('profile_id', profileIds);
+  return (data ?? []).map((r: { token: string }) => r.token);
 }
 
 // ─── Request handling ─────────────────────────────────────────────────────────
@@ -208,8 +255,9 @@ Deno.serve(async (req) => {
       role = profile.role;
     }
 
-    const { campaignId } = await req.json();
-    if (!campaignId) return json({ error: 'campaignId is required' }, 400);
+    const payload = await req.json();
+    const { campaignId, auto } = payload ?? {};
+    if (!campaignId && !auto) return json({ error: 'campaignId or auto is required' }, 400);
 
     const saRaw = Deno.env.get('FCM_SERVICE_ACCOUNT');
     if (!saRaw) {
@@ -218,6 +266,35 @@ Deno.serve(async (req) => {
     const sa: ServiceAccount = JSON.parse(saRaw);
 
     const admin = createClient(supabaseUrl, serviceRoleKey);
+
+    // ── System ping path ──
+    if (auto) {
+      // Only the database may fire these. A supervisor session must go through a campaign,
+      // otherwise the dashboard would gain an unlogged, unattributable broadcast.
+      if (role !== 'service_role') return json({ error: 'Not authorized' }, 403);
+      if (!isAutoKind(auto.kind)) return json({ error: 'Unknown auto kind' }, 400);
+
+      const profileIds: string[] = Array.isArray(auto.profileIds) ? auto.profileIds : [];
+      const autoTokens = await tokensForProfiles(admin, profileIds);
+      if (autoTokens.length === 0) return json({ sent: 0, failed: 0, tokens: 0 });
+
+      const message = AUTO_MESSAGES[auto.kind];
+      const accessToken = await getAccessToken(sa);
+      const result = await sendToAll(
+        sa,
+        accessToken,
+        autoTokens,
+        message.title,
+        message.body,
+        // One tag per kind: assigning three duties in a row should land as one standing
+        // reminder, not three identical banners.
+        `auto-${auto.kind}`,
+      );
+      if (result.invalidTokens.length > 0) {
+        await admin.from('fcm_tokens').delete().in('token', result.invalidTokens);
+      }
+      return json({ sent: result.sent, failed: result.failed, tokens: autoTokens.length });
+    }
 
     // Atomically claim the campaign: advance next_run_at first so a concurrent dispatch
     // (cron tick racing a dashboard click) can never double-send.
@@ -293,7 +370,14 @@ Deno.serve(async (req) => {
     if (tokens.length > 0) {
       try {
         const accessToken = await getAccessToken(sa);
-        const result = await sendToAll(sa, accessToken, tokens, campaign.title, campaign.body);
+        const result = await sendToAll(
+          sa,
+          accessToken,
+          tokens,
+          campaign.title,
+          campaign.body,
+          `campaign-${campaign.id}`,
+        );
         sent = result.sent;
         failed = result.failed;
 

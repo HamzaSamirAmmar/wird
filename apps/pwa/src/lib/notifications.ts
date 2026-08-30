@@ -160,10 +160,12 @@ export function listenForForegroundNotifications() {
   if (!pushConfigured() || typeof Notification === 'undefined') return;
   if (Notification.permission !== 'granted') return;
 
-  // FCM only auto-shows a notification when the page is hidden.
+  // The server sends data-only messages (see the edge function): nothing is displayed for us
+  // in either state, so the foreground path raises the notification itself.
   onMessage(messagingInstance(), async (payload) => {
-    const title = payload.notification?.title ?? 'ورد';
-    const body = payload.notification?.body ?? '';
+    const data = payload.data ?? {};
+    const title = data.title || 'ورد';
+    const body = data.body || '';
     const registration = await navigator.serviceWorker.getRegistration(
       '/firebase-cloud-messaging-push-scope',
     );
@@ -173,7 +175,7 @@ export function listenForForegroundNotifications() {
         dir: 'rtl',
         lang: 'ar',
         icon: '/icon-192.png',
-        tag: 'wird',
+        tag: data.tag || 'wird',
       });
     }
   });

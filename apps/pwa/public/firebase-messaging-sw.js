@@ -20,16 +20,23 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 // Push arrives while the app is closed/backgrounded → raise a system notification.
+//
+// The server sends DATA-ONLY messages on purpose. A `notification` payload would make FCM's
+// own handler display the push as well as this one, and every notification would arrive
+// twice — once from the SDK, once from here. Reading payload.data keeps a single displayer.
 messaging.onBackgroundMessage((payload) => {
-  const title = payload.notification?.title ?? 'ورد';
-  const body = payload.notification?.body ?? '';
+  const data = payload.data || {};
+  const title = data.title || 'ورد';
+  const body = data.body || '';
   self.registration.showNotification(title, {
     body,
     dir: 'rtl',
     lang: 'ar',
     icon: '/icon-192.png',
     badge: '/favicon-32.png',
-    tag: 'wird',
+    // Per-message, not a single shared 'wird': one shared tag made each notification
+    // silently replace the previous one.
+    tag: data.tag || 'wird',
   });
 });
 

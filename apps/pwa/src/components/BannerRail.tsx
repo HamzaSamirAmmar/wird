@@ -1,50 +1,36 @@
 import * as React from 'react';
-import type { Banner } from '@wird/domain';
 import { cn } from '@wird/ui-web';
-import { supabase } from '../lib/supabase';
-
-const BANNER_COLUMNS =
-  'id, body, source, is_active, sort_order, created_by, created_at, updated_at';
+import { getCachedBanners, refreshBannersFromServer } from '../lib/banners';
+import type { CachedBanner } from '../lib/offline';
 
 /**
- * The supervisor's reminder cards, as a snap-scrolling rail directly under the header.
+ * The supervisor's reminder, folded into the teal header under the greeting.
  *
- * Top placement is deliberate: a reminder is something you read on the way in, not a task, so
- * it sits above the checklist but stays visually light — tinted panels rather than raised
- * cards, and it renders nothing at all when there is nothing to say.
+ * It used to be a full-bleed snap-rail sitting between the header and the checklist, which put
+ * a passive reminder in the most valuable strip of the screen and pushed the duties below the
+ * fold. Inside the header it reads as part of the greeting: ambient, one line of chrome, and it
+ * costs the checklist no vertical space at all.
  *
- * Banners used to be typed (آية / حديث / حكمة / ملاحظة), each with its own tint. They are now
- * free text, so the rail carries one calm treatment and lets the words do the distinguishing.
+ * Multiple banners rotate on tap rather than scroll — a 3-line panel on a coloured ground is a
+ * bad scroll target, and tapping is the gesture the surrounding header already invites.
  */
 export function BannerRail() {
-  const [banners, setBanners] = React.useState<Banner[] | null>(null);
-  const [active, setActive] = React.useState(0);
-  const scrollRef = React.useRef<HTMLDivElement>(null);
+  const [banners, setBanners] = React.useState<CachedBanner[]>([]);
+  const [index, setIndex] = React.useState(0);
 
   React.useEffect(() => {
     let cancelled = false;
-    if (!navigator.onLine) return;
 
-    supabase
-      .from('banners')
-      .select(BANNER_COLUMNS)
-      .eq('is_active', true)
-      .order('sort_order')
-      .order('created_at', { ascending: false })
-      .then(({ data, error }) => {
-        if (cancelled || error) return;
-        setBanners(
-          (data ?? []).map((r) => ({
-            id: r.id,
-            body: r.body,
-            source: r.source,
-            isActive: r.is_active,
-            sortOrder: r.sort_order,
-            createdBy: r.created_by,
-            createdAt: r.created_at,
-            updatedAt: r.updated_at,
-          })),
-        );
+    // Cache first so the reminder is on screen before the network answers — and still there
+    // when it never does.
+    getCachedBanners().then((cached) => {
+      if (!cancelled) setBanners(cached);
+    });
+
+    refreshBannersFromServer()
+      .then(getCachedBanners)
+      .then((fresh) => {
+        if (!cancelled) setBanners(fresh);
       });
 
     return () => {
@@ -52,84 +38,53 @@ export function BannerRail() {
     };
   }, []);
 
-  // Which card is centred, for the dots. Reading scrollLeft beats an IntersectionObserver
-  // here: the rail is short, and RTL makes the observer's root margins fiddly.
-  function handleScroll() {
-    const el = scrollRef.current;
-    if (!el || !banners || banners.length < 2) return;
-    const per = el.scrollWidth / banners.length;
-    const index = Math.round(Math.abs(el.scrollLeft) / per);
-    setActive(Math.min(banners.length - 1, Math.max(0, index)));
-  }
-
-  if (!banners || banners.length === 0) return null;
+  // A supervisor deleting the banner you were on must not leave the panel blank.
+  const safeIndex = banners.length ? index % banners.length : 0;
+  const banner = banners[safeIndex];
+  if (!banner) return null;
 
   const many = banners.length > 1;
 
   return (
-    <div className="mb-4">
-      <div
-        ref={scrollRef}
-        onScroll={handleScroll}
-        // Full-bleed out of the padded <main> so cards can run to the screen edge and the last
-        // one still ends on the same gutter the rest of the page uses.
-        className={cn(
-          '-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1',
-          '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
-        )}
-      >
-        {banners.map((banner) => (
-          <BannerCard key={banner.id} banner={banner} standalone={!many} />
-        ))}
-      </div>
-
-      {many && (
-        <div className="mt-2 flex items-center justify-center gap-1.5">
-          {banners.map((banner, i) => (
-            <span
-              key={banner.id}
-              aria-hidden
-              className={cn(
-                'h-1.5 rounded-full transition-all duration-200',
-                i === active ? 'w-4 bg-primary-500' : 'w-1.5 bg-neutral-300',
-              )}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function BannerCard({ banner, standalone }: { banner: Banner; standalone: boolean }) {
-  return (
-    <article
+    <button
+      type="button"
+      disabled={!many}
+      onClick={() => setIndex((i) => i + 1)}
+      aria-label={many ? 'التذكير التالي' : undefined}
       className={cn(
-        'relative snap-start overflow-hidden rounded-2xl px-4 py-3.5',
-        'bg-linear-to-bl from-primary-50 to-mint-50/70 ring-1 ring-primary-100',
-        // A lone card fills the rail; siblings leave the next one peeking so the swipe is
-        // discoverable without a hint telling you to swipe.
-        standalone ? 'w-full' : 'w-[85%] shrink-0',
+        'relative mt-3 block w-full overflow-hidden rounded-2xl bg-white/10 px-4 py-3 text-start ring-1 ring-white/12',
+        many && 'transition-colors active:bg-white/15',
       )}
     >
-      {/* A quote glyph rather than an icon badge: it reads as typography, not as chrome,
-          and it is the one mark that suits every kind of reminder now that kinds are gone. */}
       <span
         aria-hidden
-        className="pointer-events-none absolute -top-4 start-1.5 select-none font-serif text-7xl leading-none text-primary-200/50"
+        className="pointer-events-none absolute -top-5 start-1 select-none font-serif text-7xl leading-none text-white/10"
       >
         ”
       </span>
 
-      <p className="relative whitespace-pre-line text-[15px] leading-[2] text-neutral-800">
+      <p className="relative line-clamp-3 whitespace-pre-line text-[13.5px] leading-[1.85] text-primary-50">
         {banner.body}
       </p>
 
-      {banner.source && (
-        <div className="relative mt-2 text-[11px] font-medium text-primary-700">
-          — {banner.source}
-        </div>
-      )}
-    </article>
+      <div className="relative mt-1.5 flex items-center justify-between gap-3">
+        <span className="truncate text-[11px] text-primary-100/70">
+          {banner.source ? `— ${banner.source}` : ''}
+        </span>
+        {many && (
+          <span className="flex shrink-0 items-center gap-1" aria-hidden>
+            {banners.map((b, i) => (
+              <span
+                key={b.id}
+                className={cn(
+                  'h-1 rounded-full transition-all duration-200',
+                  i === safeIndex ? 'w-3 bg-white/70' : 'w-1 bg-white/25',
+                )}
+              />
+            ))}
+          </span>
+        )}
+      </div>
+    </button>
   );
 }

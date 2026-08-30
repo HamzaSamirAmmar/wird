@@ -32,14 +32,14 @@ import {
   pendingOutboxCount,
   flushOutbox,
 } from '../lib/duties';
-import type { CachedDuty, CachedStep } from '../lib/offline';
+import { getLastSyncedAt, type CachedDuty, type CachedStep } from '../lib/offline';
 import { BannerRail } from '../components/BannerRail';
 import { DayStrip } from '../components/DayStrip';
 import { GroupStandings } from '../components/GroupStandings';
 import { MushafReader } from '../components/MushafReader';
 import { PushNotice } from '../components/PushNotice';
 import { ensurePushRegistered, listenForForegroundNotifications } from '../lib/notifications';
-import { formatRelativeDay, todayISO } from '../lib/dates';
+import { clampToVisibleRange, formatRelativeDay, todayISO } from '../lib/dates';
 
 type DutyWithSteps = CachedDuty & { steps: CachedStep[] };
 
@@ -49,6 +49,21 @@ const statusVariant = {
   completed: 'completed',
 } as const;
 const statusLabel = { pending: 'لم يبدأ', in_progress: 'جارٍ', completed: 'مكتمل' } as const;
+
+/**
+ * How stale the cached data is, in words. Shown in place of a bare "دون اتصال" badge: the app
+ * works offline either way, so what an employee actually needs to know is whether the checklist
+ * in front of them reflects what the supervisor assigned.
+ */
+function formatSyncAge(lastSynced: number | null): string {
+  if (lastSynced === null) return 'دون اتصال';
+  const minutes = Math.floor((Date.now() - lastSynced) / 60_000);
+  if (minutes < 1) return 'محدّث الآن';
+  if (minutes < 60) return `آخر تحديث قبل ${minutes} د`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `آخر تحديث قبل ${hours} س`;
+  return `آخر تحديث قبل ${Math.floor(hours / 24)} يوم`;
+}
 
 const categoryIcon: Record<DutyCategory, typeof BookOpen> = {
   new_memorization: Sparkles,
@@ -66,6 +81,7 @@ export default function MyDuties() {
   // Bumped after every server sync so the standings below refetch on the same signal,
   // instead of opening a second realtime subscription of their own.
   const [syncTick, setSyncTick] = React.useState(0);
+  const [lastSynced, setLastSynced] = React.useState<number | null>(null);
 
   const employeeId = profile?.id ?? '';
 
@@ -74,6 +90,7 @@ export default function MyDuties() {
     const all = await getCachedDuties(employeeId);
     setDuties(all.filter((d) => d.dueDate === selectedDate));
     setPendingSync(await pendingOutboxCount());
+    setLastSynced(await getLastSyncedAt());
   }, [employeeId, selectedDate]);
 
   const refresh = React.useCallback(async () => {
@@ -107,11 +124,20 @@ export default function MyDuties() {
     function onOffline() {
       setIsOnline(false);
     }
+    // An installed PWA resumed from the background never remounts, so the mount-time refresh
+    // does not fire — it can sit for days showing a stale checklist with a full outbox. Coming
+    // back to the foreground is the reliable "the user is looking at this again" signal.
+    function onVisible() {
+      if (document.visibilityState === 'visible') refresh();
+    }
+
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [refresh]);
 
@@ -183,7 +209,9 @@ export default function MyDuties() {
             {!isOnline && (
               <span className="flex items-center gap-1 rounded-full bg-white/12 px-2.5 py-1 text-[11px] text-primary-50">
                 <CloudOff className="h-3.5 w-3.5" />
-                دون اتصال
+                {/* Naming the age of the data matters more than saying "offline": the
+                    checklist still works, the question is whether it is current. */}
+                {formatSyncAge(lastSynced)}
               </span>
             )}
             {pendingSync > 0 && (
@@ -201,7 +229,11 @@ export default function MyDuties() {
           </div>
         </div>
 
-        <div className="relative mt-4 flex items-center gap-4 rounded-2xl bg-white/10 p-4 ring-1 ring-white/12">
+        <div className="relative">
+          <BannerRail />
+        </div>
+
+        <div className="relative mt-3 flex items-center gap-4 rounded-2xl bg-white/10 p-4 ring-1 ring-white/12">
           <ProgressRing
             value={doneSteps}
             max={allSteps.length}
@@ -235,12 +267,14 @@ export default function MyDuties() {
         </div>
 
         <div className="relative mt-3">
-          <DayStrip value={selectedDate} onChange={setSelectedDate} />
+          <DayStrip
+            value={selectedDate}
+            onChange={(iso) => setSelectedDate(clampToVisibleRange(iso))}
+          />
         </div>
       </header>
 
       <main className="flex-1 px-4 py-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
-        <BannerRail />
         <PushNotice />
 
         {selectedDate !== todayISO() && (
