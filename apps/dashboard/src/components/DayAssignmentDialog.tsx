@@ -194,7 +194,7 @@ export function DayAssignmentDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'تعديل أورد اليوم' : 'أورد جديدة'}</DialogTitle>
+          <DialogTitle>{isEdit ? 'تعديل ورد اليوم' : 'ورد جديد'}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">

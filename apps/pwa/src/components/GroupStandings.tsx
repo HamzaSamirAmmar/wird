@@ -58,7 +58,7 @@ function motivation(
   if (me.assignedCount === 0) return 'أكمل ورد اليوم لتدخل السباق.';
   if (me.completedCount === 0) return 'لم تُكمل أي ورد بعد — ابدأ الآن وستصعد سريعًا.';
   if (rank === 1) return 'أنت في الصدارة — واصِل التقدّم.';
-  if (me.completionRate >= 1) return 'أتممت كل أوردك — ثبِّت مركزك بالمواظبة.';
+  if (me.completionRate >= 1) return 'أتممت كل أورادك — ثبِّت مركزك بالمواظبة.';
   if (above) {
     const gap = Math.round((above.completionRate - me.completionRate) * 100);
     if (gap <= 0) return 'أنت على بُعد خطوة من المركز الذي فوقك.';

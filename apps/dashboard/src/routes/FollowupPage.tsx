@@ -171,7 +171,7 @@ export default function FollowupPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="المتابعة"
-        description="من أنجز أورده ومن تعثّر، عبر أي مدى زمني ولكل مجموعة"
+        description="من أنجز أوراداً ومن تعثّر، عبر أي مدى زمني ولكل مجموعة"
       />
 
       {error && <Alert variant="danger">{error}</Alert>}
@@ -275,7 +275,7 @@ export default function FollowupPage() {
           <EmptyState
             icon={Trophy}
             title={onlyGaps ? 'لا يوجد متعثرون في هذا المدى' : 'لا توجد بيانات'}
-            description={onlyGaps ? 'الجميع أتمّ أورده — أحسنوا.' : 'اختر مجموعة أو مدى زمني آخر.'}
+            description={onlyGaps ? 'الجميع أتمّ أوراداً — أحسنوا.' : 'اختر مجموعة أو مدى زمني آخر.'}
           />
         ) : (
           <Table>
@@ -482,7 +482,7 @@ function EmployeeRows({
             {days === null ? (
               <div className="py-2 text-xs text-neutral-400">جارٍ تحميل التفصيل اليومي…</div>
             ) : days.length === 0 ? (
-              <div className="py-2 text-xs text-neutral-400">لا توجد أورد مُسندة في هذا المدى.</div>
+              <div className="py-2 text-xs text-neutral-400">لا توجد أوراد مُسندة في هذا المدى.</div>
             ) : (
               <div className="flex flex-wrap gap-2 py-1">
                 {days.map((day) => (
