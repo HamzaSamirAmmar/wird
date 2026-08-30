@@ -37,6 +37,8 @@ import { BannerRail } from '../components/BannerRail';
 import { DayStrip } from '../components/DayStrip';
 import { GroupStandings } from '../components/GroupStandings';
 import { MushafReader } from '../components/MushafReader';
+import { PushNotice } from '../components/PushNotice';
+import { ensurePushRegistered, listenForForegroundNotifications } from '../lib/notifications';
 import { formatRelativeDay, todayISO } from '../lib/dates';
 
 type DutyWithSteps = CachedDuty & { steps: CachedStep[] };
@@ -129,6 +131,14 @@ export default function MyDuties() {
     return () => {
       supabase.removeChannel(channel);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employeeId]);
+
+  // Foreground pushes + idempotent token re-registration (covers token rotation).
+  React.useEffect(() => {
+    if (!employeeId) return;
+    listenForForegroundNotifications();
+    ensurePushRegistered(employeeId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employeeId]);
 
@@ -231,6 +241,8 @@ export default function MyDuties() {
 
       <main className="flex-1 px-4 py-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
         <BannerRail />
+        <PushNotice />
+        <PushNotice />
 
         {selectedDate !== todayISO() && (
           <button
