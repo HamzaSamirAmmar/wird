@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { BANNER_BODY_MAX, BANNER_KINDS, BANNER_SOURCE_MAX } from './banners';
 import { DUTY_CATEGORIES } from './dutyCategories';
 import { USERNAME_PATTERN } from './username';
 
@@ -6,7 +7,10 @@ export const usernameSchema = z
   .string()
   .trim()
   .toLowerCase()
-  .regex(USERNAME_PATTERN, 'اسم المستخدم يجب أن يكون بين 3 و32 حرفاً (أحرف إنجليزية صغيرة وأرقام فقط)');
+  .regex(
+    USERNAME_PATTERN,
+    'اسم المستخدم يجب أن يكون بين 3 و32 حرفاً (أحرف إنجليزية صغيرة وأرقام فقط)',
+  );
 
 export const quranScopeSchema = z
   .object({
@@ -17,7 +21,9 @@ export const quranScopeSchema = z
     scopeNote: z.string().trim().max(500).nullable().optional(),
   })
   .refine(
-    (v) => v.scopeSurahFrom < v.scopeSurahTo || (v.scopeSurahFrom === v.scopeSurahTo && v.scopeAyahFrom <= v.scopeAyahTo),
+    (v) =>
+      v.scopeSurahFrom < v.scopeSurahTo ||
+      (v.scopeSurahFrom === v.scopeSurahTo && v.scopeAyahFrom <= v.scopeAyahTo),
     { message: 'نهاية النطاق يجب أن تكون بعد بدايته', path: ['scopeSurahTo'] },
   );
 
@@ -38,6 +44,19 @@ export const createDutyAssignmentSchema = z
     dueDates: z.array(z.string().date()).min(1, 'اختر تاريخاً واحداً على الأقل'),
   })
   .and(quranScopeSchema);
+
+export const bannerSchema = z.object({
+  kind: z.enum(BANNER_KINDS),
+  body: z.string().trim().min(1, 'النص مطلوب').max(BANNER_BODY_MAX, 'النص طويل جداً'),
+  // Empty input means "no attribution", which the column stores as null rather than ''.
+  source: z
+    .string()
+    .trim()
+    .max(BANNER_SOURCE_MAX, 'المصدر طويل جداً')
+    .transform((v) => v || null)
+    .nullable(),
+  isActive: z.boolean(),
+});
 
 export const changePasswordSchema = z
   .object({

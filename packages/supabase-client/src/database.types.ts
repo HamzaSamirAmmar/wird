@@ -14,6 +14,50 @@ export type Database = {
   }
   public: {
     Tables: {
+      banners: {
+        Row: {
+          body: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          kind: Database["public"]["Enums"]["banner_kind"]
+          sort_order: number
+          source: string | null
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          kind?: Database["public"]["Enums"]["banner_kind"]
+          sort_order?: number
+          source?: string | null
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          kind?: Database["public"]["Enums"]["banner_kind"]
+          sort_order?: number
+          source?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "banners_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       duties: {
         Row: {
           assigned_by: string
@@ -313,6 +357,7 @@ export type Database = {
       }
     }
     Enums: {
+      banner_kind: "ayah" | "hadith" | "hikmah" | "note"
       duty_category: "new_memorization" | "minor_review" | "major_review"
       duty_status: "pending" | "in_progress" | "completed"
       user_role: "employee" | "supervisor"
