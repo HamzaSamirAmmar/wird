@@ -5,12 +5,14 @@ import ChangePassword from './routes/ChangePassword';
 import SupervisorNotice from './routes/SupervisorNotice';
 import ProtectedRoute from './routes/ProtectedRoute';
 import MyDuties from './routes/MyDuties';
+import Preview from './routes/__Preview';
 
 export default function App() {
   return (
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/__preview" element={<Preview />} />
         <Route path="/change-password" element={<ChangePassword />} />
         <Route element={<ProtectedRoute />}>
           <Route path="/supervisor" element={<SupervisorNotice />} />
