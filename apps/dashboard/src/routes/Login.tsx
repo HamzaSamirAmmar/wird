@@ -13,7 +13,7 @@ export default function Login() {
   const [submitting, setSubmitting] = React.useState(false);
 
   if (!loading && session && profile) {
-    if (profile.role !== 'supervisor') {
+    if (profile.role !== 'supervisor' && profile.role !== 'superadmin') {
       return <Navigate to="/unauthorized" replace />;
     }
     if (profile.mustChangePassword) {

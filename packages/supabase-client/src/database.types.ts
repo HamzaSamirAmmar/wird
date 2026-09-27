@@ -415,6 +415,8 @@ export type Database = {
     };
     Functions: {
       is_supervisor: { Args: never; Returns: boolean };
+      is_superadmin: { Args: never; Returns: boolean };
+      caller_group_id: { Args: never; Returns: string | null };
       next_campaign_run: {
         Args: {
           p_kind: string;
@@ -461,7 +463,7 @@ export type Database = {
     Enums: {
       duty_category: 'new_memorization' | 'minor_review' | 'major_review';
       duty_status: 'pending' | 'in_progress' | 'completed';
-      user_role: 'employee' | 'supervisor';
+      user_role: 'employee' | 'supervisor' | 'superadmin';
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -585,7 +587,7 @@ export const Constants = {
     Enums: {
       duty_category: ['new_memorization', 'minor_review', 'major_review'],
       duty_status: ['pending', 'in_progress', 'completed'],
-      user_role: ['employee', 'supervisor'],
+      user_role: ['employee', 'supervisor', 'superadmin'],
     },
   },
 } as const;

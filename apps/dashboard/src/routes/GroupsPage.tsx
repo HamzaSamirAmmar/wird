@@ -35,6 +35,7 @@ import {
   cn,
 } from '@wird/ui-web';
 import { createGroupSchema } from '@wird/domain';
+import { useAuth } from '../lib/auth-context';
 import { supabase } from '../lib/supabase';
 import { BulkCreateDialog, type BulkCreatedCreds } from '../components/BulkCreateDialog';
 import { BulkCredentialsDialog } from '../components/BulkCredentialsDialog';
@@ -47,6 +48,8 @@ interface GroupRow {
 }
 
 export default function GroupsPage() {
+  const { profile } = useAuth();
+  const isSuperadmin = profile?.role === 'superadmin';
   const [groups, setGroups] = React.useState<GroupRow[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
@@ -91,10 +94,12 @@ export default function GroupsPage() {
         title="المجموعات"
         description="كل مستخدم ينتمي لمجموعة واحدة، والأوراد تُسند للمجموعة"
         actions={
-          <Button onClick={() => setDialogOpen(true)}>
-            <Plus className="h-4 w-4" />
-            مجموعة جديدة
-          </Button>
+          isSuperadmin && (
+            <Button onClick={() => setDialogOpen(true)}>
+              <Plus className="h-4 w-4" />
+              مجموعة جديدة
+            </Button>
+          )
         }
       />
 
@@ -119,10 +124,12 @@ export default function GroupsPage() {
             title="لا توجد مجموعات بعد"
             description="ابدأ بإنشاء مجموعة، ثم أضف إليها المستخدمين وأسند لها الأوراد."
             action={
-              <Button size="sm" onClick={() => setDialogOpen(true)}>
-                <Plus className="h-4 w-4" />
-                مجموعة جديدة
-              </Button>
+              isSuperadmin && (
+                <Button size="sm" onClick={() => setDialogOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                  مجموعة جديدة
+                </Button>
+              )
             }
           />
         </Card>
@@ -153,6 +160,7 @@ export default function GroupsPage() {
 
       <GroupMembersDialog
         group={bulkCreateGroup || bulkCreds ? null : viewing}
+        canTransfer={isSuperadmin}
         onClose={() => setViewing(null)}
         onBulkCreate={(g) => setBulkCreateGroup(g)}
         onMembersChanged={load}
@@ -210,11 +218,13 @@ interface CandidateRow {
  */
 function GroupMembersDialog({
   group,
+  canTransfer,
   onClose,
   onBulkCreate,
   onMembersChanged,
 }: {
   group: GroupRow | null;
+  canTransfer: boolean;
   onClose: () => void;
   onBulkCreate: (group: GroupRow) => void;
   onMembersChanged: () => void;
@@ -243,7 +253,7 @@ function GroupMembersDialog({
   }, [group]);
 
   const loadCandidates = React.useCallback(async () => {
-    if (!group) return;
+    if (!group || !canTransfer) return;
     setLoadingCandidates(true);
     const { data, error } = await supabase
       .from('profiles')
@@ -254,7 +264,7 @@ function GroupMembersDialog({
 
     setLoadingCandidates(false);
     setCandidates(error ? [] : ((data ?? []) as unknown as CandidateRow[]));
-  }, [group]);
+  }, [group, canTransfer]);
 
   React.useEffect(() => {
     if (!group) return;
@@ -376,10 +386,12 @@ function GroupMembersDialog({
                     </span>
                   )}
                 </TabsTrigger>
-                <TabsTrigger value="add-existing">
-                  <ArrowRightLeft className="h-3.5 w-3.5 me-1.5" />
-                  ضم مستخدمين
-                </TabsTrigger>
+                {canTransfer && (
+                  <TabsTrigger value="add-existing">
+                    <ArrowRightLeft className="h-3.5 w-3.5 me-1.5" />
+                    ضم مستخدمين
+                  </TabsTrigger>
+                )}
               </TabsList>
 
               {group && (
@@ -408,18 +420,20 @@ function GroupMembersDialog({
                           إنشاء دفعة جديدة
                         </Button>
                       )}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setActiveTab('add-existing');
-                          setTransferSuccess(null);
-                          setTransferError(null);
-                        }}
-                      >
-                        <ArrowRightLeft className="h-4 w-4" />
-                        ضم مستخدمين
-                      </Button>
+                      {canTransfer && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setActiveTab('add-existing');
+                            setTransferSuccess(null);
+                            setTransferError(null);
+                          }}
+                        >
+                          <ArrowRightLeft className="h-4 w-4" />
+                          ضم مستخدمين
+                        </Button>
+                      )}
                     </div>
                   }
                 />

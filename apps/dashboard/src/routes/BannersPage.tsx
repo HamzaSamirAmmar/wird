@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Navigate } from 'react-router-dom';
 import {
   ArrowDown,
   ArrowUp,
@@ -138,6 +139,8 @@ export default function BannersPage() {
   }
 
   const visibleCount = banners?.filter((b) => b.isActive).length ?? 0;
+
+  if (profile && profile.role !== 'superadmin') return <Navigate to="/unauthorized" replace />;
 
   return (
     <div className="flex flex-col gap-6">

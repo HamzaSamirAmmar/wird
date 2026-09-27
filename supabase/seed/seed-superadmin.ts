@@ -1,28 +1,28 @@
-// Bootstrap script: creates the very first supervisor account.
+// Bootstrap script: creates the very first superadmin account.
 // Needed because create-employee (the normal account-creation path) requires an
-// already-authenticated supervisor caller — this breaks that chicken-and-egg problem.
+// already-authenticated supervisor/superadmin caller — this breaks that chicken-and-egg problem.
 //
 // Usage:
 //   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... \
-//   SEED_SUPERVISOR_USERNAME=admin SEED_SUPERVISOR_PASSWORD=... SEED_SUPERVISOR_NAME="..." \
-//   node --experimental-strip-types supabase/seed/seed-supervisor.ts
+//   SEED_SUPERADMIN_USERNAME=admin SEED_SUPERADMIN_PASSWORD=... SEED_SUPERADMIN_NAME="..." \
+//   node --experimental-strip-types supabase/seed/seed-superadmin.ts
 
 import { createClient } from '@supabase/supabase-js';
 
 const url = requireEnv('SUPABASE_URL');
 const serviceRoleKey = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
-const username = requireEnv('SEED_SUPERVISOR_USERNAME').trim().toLowerCase();
-const password = requireEnv('SEED_SUPERVISOR_PASSWORD');
-const fullName = process.env.SEED_SUPERVISOR_NAME?.trim() || 'المشرف الرئيسي';
+const username = requireEnv('SEED_SUPERADMIN_USERNAME').trim().toLowerCase();
+const password = requireEnv('SEED_SUPERADMIN_PASSWORD');
+const fullName = process.env.SEED_SUPERADMIN_NAME?.trim() || 'المدير العام';
 
 if (!/^[a-z0-9_.]{3,32}$/.test(username)) {
   console.error(
-    'SEED_SUPERVISOR_USERNAME must be 3-32 chars: lowercase letters, digits, "_" or "."',
+    'SEED_SUPERADMIN_USERNAME must be 3-32 chars: lowercase letters, digits, "_" or "."',
   );
   process.exit(1);
 }
 if (password.length < 8) {
-  console.error('SEED_SUPERVISOR_PASSWORD must be at least 8 characters');
+  console.error('SEED_SUPERADMIN_PASSWORD must be at least 8 characters');
   process.exit(1);
 }
 
@@ -45,7 +45,7 @@ async function main() {
     id: created.user.id,
     username,
     full_name: fullName,
-    role: 'supervisor',
+    role: 'superadmin',
     group_id: null,
     must_change_password: false,
     is_active: true,
@@ -58,7 +58,7 @@ async function main() {
   }
 
   console.log(
-    `Seeded supervisor "${username}" — log in with that username and the password you set.`,
+    `Seeded superadmin "${username}" — log in with that username and the password you set.`,
   );
 }
 

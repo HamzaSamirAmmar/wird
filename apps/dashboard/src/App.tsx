@@ -8,6 +8,7 @@ import DashboardLayout from './routes/DashboardLayout';
 import DutiesPage from './routes/DutiesPage';
 import GroupsPage from './routes/GroupsPage';
 import EmployeesPage from './routes/EmployeesPage';
+import SupervisorsPage from './routes/SupervisorsPage';
 import FollowupPage from './routes/FollowupPage';
 import BannersPage from './routes/BannersPage';
 import NotificationsPage from './routes/NotificationsPage';
@@ -24,6 +25,7 @@ export default function App() {
             <Route path="/" element={<DutiesPage />} />
             <Route path="/groups" element={<GroupsPage />} />
             <Route path="/employees" element={<EmployeesPage />} />
+            <Route path="/supervisors" element={<SupervisorsPage />} />
             <Route path="/followup" element={<FollowupPage />} />
             <Route path="/banners" element={<BannersPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />

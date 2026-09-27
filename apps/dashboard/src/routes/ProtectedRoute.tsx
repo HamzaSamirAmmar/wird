@@ -18,7 +18,9 @@ export default function ProtectedRoute() {
   if (loading) return <AuthSplash />;
 
   if (!session || !profile) return <Navigate to="/login" replace />;
-  if (profile.role !== 'supervisor') return <Navigate to="/unauthorized" replace />;
+  if (profile.role !== 'supervisor' && profile.role !== 'superadmin') {
+    return <Navigate to="/unauthorized" replace />;
+  }
   if (profile.mustChangePassword) return <Navigate to="/change-password" replace />;
 
   return <Outlet />;

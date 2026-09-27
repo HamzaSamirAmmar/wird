@@ -2,6 +2,8 @@
 
 **Wird (ورد)** — daily Quran memorization duty tracker for a workplace: supervisors assign per-day memorization/review ranges to groups; employees track checklist progress in an offline-capable Arabic PWA. Backend is Supabase (Postgres with triggers/RLS + edge functions). pnpm + Turborepo monorepo.
 
+Three roles: **superadmin** (global, seed-only bootstrap, creates supervisors and employees), **supervisor** (created by a superadmin, scoped to exactly one group — everything in this doc about "supervisors" managing groups/employees/duties applies only within their own group), **employee**. Banners and push campaigns remain superadmin-only.
+
 ## Commands
 
 ```bash
@@ -21,8 +23,8 @@ pnpm --filter @wird/pwa dev
 node packages/quran-data/scripts/generate-quran-data.mjs   # regenerates pageStarts.ts + apps/pwa/public/quran-uthmani.json from tanzil.net
 node icon-src/generate-icons.mjs                            # from inside apps/dashboard or apps/pwa; renders @wird/brand mark to public/*.png via sharp
 
-# First-supervisor bootstrap (needs SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SEED_SUPERVISOR_USERNAME/PASSWORD/NAME)
-pnpm db:seed-supervisor
+# First-superadmin bootstrap (needs SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SEED_SUPERADMIN_USERNAME/PASSWORD/NAME)
+pnpm db:seed-superadmin
 ```
 
 **There are no tests.** The verification loop is `pnpm typecheck && pnpm lint && pnpm build`.
@@ -39,7 +41,7 @@ Env: each app needs `apps/<app>/.env.local` with `VITE_SUPABASE_URL` and `VITE_S
 - `packages/ui-web` — shared React presentational components.
 - `packages/design-tokens` — colors/typography/spacing + `theme.css`.
 - `packages/brand` — brand mark geometry (mjs) shared by both apps' icon generation.
-- `supabase/` — SQL migrations, Deno edge functions (`functions/`), supervisor seed script.
+- `supabase/` — SQL migrations, Deno edge functions (`functions/`), superadmin seed script.
 
 Workspace packages expose **raw TS source** (`main: src/index.ts`), no build/dist. Changes are picked up instantly by the Vite apps; `import` uses `@wird/*` names.
 
@@ -55,7 +57,7 @@ Most write-path logic is in **Postgres triggers**, not app code (`supabase/migra
 - **Checklist**: a new duty's `duty_step_progress` rows are seeded from `duty_category_steps` (`seed_duty_steps`).
 - **Status is derived**: `duties.status` is computed from checklist counts by `sync_duty_status`. Employees toggle `duty_step_progress.is_completed`; nobody writes `status` directly.
 
-RLS is on every table (`is_supervisor()` helper). Employees see only their own group/duties. Aggregates that need cross-employee reads (leaderboard, follow-up, streaks) are `security definer` RPCs in `20260830120000_leaderboard.sql` (`group_leaderboard`, `duty_followup`, `employee_current_streak`) that return only counts + names — the pattern for any new cross-user read model. No service-role keys in the apps.
+RLS is on every table (`is_supervisor()` / `is_superadmin()` / `caller_group_id()` helpers, `20260927000001_scope_supervisor_to_group.sql`). Employees see only their own group/duties; a supervisor is scoped the same way to their one group (via `caller_group_id()`); a superadmin sees everything. Aggregates that need cross-employee reads (leaderboard, follow-up, streaks) are `security definer` RPCs in `20260830120000_leaderboard.sql` (`group_leaderboard`, `duty_followup`, `employee_current_streak`) that return only counts + names — the pattern for any new cross-user read model. `duty_followup` force-overrides its `p_group_id` argument to the caller's own group when the caller is a plain supervisor (not superadmin), so a supervisor can't pass another group's id. No service-role keys in the apps.
 
 `packages/supabase-client/src/database.types.ts` must be kept in sync with migrations (regenerate with `supabase gen types` after schema changes) — it's committed, not generated at build time.
 
@@ -77,8 +79,8 @@ RLS is on every table (`is_supervisor()` helper). Employees see only their own g
 - **Offline is cache-first, not network-first.** Dexie (`lib/offline.ts`, schema v2) holds duties, steps, an outbox, **banners**, and a `meta` store carrying `lastSyncedAt`. The UI renders the cache and the network only refreshes it; a failed refresh leaves the cache standing rather than blanking the screen. `lastSyncedAt` is stamped **only on a completed sync**, so the age the header reports is the truth. Banners were previously fetched behind a `navigator.onLine` guard and simply vanished offline.
 - **Quran text asset**: `apps/pwa/public/quran-uthmani.json` (~1.3 MB, 6236 ayahs) is precached by the service worker (`maximumFileSizeToCacheInBytes` was raised for it); omitting it from precache makes the mushaf reader online-only. Data offline-ability is handled in-app via Dexie/IndexedDB (cache + outbox in `apps/pwa/src/lib/offline.ts`), deliberately NOT via SW runtime caching of Supabase API responses.
 - **Edge functions are Deno** (`supabase/functions/*`), deployed as **self-contained single files** — CORS headers are inlined on purpose (see comment in `create-employee/index.ts`); `_shared/cors.ts` exists but is not imported. `create-employee` re-implements username validation because it can't import workspace packages.
-- Account creation can't be done from the apps (creating an auth user needs the service role). It goes through the `create-employee` edge function (verifies the caller is a supervisor via their own JWT, then writes with the service-role client). The **first** supervisor is bootstrapped by `supabase/seed/seed-supervisor.ts` to break that chicken-and-egg.
-- Supabase local dev: `supabase/config.toml` lists `./seed.sql` as the seed file but it doesn't exist — `supabase db reset` will not find a seed; supervisor bootstrap is done via the script above instead.
+- Account creation can't be done from the apps (creating an auth user needs the service role). It goes through the `create-employee` edge function (verifies the caller is a supervisor or superadmin via their own JWT, then writes with the service-role client). A supervisor caller may only create `role: 'employee'` within their own `group_id`; a superadmin may create either role in any group. The **first** superadmin is bootstrapped by `supabase/seed/seed-superadmin.ts` to break that chicken-and-egg — `superadmin` accounts are never created through the app itself.
+- Supabase local dev: `supabase/config.toml` lists `./seed.sql` as the seed file but it doesn't exist — `supabase db reset` will not find a seed; superadmin bootstrap is done via the script above instead.
 - `.gitignore` reserves `apps/mobile/` (React Native) — a mobile app is planned but doesn't exist yet; `createWirdClient` already accepts a `storage` adapter for it.
 
 ## Push notifications (FCM)

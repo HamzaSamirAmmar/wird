@@ -1,4 +1,5 @@
-// Supervisor-only: creates an employee account with an auto-generated password.
+// Supervisor/superadmin-only: creates an employee (or, superadmin-only, a supervisor) account
+// with an auto-generated password.
 // Requires SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY (auto-injected by Supabase).
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -51,12 +52,13 @@ Deno.serve(async (req) => {
 
     const { data: callerProfile, error: callerProfileError } = await callerClient
       .from('profiles')
-      .select('role')
+      .select('role, group_id')
       .eq('id', user.id)
       .single();
 
-    if (callerProfileError || callerProfile?.role !== 'supervisor') {
-      return json({ error: 'Only supervisors can create employees' }, 403);
+    const callerRole = callerProfile?.role;
+    if (callerProfileError || (callerRole !== 'supervisor' && callerRole !== 'superadmin')) {
+      return json({ error: 'Only supervisors or superadmins can create accounts' }, 403);
     }
 
     const body = await req.json();
@@ -65,6 +67,7 @@ Deno.serve(async (req) => {
       .toLowerCase();
     const fullName = String(body.fullName ?? '').trim();
     const groupId = String(body.groupId ?? '').trim();
+    const role = body.role === 'supervisor' ? 'supervisor' : 'employee';
 
     if (!USERNAME_PATTERN.test(username)) {
       return json({ error: 'اسم مستخدم غير صالح' }, 400);
@@ -74,6 +77,16 @@ Deno.serve(async (req) => {
     }
     if (!groupId) {
       return json({ error: 'يجب اختيار مجموعة' }, 400);
+    }
+
+    // A group-scoped supervisor may only create employees, and only within their own group.
+    if (callerRole === 'supervisor') {
+      if (role !== 'employee') {
+        return json({ error: 'المشرف لا يمكنه إنشاء حساب مشرف' }, 403);
+      }
+      if (groupId !== callerProfile.group_id) {
+        return json({ error: 'لا يمكن إنشاء حساب خارج مجموعتك' }, 403);
+      }
     }
 
     // Service-role client for privileged writes (creating the auth user + profile).
@@ -107,7 +120,7 @@ Deno.serve(async (req) => {
       id: created.user.id,
       username,
       full_name: fullName,
-      role: 'employee',
+      role,
       group_id: groupId,
       must_change_password: true,
     });

@@ -39,6 +39,7 @@ export const createEmployeeSchema = z.object({
   username: usernameSchema,
   fullName: z.string().trim().min(2, 'الاسم قصير جداً').max(100),
   groupId: z.string().uuid('يجب اختيار مجموعة'),
+  role: z.enum(['employee', 'supervisor']).default('employee'),
 });
 
 export const updateEmployeeSchema = z.object({

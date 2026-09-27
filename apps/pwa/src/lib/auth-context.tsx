@@ -1,6 +1,6 @@
 import * as React from 'react';
 import type { Session } from '@supabase/supabase-js';
-import type { Profile } from '@wird/domain';
+import type { Profile, UserRole } from '@wird/domain';
 import { signInWithUsername } from '@wird/supabase-client';
 import { supabase } from './supabase';
 
@@ -19,7 +19,7 @@ function toProfile(row: {
   id: string;
   username: string;
   full_name: string;
-  role: 'employee' | 'supervisor';
+  role: UserRole;
   group_id: string | null;
   must_change_password: boolean;
   is_active: boolean;

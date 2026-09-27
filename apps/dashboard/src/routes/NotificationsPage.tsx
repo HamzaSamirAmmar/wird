@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Navigate } from 'react-router-dom';
 import { CalendarClock, Plus, Repeat, Search, Send, Trash2, Zap } from 'lucide-react';
 import {
   NOTIFICATION_AUDIENCES,
@@ -249,6 +250,8 @@ export default function NotificationsPage() {
   // Distinguishes "nothing matches your filters" from "nothing exists yet" — the second
   // wants a create button, the first wants you to widen the search.
   const filtersActive = !!needle || audienceFilter !== '*';
+
+  if (profile && profile.role !== 'superadmin') return <Navigate to="/unauthorized" replace />;
 
   return (
     <div className="flex flex-col gap-6">

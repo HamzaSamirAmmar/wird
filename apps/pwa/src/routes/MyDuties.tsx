@@ -168,7 +168,7 @@ export default function MyDuties() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employeeId]);
 
-  if (profile?.role === 'supervisor') {
+  if (profile && profile.role !== 'employee') {
     return <Navigate to="/supervisor" replace />;
   }
 

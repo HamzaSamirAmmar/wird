@@ -1,6 +1,6 @@
 import type { DutyCategory } from './dutyCategories';
 
-export type UserRole = 'employee' | 'supervisor';
+export type UserRole = 'employee' | 'supervisor' | 'superadmin';
 export type DutyStatus = 'pending' | 'in_progress' | 'completed';
 
 export interface Group {

@@ -14,7 +14,7 @@ export default function Login() {
 
   if (!loading && session && profile) {
     if (profile.mustChangePassword) return <Navigate to="/change-password" replace />;
-    if (profile.role === 'supervisor') return <Navigate to="/supervisor" replace />;
+    if (profile.role !== 'employee') return <Navigate to="/supervisor" replace />;
     return <Navigate to="/" replace />;
   }
 

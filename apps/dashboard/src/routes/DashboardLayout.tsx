@@ -7,6 +7,7 @@ import {
   ClipboardCheck,
   MessageSquareQuote,
   BellRing,
+  ShieldCheck,
   LogOut,
   Menu,
   X,
@@ -19,14 +20,19 @@ const navItems = [
   { to: '/groups', label: 'المجموعات', icon: UsersRound },
   { to: '/employees', label: 'المستخدمون', icon: Users },
   { to: '/followup', label: 'المتابعة', icon: ClipboardCheck },
-  { to: '/banners', label: 'البطاقات', icon: MessageSquareQuote },
-  { to: '/notifications', label: 'الإشعارات', icon: BellRing },
+  { to: '/supervisors', label: 'المشرفون', icon: ShieldCheck, superadminOnly: true },
+  { to: '/banners', label: 'البطاقات', icon: MessageSquareQuote, superadminOnly: true },
+  { to: '/notifications', label: 'الإشعارات', icon: BellRing, superadminOnly: true },
 ];
 
 export default function DashboardLayout() {
   const { profile, signOut } = useAuth();
   const [navOpen, setNavOpen] = React.useState(false);
   const { pathname } = useLocation();
+
+  const visibleNavItems = navItems.filter(
+    (item) => !item.superadminOnly || profile?.role === 'superadmin',
+  );
 
   // The sidebar is a slide-over below `lg`; navigating inside it should dismiss it.
   React.useEffect(() => setNavOpen(false), [pathname]);
@@ -71,7 +77,7 @@ export default function DashboardLayout() {
         </div>
 
         <nav className="relative flex flex-1 flex-col gap-1 px-3">
-          {navItems.map(({ to, label, icon: Icon, end }) => (
+          {visibleNavItems.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -106,7 +112,9 @@ export default function DashboardLayout() {
             <Avatar name={profile?.fullName ?? '—'} size="sm" className="bg-white/15 text-white" />
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-medium text-white">{profile?.fullName}</div>
-              <div className="text-[11px] text-primary-200/70">مشرف</div>
+              <div className="text-[11px] text-primary-200/70">
+                {profile?.role === 'superadmin' ? 'مدير عام' : 'مشرف'}
+              </div>
             </div>
             <IconButton
               aria-label="تسجيل الخروج"
