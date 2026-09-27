@@ -254,7 +254,7 @@ export default function NotificationsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="الإشعارات"
-        description="إشعارات فورية أو مجدولة تصل الموظفين على أجهزتهم حتى مع إغلاق التطبيق"
+        description="إشعارات فورية أو مجدولة تصل المستخدمين على أجهزتهم حتى مع إغلاق التطبيق"
         actions={
           <Button onClick={() => setComposing(true)}>
             <Plus className="h-4 w-4" />

@@ -143,7 +143,7 @@ export default function BannersPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="البطاقات"
-        description="رسائل قصيرة تظهر للموظفين أعلى شاشة الأوراد — آية، حديث، حكمة، أو أي تذكير"
+        description="رسائل قصيرة تظهر للمستخدمين أعلى شاشة الأوراد — آية، حديث، حكمة، أو أي تذكير"
         actions={
           <Button onClick={() => setEditing('new')}>
             <Plus className="h-4 w-4" />
@@ -163,7 +163,7 @@ export default function BannersPage() {
           <EmptyState
             icon={MessageSquareQuote}
             title="لا توجد بطاقات بعد"
-            description="اكتب تذكيراً قصيراً؛ سيظهر للموظفين في شريط أعلى شاشة الأوراد."
+            description="اكتب تذكيراً قصيراً؛ سيظهر للمستخدمين في شريط أعلى شاشة الأوراد."
             action={
               <Button size="sm" onClick={() => setEditing('new')}>
                 <Plus className="h-4 w-4" />
@@ -177,7 +177,7 @@ export default function BannersPage() {
           <div className="flex items-center justify-between gap-3 text-sm text-neutral-500">
             <span>
               <span className="font-medium text-neutral-700">{visibleCount}</span> من{' '}
-              <span className="tabular-nums">{banners.length}</span> ظاهرة للموظفين
+              <span className="tabular-nums">{banners.length}</span> ظاهرة للمستخدمين
             </span>
             <span className="text-xs">الترتيب هنا هو ترتيب ظهورها في التطبيق</span>
           </div>
@@ -262,7 +262,7 @@ export default function BannersPage() {
                     <Checkbox
                       checked={banner.isActive}
                       onCheckedChange={() => toggleActive(banner)}
-                      aria-label="ظاهرة للموظفين"
+                      aria-label="ظاهرة للمستخدمين"
                     />
                     ظاهرة
                   </label>
@@ -291,7 +291,7 @@ export default function BannersPage() {
           </DialogHeader>
           <DialogBody>
             <p className="text-sm text-neutral-600">
-              سيُحذف نص البطاقة نهائياً ولن يظهر للموظفين. لإخفائها مؤقتاً استخدم خيار «ظاهرة» بدلاً
+              سيُحذف نص البطاقة نهائياً ولن يظهر للمستخدمين. لإخفائها مؤقتاً استخدم خيار «ظاهرة» بدلاً
               من الحذف.
             </p>
           </DialogBody>
@@ -323,7 +323,7 @@ function EmployeePreview({ body, source }: { body: string; source: string }) {
     <div className="rounded-xl bg-neutral-100 p-3">
       <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-neutral-500">
         <Eye className="h-3.5 w-3.5" />
-        كما ستظهر للموظف
+        كما ستظهر للمستخدم
       </div>
       <article className="relative overflow-hidden rounded-xl bg-primary-50 px-4 py-3.5 ring-1 ring-primary-100">
         <span
@@ -427,7 +427,7 @@ function BannerDialog({
                 id="banner-body"
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                placeholder="اكتب آية أو حديثاً أو حكمة أو أي تذكير للموظفين…"
+                placeholder="اكتب آية أو حديثاً أو حكمة أو أي تذكير للمستخدمين…"
                 maxLength={BANNER_BODY_MAX}
                 className="min-h-36 leading-[1.9]"
                 autoFocus
@@ -449,7 +449,7 @@ function BannerDialog({
 
             <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-neutral-700">
               <Checkbox checked={isActive} onCheckedChange={(v) => setIsActive(v === true)} />
-              ظاهرة للموظفين
+              ظاهرة للمستخدمين
             </label>
           </DialogBody>
           <DialogFooter>

@@ -237,7 +237,7 @@ export function DayAssignmentDialog({
             {removed.length > 0 && (
               <Alert variant="warning" title="سيتم حذف أنواع">
                 {removed.map((c) => DUTY_CATEGORY_LABELS[c]).join('، ')} — سيُحذف الواجب من جميع
-                موظفي المجموعة لهذا اليوم، بما في ذلك ما تم إنجازه منه.
+                مستخدمي المجموعة لهذا اليوم، بما في ذلك ما تم إنجازه منه.
               </Alert>
             )}
           </DialogBody>

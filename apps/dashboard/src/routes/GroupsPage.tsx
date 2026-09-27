@@ -89,7 +89,7 @@ export default function GroupsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="المجموعات"
-        description="كل موظف ينتمي لمجموعة واحدة، والأوراد تُسند للمجموعة"
+        description="كل مستخدم ينتمي لمجموعة واحدة، والأوراد تُسند للمجموعة"
         actions={
           <Button onClick={() => setDialogOpen(true)}>
             <Plus className="h-4 w-4" />
@@ -117,7 +117,7 @@ export default function GroupsPage() {
           <EmptyState
             icon={UsersRound}
             title="لا توجد مجموعات بعد"
-            description="ابدأ بإنشاء مجموعة، ثم أضف إليها الموظفين وأسند لها الأوراد."
+            description="ابدأ بإنشاء مجموعة، ثم أضف إليها المستخدمين وأسند لها الأوراد."
             action={
               <Button size="sm" onClick={() => setDialogOpen(true)}>
                 <Plus className="h-4 w-4" />
@@ -141,7 +141,7 @@ export default function GroupsPage() {
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-semibold text-neutral-900">{g.name}</div>
                   <div className="text-sm text-neutral-500">
-                    <span className="tabular-nums">{g.employee_count}</span> موظف
+                    <span className="tabular-nums">{g.employee_count}</span> مستخدم
                   </div>
                 </div>
                 <ChevronLeft className="h-4 w-4 shrink-0 text-neutral-300" />
@@ -481,7 +481,7 @@ function GroupMembersDialog({
                 <EmptyState
                   icon={Users}
                   title="لا يوجد مستخدمون في مجموعات أخرى"
-                  description="جميع الموظفين ينتمون بالفعل لهذه المجموعة، أو لا يوجد موظفون مسجلون."
+                  description="جميع المستخدمين ينتمون بالفعل لهذه المجموعة، أو لا يوجد مستخدمون مسجلون."
                 />
               ) : (
                 <div className="flex flex-col gap-2">
