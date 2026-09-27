@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
-    "@sindresorhus/transliterate": "^2.3.1",
     "@wird/brand": "workspace:*",
     "@wird/design-tokens": "workspace:*",
     "@wird/domain": "workspace:*",
