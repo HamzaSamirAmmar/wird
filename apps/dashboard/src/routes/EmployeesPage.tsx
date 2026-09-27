@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Check, Copy, Pencil, Plus, Search, Users } from 'lucide-react';
+import { ArrowRightLeft, Check, Copy, Pencil, Plus, Search, UserPlus, Users } from 'lucide-react';
 import {
   Alert,
   Avatar,
@@ -33,6 +33,9 @@ import {
 } from '@wird/ui-web';
 import { createEmployeeSchema, updateEmployeeSchema } from '@wird/domain';
 import { supabase } from '../lib/supabase';
+import { suggestUsername } from '../lib/suggest-username';
+import { BulkCreateDialog, type BulkCreatedCreds } from '../components/BulkCreateDialog';
+import { BulkCredentialsDialog } from '../components/BulkCredentialsDialog';
 
 interface EmployeeRow {
   id: string;
@@ -53,11 +56,18 @@ export default function EmployeesPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState('');
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [bulkDialogOpen, setBulkDialogOpen] = React.useState(false);
   const [createdCreds, setCreatedCreds] = React.useState<{
     username: string;
     password: string;
   } | null>(null);
+  const [bulkCreds, setBulkCreds] = React.useState<BulkCreatedCreds[] | null>(null);
   const [editing, setEditing] = React.useState<EmployeeRow | null>(null);
+
+  // Bulk reassign state
+  const [selected, setSelected] = React.useState<Set<string>>(new Set());
+  const [reassignGroupId, setReassignGroupId] = React.useState('');
+  const [reassigning, setReassigning] = React.useState(false);
 
   const load = React.useCallback(async () => {
     const [employeesRes, groupsRes] = await Promise.all([
@@ -93,16 +103,64 @@ export default function EmployeesPage() {
       )
     : employees;
 
+  const allVisibleIds = (visible ?? []).map((e) => e.id);
+  const allSelected = allVisibleIds.length > 0 && allVisibleIds.every((id) => selected.has(id));
+  const someSelected = selected.size > 0;
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(allVisibleIds));
+    }
+  }
+
+  async function handleBulkReassign() {
+    if (!reassignGroupId || selected.size === 0) return;
+    setReassigning(true);
+    const { error } = await supabase
+      .from('profiles')
+      .update({ group_id: reassignGroupId })
+      .in('id', [...selected]);
+    setReassigning(false);
+    if (error) {
+      setError('تعذر نقل المستخدمين');
+      return;
+    }
+    setSelected(new Set());
+    setReassignGroupId('');
+    load();
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="المستخدمون"
         description="أنشئ حسابات المستخدمين وأسندهم إلى المجموعات"
         actions={
-          <Button onClick={() => setDialogOpen(true)} disabled={groups.length === 0}>
-            <Plus className="h-4 w-4" />
-            مستخدم جديد
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setBulkDialogOpen(true)}
+              disabled={groups.length === 0}
+            >
+              <UserPlus className="h-4 w-4" />
+              إضافة دفعة
+            </Button>
+            <Button onClick={() => setDialogOpen(true)} disabled={groups.length === 0}>
+              <Plus className="h-4 w-4" />
+              مستخدم جديد
+            </Button>
+          </div>
         }
       />
 
@@ -112,6 +170,47 @@ export default function EmployeesPage() {
         </Alert>
       )}
       {error && <Alert variant="danger">{error}</Alert>}
+
+      {/* Bulk reassign action bar */}
+      {someSelected && (
+        <Card className="flex flex-wrap items-center gap-3 p-3">
+          <Badge variant="brand">
+            {selected.size} محدد
+          </Badge>
+          <div className="flex items-center gap-2">
+            <ArrowRightLeft className="h-4 w-4 text-neutral-500" />
+            <span className="text-sm text-neutral-600">نقل إلى:</span>
+            <Select value={reassignGroupId} onValueChange={setReassignGroupId}>
+              <SelectTrigger className="h-8 w-48">
+                <SelectValue placeholder="اختر مجموعة" />
+              </SelectTrigger>
+              <SelectContent>
+                {groups.map((g) => (
+                  <SelectItem key={g.id} value={g.id}>
+                    {g.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              onClick={handleBulkReassign}
+              disabled={!reassignGroupId}
+              loading={reassigning}
+            >
+              نقل
+            </Button>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelected(new Set())}
+            className="ms-auto"
+          >
+            إلغاء التحديد
+          </Button>
+        </Card>
+      )}
 
       <Card className="overflow-hidden">
         <div className="border-b border-neutral-100 p-4">
@@ -140,6 +239,13 @@ export default function EmployeesPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={allSelected}
+                    onCheckedChange={toggleSelectAll}
+                    aria-label="تحديد الكل"
+                  />
+                </TableHead>
                 <TableHead>الاسم</TableHead>
                 <TableHead>اسم المستخدم</TableHead>
                 <TableHead>المجموعة</TableHead>
@@ -151,7 +257,14 @@ export default function EmployeesPage() {
             </TableHeader>
             <TableBody>
               {visible.map((e) => (
-                <TableRow key={e.id}>
+                <TableRow key={e.id} className={selected.has(e.id) ? 'bg-primary-50/50' : ''}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selected.has(e.id)}
+                      onCheckedChange={() => toggleSelect(e.id)}
+                      aria-label={`تحديد ${e.full_name}`}
+                    />
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <Avatar name={e.full_name} size="sm" />
@@ -194,7 +307,20 @@ export default function EmployeesPage() {
         }}
       />
 
+      <BulkCreateDialog
+        open={bulkDialogOpen}
+        onOpenChange={setBulkDialogOpen}
+        groups={groups}
+        onCreated={(creds) => {
+          setBulkDialogOpen(false);
+          setBulkCreds(creds);
+          load();
+        }}
+      />
+
       <CredentialsDialog creds={createdCreds} onClose={() => setCreatedCreds(null)} />
+
+      <BulkCredentialsDialog creds={bulkCreds} onClose={() => setBulkCreds(null)} />
 
       <EditEmployeeDialog
         employee={editing}
@@ -225,6 +351,8 @@ function CreateEmployeeDialog({
   const [groupId, setGroupId] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+  /** Once the user manually edits the username, stop overwriting it */
+  const [usernameTouched, setUsernameTouched] = React.useState(false);
 
   React.useEffect(() => {
     if (open) {
@@ -232,8 +360,16 @@ function CreateEmployeeDialog({
       setFullName('');
       setGroupId('');
       setError(null);
+      setUsernameTouched(false);
     }
   }, [open]);
+
+  function handleFullNameChange(value: string) {
+    setFullName(value);
+    if (!usernameTouched) {
+      setUsername(suggestUsername(value));
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -273,7 +409,7 @@ function CreateEmployeeDialog({
               <Input
                 id="full-name"
                 value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
+                onChange={(e) => handleFullNameChange(e.target.value)}
                 autoFocus
                 required
               />
@@ -281,13 +417,16 @@ function CreateEmployeeDialog({
             <Field
               label="اسم المستخدم"
               htmlFor="username"
-              hint="حروف لاتينية صغيرة وأرقام وشرطة سفلية"
+              hint="يُقترح تلقائياً — يمكنك تعديله"
             >
               <Input
                 id="username"
                 dir="ltr"
                 value={username}
-                onChange={(e) => setUsername(e.target.value.toLowerCase())}
+                onChange={(e) => {
+                  setUsername(e.target.value.toLowerCase());
+                  setUsernameTouched(true);
+                }}
                 placeholder="ahmed_ali"
                 required
               />
