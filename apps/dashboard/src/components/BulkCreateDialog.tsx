@@ -50,14 +50,18 @@ export function BulkCreateDialog({
   onOpenChange,
   groups,
   onCreated,
+  initialGroupId,
+  lockGroup,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   groups: GroupOption[];
   onCreated: (creds: BulkCreatedCreds[]) => void;
+  initialGroupId?: string;
+  lockGroup?: boolean;
 }) {
   const [entries, setEntries] = React.useState<EmployeeEntry[]>([]);
-  const [groupId, setGroupId] = React.useState('');
+  const [groupId, setGroupId] = React.useState(initialGroupId ?? '');
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [progress, setProgress] = React.useState<{ done: number; total: number } | null>(null);
@@ -65,11 +69,11 @@ export function BulkCreateDialog({
   React.useEffect(() => {
     if (open) {
       setEntries([freshEntry(), freshEntry()]);
-      setGroupId('');
+      setGroupId(initialGroupId ?? '');
       setError(null);
       setProgress(null);
     }
-  }, [open]);
+  }, [open, initialGroupId]);
 
   function updateEntry(key: number, patch: Partial<EmployeeEntry>) {
     setEntries((prev) =>
@@ -194,8 +198,8 @@ export function BulkCreateDialog({
             {error && <Alert variant="danger">{error}</Alert>}
 
             <Field label="المجموعة">
-              <Select value={groupId} onValueChange={setGroupId}>
-                <SelectTrigger>
+              <Select value={groupId} onValueChange={setGroupId} disabled={lockGroup}>
+                <SelectTrigger disabled={lockGroup}>
                   <SelectValue placeholder="اختر مجموعة" />
                 </SelectTrigger>
                 <SelectContent>

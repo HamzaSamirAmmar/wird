@@ -1,11 +1,21 @@
 import * as React from 'react';
-import { ChevronLeft, Plus, UserRound, UsersRound } from 'lucide-react';
+import {
+  ArrowRightLeft,
+  ChevronLeft,
+  Plus,
+  Search,
+  UserPlus,
+  UserRound,
+  Users,
+  UsersRound,
+} from 'lucide-react';
 import {
   Alert,
   Avatar,
   Badge,
   Button,
   Card,
+  Checkbox,
   Dialog,
   DialogBody,
   DialogContent,
@@ -18,9 +28,16 @@ import {
   PageHeader,
   Skeleton,
   SkeletonRows,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  cn,
 } from '@wird/ui-web';
 import { createGroupSchema } from '@wird/domain';
 import { supabase } from '../lib/supabase';
+import { BulkCreateDialog, type BulkCreatedCreds } from '../components/BulkCreateDialog';
+import { BulkCredentialsDialog } from '../components/BulkCredentialsDialog';
 
 interface GroupRow {
   id: string;
@@ -34,6 +51,8 @@ export default function GroupsPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [viewing, setViewing] = React.useState<GroupRow | null>(null);
+  const [bulkCreateGroup, setBulkCreateGroup] = React.useState<GroupRow | null>(null);
+  const [bulkCreds, setBulkCreds] = React.useState<BulkCreatedCreds[] | null>(null);
 
   const load = React.useCallback(async () => {
     const { data, error } = await supabase
@@ -60,6 +79,11 @@ export default function GroupsPage() {
   React.useEffect(() => {
     load();
   }, [load]);
+
+  const groupOptions = React.useMemo(
+    () => (groups ?? []).map((g) => ({ id: g.id, name: g.name })),
+    [groups],
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -127,7 +151,29 @@ export default function GroupsPage() {
         </div>
       )}
 
-      <GroupMembersDialog group={viewing} onClose={() => setViewing(null)} />
+      <GroupMembersDialog
+        group={bulkCreateGroup || bulkCreds ? null : viewing}
+        onClose={() => setViewing(null)}
+        onBulkCreate={(g) => setBulkCreateGroup(g)}
+        onMembersChanged={load}
+      />
+
+      <BulkCreateDialog
+        open={!!bulkCreateGroup}
+        onOpenChange={(open) => {
+          if (!open) setBulkCreateGroup(null);
+        }}
+        groups={groupOptions}
+        initialGroupId={bulkCreateGroup?.id}
+        lockGroup={true}
+        onCreated={(creds) => {
+          setBulkCreateGroup(null);
+          setBulkCreds(creds);
+          load();
+        }}
+      />
+
+      <BulkCredentialsDialog creds={bulkCreds} onClose={() => setBulkCreds(null)} />
 
       <CreateGroupDialog
         open={dialogOpen}
@@ -148,77 +194,382 @@ interface MemberRow {
   is_active: boolean;
 }
 
-/**
- * The roster behind a group card. Fetched on open rather than joined into the group list —
- * the list only ever needed counts, and pulling every member of every group up front would
- * make the page cost grow with headcount for data that is usually not looked at.
- */
-function GroupMembersDialog({ group, onClose }: { group: GroupRow | null; onClose: () => void }) {
-  const [members, setMembers] = React.useState<MemberRow[] | null>(null);
+interface CandidateRow {
+  id: string;
+  full_name: string;
+  username: string;
+  is_active: boolean;
+  group: { id: string; name: string } | null;
+}
 
-  React.useEffect(() => {
+/**
+ * The roster behind a group card with bulk addition capabilities:
+ * - View existing members with quick search
+ * - Add/transfer existing employees from other groups in bulk
+ * - Bulk create new employees directly into this group
+ */
+function GroupMembersDialog({
+  group,
+  onClose,
+  onBulkCreate,
+  onMembersChanged,
+}: {
+  group: GroupRow | null;
+  onClose: () => void;
+  onBulkCreate: (group: GroupRow) => void;
+  onMembersChanged: () => void;
+}) {
+  const [activeTab, setActiveTab] = React.useState<'members' | 'add-existing'>('members');
+  const [members, setMembers] = React.useState<MemberRow[] | null>(null);
+  const [candidates, setCandidates] = React.useState<CandidateRow[] | null>(null);
+  const [loadingCandidates, setLoadingCandidates] = React.useState(false);
+  const [selectedCandidates, setSelectedCandidates] = React.useState<Set<string>>(new Set());
+  const [memberQuery, setMemberQuery] = React.useState('');
+  const [candidateQuery, setCandidateQuery] = React.useState('');
+  const [transferring, setTransferring] = React.useState(false);
+  const [transferError, setTransferError] = React.useState<string | null>(null);
+  const [transferSuccess, setTransferSuccess] = React.useState<string | null>(null);
+
+  const loadMembers = React.useCallback(async () => {
     if (!group) return;
-    let cancelled = false;
-    setMembers(null);
-    supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('id, full_name, username, is_active')
       .eq('role', 'employee')
       .eq('group_id', group.id)
-      .order('full_name')
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        setMembers(error ? [] : ((data ?? []) as MemberRow[]));
-      });
-    return () => {
-      cancelled = true;
-    };
+      .order('full_name');
+
+    setMembers(error ? [] : ((data ?? []) as MemberRow[]));
   }, [group]);
+
+  const loadCandidates = React.useCallback(async () => {
+    if (!group) return;
+    setLoadingCandidates(true);
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, full_name, username, is_active, group:groups!profiles_group_id_fkey(id, name)')
+      .eq('role', 'employee')
+      .neq('group_id', group.id)
+      .order('full_name');
+
+    setLoadingCandidates(false);
+    setCandidates(error ? [] : ((data ?? []) as unknown as CandidateRow[]));
+  }, [group]);
+
+  React.useEffect(() => {
+    if (!group) return;
+    setActiveTab('members');
+    setSelectedCandidates(new Set());
+    setMemberQuery('');
+    setCandidateQuery('');
+    setTransferError(null);
+    setTransferSuccess(null);
+    setMembers(null);
+    setCandidates(null);
+
+    loadMembers();
+    loadCandidates();
+  }, [group, loadMembers, loadCandidates]);
+
+  const memberNeedle = memberQuery.trim().toLowerCase();
+  const filteredMembers = React.useMemo(() => {
+    if (!members) return null;
+    if (!memberNeedle) return members;
+    return members.filter(
+      (m) =>
+        m.full_name.toLowerCase().includes(memberNeedle) ||
+        m.username.toLowerCase().includes(memberNeedle),
+    );
+  }, [members, memberNeedle]);
+
+  const candidateNeedle = candidateQuery.trim().toLowerCase();
+  const filteredCandidates = React.useMemo(() => {
+    if (!candidates) return [];
+    if (!candidateNeedle) return candidates;
+    return candidates.filter(
+      (c) =>
+        c.full_name.toLowerCase().includes(candidateNeedle) ||
+        c.username.toLowerCase().includes(candidateNeedle) ||
+        (c.group?.name ?? '').toLowerCase().includes(candidateNeedle),
+    );
+  }, [candidates, candidateNeedle]);
+
+  const allFilteredSelected =
+    filteredCandidates.length > 0 && filteredCandidates.every((c) => selectedCandidates.has(c.id));
+
+  function toggleSelectAllCandidates() {
+    if (allFilteredSelected) {
+      setSelectedCandidates((prev) => {
+        const next = new Set(prev);
+        for (const c of filteredCandidates) {
+          next.delete(c.id);
+        }
+        return next;
+      });
+    } else {
+      setSelectedCandidates((prev) => {
+        const next = new Set(prev);
+        for (const c of filteredCandidates) {
+          next.add(c.id);
+        }
+        return next;
+      });
+    }
+  }
+
+  function toggleCandidate(id: string) {
+    setSelectedCandidates((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleTransferSubmit() {
+    if (!group || selectedCandidates.size === 0) return;
+    setTransferring(true);
+    setTransferError(null);
+    const count = selectedCandidates.size;
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ group_id: group.id })
+      .in('id', Array.from(selectedCandidates));
+
+    setTransferring(false);
+    if (error) {
+      setTransferError('تعذر نقل المستخدمين إلى المجموعة');
+      return;
+    }
+
+    setSelectedCandidates(new Set());
+    setCandidateQuery('');
+    setTransferSuccess(`تم نقل ${count} مستخدم بنجاح إلى مجموعة ${group.name}`);
+    await Promise.all([loadMembers(), loadCandidates()]);
+    onMembersChanged();
+    setActiveTab('members');
+  }
 
   return (
     <Dialog open={!!group} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>{group?.name}</DialogTitle>
         </DialogHeader>
-        <DialogBody>
-          {members === null ? (
-            <SkeletonRows rows={4} />
-          ) : members.length === 0 ? (
-            <EmptyState
-              icon={UserRound}
-              title="لا يوجد أعضاء"
-              description="أضف مستخدمين إلى هذه المجموعة من صفحة المستخدمين."
-            />
-          ) : (
-            <div className="flex flex-col gap-1">
-              {members.map((m) => (
-                <div
-                  key={m.id}
-                  className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-neutral-50"
-                >
-                  <Avatar name={m.full_name} size="sm" />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-neutral-900">
-                      {m.full_name}
-                    </div>
-                    <div
-                      dir="ltr"
-                      className="truncate text-start font-mono text-[11px] text-neutral-500"
-                    >
-                      {m.username}
-                    </div>
-                  </div>
-                  {!m.is_active && <Badge variant="neutral">موقوف</Badge>}
-                </div>
-              ))}
+        <DialogBody className="gap-4">
+          <Tabs
+            value={activeTab}
+            onValueChange={(val) => {
+              setActiveTab(val as 'members' | 'add-existing');
+              setTransferSuccess(null);
+              setTransferError(null);
+            }}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 pb-3">
+              <TabsList>
+                <TabsTrigger value="members">
+                  الأعضاء
+                  {members !== null && (
+                    <span className="ms-1.5 rounded-full bg-neutral-200/80 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-neutral-700">
+                      {members.length}
+                    </span>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="add-existing">
+                  <ArrowRightLeft className="h-3.5 w-3.5 me-1.5" />
+                  ضم مستخدمين
+                </TabsTrigger>
+              </TabsList>
+
+              {group && (
+                <Button size="sm" onClick={() => onBulkCreate(group)}>
+                  <UserPlus className="h-3.5 w-3.5" />
+                  إنشاء دفعة جديدة
+                </Button>
+              )}
             </div>
-          )}
+
+            <TabsContent value="members" className="mt-3 flex flex-col gap-3">
+              {transferSuccess && <Alert variant="success">{transferSuccess}</Alert>}
+
+              {members === null ? (
+                <SkeletonRows rows={4} />
+              ) : members.length === 0 ? (
+                <EmptyState
+                  icon={UserRound}
+                  title="لا يوجد أعضاء في هذه المجموعة"
+                  description="يمكنك إنشاء حسابات جديدة لهذه المجموعة أو ضم مستخدمين من مجموعات أخرى."
+                  action={
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      {group && (
+                        <Button size="sm" onClick={() => onBulkCreate(group)}>
+                          <UserPlus className="h-4 w-4" />
+                          إنشاء دفعة جديدة
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setActiveTab('add-existing');
+                          setTransferSuccess(null);
+                          setTransferError(null);
+                        }}
+                      >
+                        <ArrowRightLeft className="h-4 w-4" />
+                        ضم مستخدمين
+                      </Button>
+                    </div>
+                  }
+                />
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {members.length > 4 && (
+                    <Input
+                      icon={<Search className="h-4 w-4" />}
+                      placeholder="ابحث بالاسم أو اسم المستخدم..."
+                      value={memberQuery}
+                      onChange={(e) => setMemberQuery(e.target.value)}
+                      className="h-9 text-sm"
+                    />
+                  )}
+
+                  {filteredMembers && filteredMembers.length === 0 ? (
+                    <div className="py-6 text-center text-sm text-neutral-500">
+                      لا توجد نتائج مطابقة للبحث
+                    </div>
+                  ) : (
+                    <div className="flex max-h-72 flex-col gap-1 overflow-y-auto pe-1">
+                      {(filteredMembers ?? members).map((m) => (
+                        <div
+                          key={m.id}
+                          className="flex items-center gap-3 rounded-lg px-2.5 py-2 hover:bg-neutral-50"
+                        >
+                          <Avatar name={m.full_name} size="sm" />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-medium text-neutral-900">
+                              {m.full_name}
+                            </div>
+                            <div
+                              dir="ltr"
+                              className="truncate text-start font-mono text-[11px] text-neutral-500"
+                            >
+                              {m.username}
+                            </div>
+                          </div>
+                          {!m.is_active && <Badge variant="neutral">موقوف</Badge>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="add-existing" className="mt-3 flex flex-col gap-3">
+              {transferError && <Alert variant="danger">{transferError}</Alert>}
+
+              <Alert variant="info">
+                اختر المستخدمين لنقلهم إلى مجموعة &ldquo;{group?.name}&rdquo;. الأوراد المُسندة
+                سابقاً تبقى كما هي؛ والتغيير يسري على الإسناد القادم.
+              </Alert>
+
+              {loadingCandidates ? (
+                <SkeletonRows rows={4} />
+              ) : !candidates || candidates.length === 0 ? (
+                <EmptyState
+                  icon={Users}
+                  title="لا يوجد مستخدمون في مجموعات أخرى"
+                  description="جميع الموظفين ينتمون بالفعل لهذه المجموعة، أو لا يوجد موظفون مسجلون."
+                />
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <Input
+                    icon={<Search className="h-4 w-4" />}
+                    placeholder="ابحث بالاسم أو اسم المستخدم أو المجموعة الحالية..."
+                    value={candidateQuery}
+                    onChange={(e) => setCandidateQuery(e.target.value)}
+                    className="h-9 text-sm"
+                  />
+
+                  <div className="flex items-center justify-between border-b border-neutral-100 py-1.5">
+                    <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-neutral-700">
+                      <Checkbox
+                        checked={allFilteredSelected}
+                        onCheckedChange={toggleSelectAllCandidates}
+                      />
+                      <span>تحديد الكل ({filteredCandidates.length})</span>
+                    </label>
+                    {selectedCandidates.size > 0 && (
+                      <Badge variant="brand">{selectedCandidates.size} محدد</Badge>
+                    )}
+                  </div>
+
+                  {filteredCandidates.length === 0 ? (
+                    <div className="py-6 text-center text-sm text-neutral-500">
+                      لا توجد نتائج مطابقة للبحث
+                    </div>
+                  ) : (
+                    <div className="flex max-h-64 flex-col gap-1 overflow-y-auto pe-1">
+                      {filteredCandidates.map((c) => {
+                        const isSelected = selectedCandidates.has(c.id);
+                        return (
+                          <label
+                            key={c.id}
+                            className={cn(
+                              'flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 transition-colors',
+                              isSelected
+                                ? 'bg-primary-50/60 ring-1 ring-primary-200'
+                                : 'hover:bg-neutral-50',
+                            )}
+                          >
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={() => toggleCandidate(c.id)}
+                            />
+                            <Avatar name={c.full_name} size="sm" />
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm font-medium text-neutral-900">
+                                {c.full_name}
+                              </div>
+                              <div
+                                dir="ltr"
+                                className="truncate text-start font-mono text-[11px] text-neutral-500"
+                              >
+                                {c.username}
+                              </div>
+                            </div>
+                            {c.group && (
+                              <Badge variant="neutral" className="text-xs">
+                                {c.group.name}
+                              </Badge>
+                            )}
+                            {!c.is_active && <Badge variant="neutral">موقوف</Badge>}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             إغلاق
           </Button>
+          {activeTab === 'add-existing' && (
+            <Button
+              onClick={handleTransferSubmit}
+              disabled={selectedCandidates.size === 0}
+              loading={transferring}
+            >
+              <ArrowRightLeft className="h-4 w-4" />
+              ضم إلى المجموعة ({selectedCandidates.size})
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
