@@ -1,6 +1,6 @@
-// Sends FCM web-push notifications for a notification_campaigns row — and, for campaigns
-// flagged `telegram` (plus duty pings), the same message to linked Telegram chats
-// (telegram_chats, populated by the telegram-webhook function when employees tap Start).
+// Sends FCM web-push notifications for a notification_campaigns row (and duty pings), plus
+// the same message to linked Telegram chats (telegram_chats, populated by the
+// telegram-webhook function when employees tap Start). Every send uses both channels.
 //
 // Called four ways:
 //   1. Dashboard (superadmin, or a supervisor for their own group's campaigns):
@@ -291,6 +291,17 @@ const TELEGRAM_SURAHS = [
   'المسد', 'الإخلاص', 'الفلق', 'الناس',
 ];
 
+// Ayah count per surah (index = surah - 1), for recognising a whole-surah range.
+const TELEGRAM_AYAH_COUNTS = [
+  7, 286, 200, 176, 120, 165, 206, 75, 129, 109, 123, 111, 43, 52, 99, 128, 111, 110, 98, 135,
+  112, 78, 118, 64, 77, 227, 93, 88, 69, 60, 34, 30, 73, 54, 45, 83, 182, 88, 75, 85, 54, 53, 89,
+  59, 37, 35, 38, 29, 18, 45, 60, 49, 62, 55, 78, 96, 29, 22, 24, 13, 14, 11, 11, 18, 12, 12, 30,
+  52, 52, 44, 28, 28, 20, 56, 40, 31, 50, 40, 46, 42, 29, 19, 36, 25, 22, 17, 19, 26, 30, 20, 15,
+  21, 11, 8, 8, 19, 5, 8, 8, 11, 11, 8, 3, 9, 5, 4, 7, 3, 6, 3, 5, 4, 5, 6,
+];
+
+const APP_URL = Deno.env.get('APP_URL') ?? 'https://wird-app.pages.dev/';
+
 const TELEGRAM_CATEGORY_LABELS: Record<string, string> = {
   new_memorization: 'حفظ جديد',
   minor_review: 'مراجعة صغرى',
@@ -314,30 +325,54 @@ function formatSnapshotRange(d: SnapshotDuty): string {
   const [surahFrom, ayahFrom, surahTo, ayahTo] = d.s;
   const from = TELEGRAM_SURAHS[surahFrom - 1];
   const to = TELEGRAM_SURAHS[surahTo - 1];
+  if (ayahFrom === 1 && ayahTo === TELEGRAM_AYAH_COUNTS[surahTo - 1]) {
+    return surahFrom === surahTo ? `سورة ${from} كاملة` : `من سورة ${from} إلى نهاية سورة ${to}`;
+  }
   if (surahFrom === surahTo) return `${from} (${ayahFrom}-${ayahTo})`;
   return `${from} (${ayahFrom}) - ${to} (${ayahTo})`;
 }
 
-// Mirrors wirdSummary() in apps/pwa/src/sw.ts: the day's unfinished duties, or a
-// well-done line when everything is already complete.
-function telegramWirdSummary(duties: SnapshotDuty[]): string | null {
+// Fixed display order, so the message reads the same as the app's checklist.
+const CATEGORY_ORDER = ['new_memorization', 'minor_review', 'major_review'];
+
+// The day's unfinished duties — only the categories actually assigned today, nothing for a
+// category the supervisor left unticked — or a well-done line when everything is complete.
+function telegramWirdLines(duties: SnapshotDuty[]): string | null {
   if (duties.length === 0) return null;
-  const open = duties.filter((d) => d.t !== 'completed');
-  if (open.length === 0) return 'أتممت ورد اليوم — بارك الله فيك';
-  return open
-    .map((d) => `${TELEGRAM_CATEGORY_LABELS[d.c] ?? d.c}: ${formatSnapshotRange(d)}`)
-    .join('\n');
+  const open = duties
+    .filter((d) => d.t !== 'completed')
+    .sort((a, b) => CATEGORY_ORDER.indexOf(a.c) - CATEGORY_ORDER.indexOf(b.c));
+  if (open.length === 0) return '✅ أتممت ورد اليوم — بارك الله فيك';
+  const lines = open.map(
+    (d) =>
+      `▫️ <b>${escapeHtml(TELEGRAM_CATEGORY_LABELS[d.c] ?? d.c)}:</b> ${escapeHtml(formatSnapshotRange(d))}`,
+  );
+  return `📖 <b>ورد اليوم</b>\n${lines.join('\n')}`;
+}
+
+function todayLink(): string {
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: CAMPAIGN_TIME_ZONE }).format(
+    new Date(),
+  );
+  return `${APP_URL}?date=${today}`;
 }
 
 function telegramMessageText(message: Message, duties: unknown[]): string {
-  const summary = telegramWirdSummary(duties as SnapshotDuty[]);
-  let body = message.body;
-  if (message.showWird && summary) {
-    // Same rule as the service worker: a new-duty ping leads with the wird; everywhere
-    // else the authored text leads and the wird follows.
-    body = message.kind === 'new_duty' ? summary : [body, summary].filter(Boolean).join('\n');
+  const snapshot = duties as SnapshotDuty[];
+  const wird = message.showWird ? telegramWirdLines(snapshot) : null;
+  const parts = [`<b>${escapeHtml(message.title)}</b>`];
+  // A new-duty ping is *about* the wird, so the wird replaces the canned body; elsewhere the
+  // authored text leads and the wird follows.
+  if (message.body && !(message.kind === 'new_duty' && wird)) parts.push(escapeHtml(message.body));
+  if (wird) parts.push(wird);
+  // Ticking happens in the app, not the bot: point at today's checklist while anything is open.
+  if (wird && snapshot.some((d) => d.t !== 'completed')) {
+    const link = escapeHtml(todayLink());
+    parts.push(
+      `بعد الانتهاء علّم وردك مكتملاً في التطبيق 👇\n<a href="${link}">${escapeHtml(APP_URL)}</a>`,
+    );
   }
-  return `<b>${escapeHtml(message.title)}</b>${body ? `\n\n${escapeHtml(body)}` : ''}`;
+  return parts.join('\n\n');
 }
 
 interface TelegramResult {
@@ -379,6 +414,9 @@ async function sendTelegram(
             text: telegramMessageText(message, target.d),
             parse_mode: 'HTML',
             link_preview_options: { is_disabled: true },
+            reply_markup: {
+              inline_keyboard: [[{ text: 'فتح ورد اليوم في التطبيق', url: todayLink() }]],
+            },
           }),
         });
         return { target, ok: res.ok, status: res.status, text: await res.text() };
@@ -533,35 +571,43 @@ Deno.serve(async (req) => {
     }
 
     // Dashboard sends: superadmin anything, a supervisor only their own group's campaigns.
+    let manualKind: string | null = null;
     if (caller) {
       if (caller.role !== 'superadmin' && caller.role !== 'supervisor') {
         return json({ error: 'Not authorized' }, 403);
       }
-      if (caller.role === 'supervisor') {
-        const { data: owned } = await admin
-          .from('notification_campaigns')
-          .select('group_id')
-          .eq('id', campaignId)
-          .single();
-        if (!owned || !caller.groupId || owned.group_id !== caller.groupId) {
-          return json({ error: 'Not authorized' }, 403);
-        }
+      const { data: owned } = await admin
+        .from('notification_campaigns')
+        .select('group_id, schedule_kind')
+        .eq('id', campaignId)
+        .single();
+      if (!owned) return json({ error: 'Not found' }, 404);
+      if (caller.role === 'supervisor' && (!caller.groupId || owned.group_id !== caller.groupId)) {
+        return json({ error: 'Not authorized' }, 403);
       }
+      manualKind = owned.schedule_kind;
     }
 
-    // Atomically claim the campaign: advance next_run_at first so a concurrent dispatch
-    // (cron tick racing a dashboard click) can never double-send.
-    const { data: campaign, error: claimError } = await admin
+    // Atomically claim the campaign: null next_run_at first so a concurrent dispatch (cron
+    // tick racing a dashboard click) can never double-send.
+    //  - cron: only active campaigns that are due.
+    //  - manual: an instant message may be re-sent any time and a recurring rule fired early
+    //    (it is rescheduled below); a one-off only while still pending — once sent it is spent.
+    let claim = admin
       .from('notification_campaigns')
       .update({
         next_run_at: null,
         last_error: null,
       })
-      .eq('id', campaignId)
-      .eq('is_active', true)
-      .lte('next_run_at', new Date().toISOString())
+      .eq('id', campaignId);
+    if (!caller) {
+      claim = claim.eq('is_active', true).lte('next_run_at', new Date().toISOString());
+    } else if (manualKind === 'once') {
+      claim = claim.not('next_run_at', 'is', null);
+    }
+    const { data: campaign, error: claimError } = await claim
       .select(
-        'id, title, body, audience, target_profile_id, schedule_kind, recur_weekday, recur_time, telegram',
+        'id, title, body, audience, target_profile_id, schedule_kind, recur_weekday, recur_time',
       )
       .single();
 
@@ -598,11 +644,8 @@ Deno.serve(async (req) => {
         };
         const accessToken = await getAccessToken(sa);
         const result = await sendToTargets(sa, accessToken, targets, message);
-        // Only campaigns flagged telegram (today: the seeded daily wird reminder) mirror
-        // to Telegram; an authored motivational message stays push-only unless flipped.
-        const tg = campaign.telegram
-          ? await sendTelegram(admin, targets, message)
-          : { sent: 0, failed: 0, reached: new Set<string>() };
+        // Every campaign goes out on both channels: app push and Telegram.
+        const tg = await sendTelegram(admin, targets, message);
         sent = result.sent + tg.sent;
         failed = result.failed + tg.failed;
         const reached = new Set([...result.reached, ...tg.reached]);

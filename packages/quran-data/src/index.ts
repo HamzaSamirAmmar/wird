@@ -50,13 +50,27 @@ export function validateRange(range: QuranRange): string | null {
   return null;
 }
 
-/** Human-readable Arabic label for a range, e.g. "البقرة (1-20)" or "البقرة (1) - آل عمران (10)". */
+/** True when the range starts at a surah's first ayah and ends at a surah's last ayah. */
+export function isWholeSurahRange(range: QuranRange): boolean {
+  return range.ayahFrom === 1 && range.ayahTo === getSurah(range.surahTo).ayahCount;
+}
+
+/**
+ * Human-readable Arabic label for a range: "البقرة (1-20)", "البقرة (1) - آل عمران (10)",
+ * or, for whole surahs, "سورة النبأ كاملة" / "من سورة الملك إلى نهاية سورة المرسلات".
+ * Mirrored in supabase/functions/push-notifications (formatSnapshotRange) — keep in sync.
+ */
 export function formatRange(range: QuranRange): string {
   const { surahFrom, ayahFrom, surahTo, ayahTo } = range;
   const from = getSurah(surahFrom);
+  const to = getSurah(surahTo);
+  if (isWholeSurahRange(range)) {
+    return surahFrom === surahTo
+      ? `سورة ${from.nameAr} كاملة`
+      : `من سورة ${from.nameAr} إلى نهاية سورة ${to.nameAr}`;
+  }
   if (surahFrom === surahTo) {
     return `${from.nameAr} (${ayahFrom}-${ayahTo})`;
   }
-  const to = getSurah(surahTo);
   return `${from.nameAr} (${ayahFrom}) - ${to.nameAr} (${ayahTo})`;
 }

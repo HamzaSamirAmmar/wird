@@ -1,6 +1,8 @@
-// The ready-to-send message a supervisor pastes into WhatsApp/Telegram/SMS when handing a
-// new employee their credentials. Centralized here so the single-create and bulk-create
-// flows produce the exact same wording.
+// The ready-to-send message a supervisor pastes into Telegram/WhatsApp when handing a new
+// employee their credentials. Centralized so single-create and bulk-create produce the same text.
+//
+// Username and password are wrapped in backticks: Telegram renders `text` as monospace on send,
+// and a monospace span is copied with a single tap. Elsewhere the backticks are harmless.
 
 const BOT_USERNAME = 'wird_channel_bot';
 const APP_URL = 'https://wird-app.pages.dev/';
@@ -16,16 +18,24 @@ export function buildWelcomeMessage({
 }): string {
   return `السلام عليكم ورحمة الله وبركاته يا ${fullName}
 
-تم إنشاء حسابك في تطبيق الورد اليومي، اتبع الخطوات التالية:
+تم إنشاء حسابك في تطبيق الورد اليومي.
 
-١. افتح بوت التيليجرام واضغط "Start" حتى يصلك تذكير وردك اليومي: https://t.me/${BOT_USERNAME}
-٢. افتح التطبيق من هذا الرابط وسجّل الدخول ثم عيّن كلمة مرور جديدة: ${APP_URL}
-٣. لتثبيت التطبيق على هاتفك من المتصفح: افتح الرابط أعلاه ثم من قائمة المتصفح اختر "إضافة إلى الشاشة الرئيسية"
+اسم المستخدم:
+\`${username}\`
 
-اسم المستخدم: ${username}
-كلمة المرور المؤقتة: ${password}
+كلمة المرور المؤقتة:
+\`${password}\`
 
-عن أبي أمامة الباهلي رضي الله عنه قال: سمعت رسول الله صلى الله عليه وسلم يقول: «اقْرَؤُوا الْقُرْآنَ فَإِنَّهُ يَأْتِي يَوْمَ الْقِيَامَةِ شَفِيعًا لِأَصْحَابِهِ» (رواه مسلم)
+(اضغط على أيٍّ منهما لنسخه)
+
+الخطوات:
+١. افتح التطبيق وسجّل الدخول ثم عيّن كلمة مرور جديدة:
+${APP_URL}
+٢. ثبّت التطبيق: من قائمة المتصفح اختر "إضافة إلى الشاشة الرئيسية".
+٣. افتح البوت واضغط "Start" ليصلك وردك يومياً:
+https://t.me/${BOT_USERNAME}
+
+«اقْرَؤُوا الْقُرْآنَ فَإِنَّهُ يَأْتِي يَوْمَ الْقِيَامَةِ شَفِيعًا لِأَصْحَابِهِ» (رواه مسلم)
 
 تقبل الله منك`;
 }

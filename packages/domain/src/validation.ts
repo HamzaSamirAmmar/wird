@@ -28,6 +28,16 @@ export const telegramUsernameSchema = z
   })
   .transform((v) => (v === '' ? null : v));
 
+/**
+ * What the Telegram input shows while typing: always a single leading '@' (added if missing,
+ * kept if typed). Storage strips it again via telegramUsernameSchema — the bot receives the
+ * username without '@' and matches on that.
+ */
+export function formatTelegramInput(v: string): string {
+  const bare = v.replace(/@/g, '').replace(/\s+/g, '').toLowerCase();
+  return bare ? `@${bare}` : '';
+}
+
 export const quranScopeSchema = z
   .object({
     scopeSurahFrom: z.number().int().min(1).max(114),
@@ -47,13 +57,20 @@ export const createGroupSchema = z.object({
   name: z.string().trim().min(2, 'اسم المجموعة قصير جداً').max(100),
 });
 
-export const createEmployeeSchema = z.object({
-  username: usernameSchema,
-  fullName: z.string().trim().min(2, 'الاسم قصير جداً').max(100),
-  groupId: z.string().uuid('يجب اختيار مجموعة'),
-  role: z.enum(['employee', 'supervisor']).default('employee'),
-  telegramUsername: telegramUsernameSchema.optional(),
-});
+// An employee's wird is delivered on Telegram, so creating one requires the Telegram username.
+// Supervisors have no wird and no Telegram field.
+export const createEmployeeSchema = z
+  .object({
+    username: usernameSchema,
+    fullName: z.string().trim().min(2, 'الاسم قصير جداً').max(100),
+    groupId: z.string().uuid('يجب اختيار مجموعة'),
+    role: z.enum(['employee', 'supervisor']).default('employee'),
+    telegramUsername: telegramUsernameSchema.optional(),
+  })
+  .refine((v) => v.role !== 'employee' || !!v.telegramUsername, {
+    message: 'معرف تيليجرام مطلوب',
+    path: ['telegramUsername'],
+  });
 
 export const updateEmployeeSchema = z.object({
   fullName: z.string().trim().min(2, 'الاسم قصير جداً').max(100),

@@ -33,6 +33,27 @@ export const CAMPAIGN_SHAPE_LABELS: Record<CampaignShape, string> = {
   recurring: 'متكررة',
 };
 
+/**
+ * Finished = an instant or one-off that has nothing left to fire (the send claim nulls
+ * next_run_at). A recurring rule is never finished — it is a standing rule until deleted.
+ */
+export function campaignIsSent(c: { scheduleKind: CampaignScheduleKind; nextRunAt: string | null }) {
+  return campaignShape(c.scheduleKind) !== 'recurring' && !c.nextRunAt;
+}
+
+/**
+ * Whether "send now" makes sense: an instant message may be re-sent any number of times, a
+ * recurring rule may be fired early, but a one-off that already went out is spent.
+ */
+export function campaignCanSendNow(c: {
+  scheduleKind: CampaignScheduleKind;
+  nextRunAt: string | null;
+}) {
+  const shape = campaignShape(c.scheduleKind);
+  if (shape === 'instant' || shape === 'recurring') return true;
+  return !!c.nextRunAt;
+}
+
 export interface NotificationCampaign {
   id: string;
   createdBy: string | null;
