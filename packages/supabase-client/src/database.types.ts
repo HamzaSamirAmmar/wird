@@ -329,6 +329,7 @@ export type Database = {
           schedule_kind: string;
           scheduled_at: string | null;
           target_profile_id: string | null;
+          telegram: boolean;
           title: string;
         };
         Insert: {
@@ -351,6 +352,7 @@ export type Database = {
           schedule_kind?: string;
           scheduled_at?: string | null;
           target_profile_id?: string | null;
+          telegram?: boolean;
           title: string;
         };
         Update: {
@@ -373,6 +375,7 @@ export type Database = {
           schedule_kind?: string;
           scheduled_at?: string | null;
           target_profile_id?: string | null;
+          telegram?: boolean;
           title?: string;
         };
         Relationships: [
@@ -401,6 +404,7 @@ export type Database = {
           is_active: boolean;
           must_change_password: boolean;
           role: Database['public']['Enums']['user_role'];
+          telegram_username: string | null;
           username: string;
         };
         Insert: {
@@ -411,6 +415,7 @@ export type Database = {
           is_active?: boolean;
           must_change_password?: boolean;
           role: Database['public']['Enums']['user_role'];
+          telegram_username?: string | null;
           username: string;
         };
         Update: {
@@ -421,6 +426,7 @@ export type Database = {
           is_active?: boolean;
           must_change_password?: boolean;
           role?: Database['public']['Enums']['user_role'];
+          telegram_username?: string | null;
           username?: string;
         };
         Relationships: [
@@ -429,6 +435,35 @@ export type Database = {
             columns: ['group_id'];
             isOneToOne: false;
             referencedRelation: 'groups';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      telegram_chats: {
+        Row: {
+          chat_id: number;
+          linked_at: string;
+          profile_id: string;
+          telegram_username: string | null;
+        };
+        Insert: {
+          chat_id: number;
+          linked_at?: string;
+          profile_id: string;
+          telegram_username?: string | null;
+        };
+        Update: {
+          chat_id?: number;
+          linked_at?: string;
+          profile_id?: string;
+          telegram_username?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'telegram_chats_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: true;
+            referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
         ];
@@ -485,6 +520,10 @@ export type Database = {
         Args: { p_profile_id: string };
         Returns: boolean;
       };
+      link_telegram_chat: {
+        Args: { p_chat_id: number; p_username: string };
+        Returns: string | null;
+      };
       campaign_profile_ids: {
         Args: { p_campaign_id: string };
         Returns: string[];
@@ -502,6 +541,7 @@ export type Database = {
           device_count: number;
           platforms: string[];
           installed: boolean;
+          telegram: boolean;
           last_seen_at: string | null;
         }[];
       };

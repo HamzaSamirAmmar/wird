@@ -46,3 +46,7 @@ apps/*/.vite/
 
 # misc
 .eslintcache
+
+# local one-off DB dumps — contain user data, never commit
+/backup-*.sql
+/wipe-user-data.sql

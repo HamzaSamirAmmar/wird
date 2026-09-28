@@ -13,7 +13,18 @@ const corsHeaders = {
 };
 
 const USERNAME_PATTERN = /^[a-z0-9_.]{3,32}$/;
+// Telegram usernames: 5–32 chars, letters/digits/underscore. Stored normalized (lowercase,
+// no '@') to match what the telegram-webhook receives; null when not provided.
+const TELEGRAM_USERNAME_PATTERN = /^[a-z0-9_]{5,32}$/;
 const SYNTHETIC_EMAIL_DOMAIN = 'wird.local';
+
+function normalizeTelegramUsername(v: unknown): string | null {
+  const s = String(v ?? '')
+    .trim()
+    .replace(/^@+/, '')
+    .toLowerCase();
+  return s === '' ? null : s;
+}
 
 function generatePassword(length = 12): string {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
@@ -68,6 +79,7 @@ Deno.serve(async (req) => {
     const fullName = String(body.fullName ?? '').trim();
     const groupId = String(body.groupId ?? '').trim();
     const role = body.role === 'supervisor' ? 'supervisor' : 'employee';
+    const telegramUsername = normalizeTelegramUsername(body.telegramUsername);
 
     if (!USERNAME_PATTERN.test(username)) {
       return json({ error: 'اسم مستخدم غير صالح' }, 400);
@@ -77,6 +89,9 @@ Deno.serve(async (req) => {
     }
     if (!groupId) {
       return json({ error: 'يجب اختيار مجموعة' }, 400);
+    }
+    if (telegramUsername && !TELEGRAM_USERNAME_PATTERN.test(telegramUsername)) {
+      return json({ error: 'معرف تيليجرام غير صالح' }, 400);
     }
 
     // A group-scoped supervisor may only create employees, and only within their own group.
@@ -122,13 +137,17 @@ Deno.serve(async (req) => {
       full_name: fullName,
       role,
       group_id: groupId,
+      telegram_username: telegramUsername,
       must_change_password: true,
     });
 
     if (profileError) {
       // Roll back the orphaned auth user if the profile insert failed.
       await adminClient.auth.admin.deleteUser(created.user.id);
-      return json({ error: profileError.message }, 500);
+      const message = profileError.code === '23505'
+        ? 'هذا المعرف مستخدم لمستخدم آخر'
+        : profileError.message;
+      return json({ error: message }, profileError.code === '23505' ? 409 : 500);
     }
 
     return json({ username, fullName, password }, 200);

@@ -16,6 +16,18 @@ export const usernameSchema = z
     'اسم المستخدم يجب أن يكون بين 3 و32 حرفاً (أحرف إنجليزية صغيرة وأرقام فقط)',
   );
 
+// Telegram username: 5–32 chars, letters/digits/underscore. Stored normalized (lowercase,
+// no leading '@') to match what the telegram-webhook function receives. Empty → null,
+// meaning "no telegram" — same convention as banner sources.
+export const telegramUsernameSchema = z
+  .string()
+  .trim()
+  .transform((v) => v.replace(/^@+/, '').toLowerCase())
+  .refine((v) => v === '' || /^[a-z0-9_]{5,32}$/.test(v), {
+    message: 'معرف تيليجرام غير صالح — من 5 إلى 32 حرفاً إنجليزياً أو رقماً أو شرطة سفلية',
+  })
+  .transform((v) => (v === '' ? null : v));
+
 export const quranScopeSchema = z
   .object({
     scopeSurahFrom: z.number().int().min(1).max(114),
@@ -40,11 +52,13 @@ export const createEmployeeSchema = z.object({
   fullName: z.string().trim().min(2, 'الاسم قصير جداً').max(100),
   groupId: z.string().uuid('يجب اختيار مجموعة'),
   role: z.enum(['employee', 'supervisor']).default('employee'),
+  telegramUsername: telegramUsernameSchema.optional(),
 });
 
 export const updateEmployeeSchema = z.object({
   fullName: z.string().trim().min(2, 'الاسم قصير جداً').max(100),
   groupId: z.string().uuid('يجب اختيار مجموعة'),
+  telegramUsername: telegramUsernameSchema.optional(),
 });
 
 export const createDutyAssignmentSchema = z

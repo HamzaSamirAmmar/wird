@@ -42,7 +42,10 @@ interface EmployeeRow {
   username: string;
   full_name: string;
   is_active: boolean;
+  telegram_username: string | null;
   group: { id: string; name: string } | null;
+  /** Present once the employee opened the bot and tapped Start (telegram_chats row). */
+  telegram: { chat_id: number } | null;
 }
 
 interface GroupOption {
@@ -73,7 +76,9 @@ export default function EmployeesPage() {
     const [employeesRes, groupsRes] = await Promise.all([
       supabase
         .from('profiles')
-        .select('id, username, full_name, is_active, group:groups!profiles_group_id_fkey(id, name)')
+        .select(
+          'id, username, full_name, is_active, telegram_username, group:groups!profiles_group_id_fkey(id, name), telegram:telegram_chats(chat_id)',
+        )
         .eq('role', 'employee')
         .order('created_at', { ascending: false }),
       supabase.from('groups').select('id, name').order('name'),
@@ -249,6 +254,7 @@ export default function EmployeesPage() {
                 <TableHead>الاسم</TableHead>
                 <TableHead>اسم المستخدم</TableHead>
                 <TableHead>المجموعة</TableHead>
+                <TableHead>تيليجرام</TableHead>
                 <TableHead>الحالة</TableHead>
                 <TableHead>
                   <span className="sr-only">إجراءات</span>
@@ -277,6 +283,20 @@ export default function EmployeesPage() {
                     </span>
                   </TableCell>
                   <TableCell>{e.group?.name ?? '—'}</TableCell>
+                  <TableCell>
+                    {e.telegram_username ? (
+                      <div className="flex flex-col items-start gap-1">
+                        <span dir="ltr" className="font-mono text-xs text-neutral-500">
+                          @{e.telegram_username}
+                        </span>
+                        <Badge variant={e.telegram ? 'completed' : 'neutral'} dot>
+                          {e.telegram ? 'مرتبط' : 'لم يبدأ'}
+                        </Badge>
+                      </div>
+                    ) : (
+                      '—'
+                    )}
+                  </TableCell>
                   <TableCell>
                     <Badge variant={e.is_active ? 'completed' : 'neutral'} dot>
                       {e.is_active ? 'نشط' : 'موقوف'}
@@ -349,6 +369,7 @@ function CreateEmployeeDialog({
   const [username, setUsername] = React.useState('');
   const [fullName, setFullName] = React.useState('');
   const [groupId, setGroupId] = React.useState('');
+  const [telegram, setTelegram] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   /** Once the user manually edits the username, stop overwriting it */
@@ -359,6 +380,7 @@ function CreateEmployeeDialog({
       setUsername('');
       setFullName('');
       setGroupId('');
+      setTelegram('');
       setError(null);
       setUsernameTouched(false);
     }
@@ -373,7 +395,7 @@ function CreateEmployeeDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const parsed = createEmployeeSchema.safeParse({ username, fullName, groupId });
+    const parsed = createEmployeeSchema.safeParse({ username, fullName, groupId, telegramUsername: telegram });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'خطأ في البيانات');
       return;
@@ -445,6 +467,19 @@ function CreateEmployeeDialog({
                 </SelectContent>
               </Select>
             </Field>
+            <Field
+              label="معرف تيليجرام"
+              htmlFor="telegram"
+              hint="اختياري — بعد حفظه يفتح الموظف البوت ويضغط ابدأ ليصله ورده يومياً"
+            >
+              <Input
+                id="telegram"
+                dir="ltr"
+                value={telegram}
+                onChange={(e) => setTelegram(e.target.value.toLowerCase())}
+                placeholder="@ahmed"
+              />
+            </Field>
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
@@ -461,10 +496,10 @@ function CreateEmployeeDialog({
 }
 
 /**
- * Edits the two things about an employee that actually change: their display name and which
- * group they belong to. Username is deliberately not editable — it is the auth identity
- * (`<username>@wird.local`) that the account was created against, so renaming it here would
- * silently lock the employee out.
+ * Edits the things about an employee that actually change: their display name, which
+ * group they belong to, and their Telegram matching username. Username is deliberately
+ * not editable — it is the auth identity (`<username>@wird.local`) that the account was
+ * created against, so renaming it here would silently lock the employee out.
  *
  * Moving a group only changes future fan-out: `duties` rows already created for this employee
  * are theirs and stay put, which is why nothing else has to be rewritten here.
@@ -483,6 +518,7 @@ function EditEmployeeDialog({
   const [fullName, setFullName] = React.useState('');
   const [groupId, setGroupId] = React.useState('');
   const [isActive, setIsActive] = React.useState(true);
+  const [telegram, setTelegram] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -491,6 +527,7 @@ function EditEmployeeDialog({
     setFullName(employee.full_name);
     setGroupId(employee.group?.id ?? '');
     setIsActive(employee.is_active);
+    setTelegram(employee.telegram_username ?? '');
     setError(null);
   }, [employee]);
 
@@ -498,7 +535,7 @@ function EditEmployeeDialog({
     e.preventDefault();
     if (!employee) return;
 
-    const parsed = updateEmployeeSchema.safeParse({ fullName, groupId });
+    const parsed = updateEmployeeSchema.safeParse({ fullName, groupId, telegramUsername: telegram });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'خطأ في البيانات');
       return;
@@ -511,13 +548,18 @@ function EditEmployeeDialog({
       .update({
         full_name: parsed.data.fullName,
         group_id: parsed.data.groupId,
+        telegram_username: parsed.data.telegramUsername ?? null,
         is_active: isActive,
       })
       .eq('id', employee.id);
     setSubmitting(false);
 
     if (error) {
-      setError('تعذر حفظ التعديلات');
+      setError(
+        error.code === '23505'
+          ? 'هذا المعرف مستخدم لمستخدم آخر'
+          : 'تعذر حفظ التعديلات',
+      );
       return;
     }
     onSaved();
@@ -547,6 +589,24 @@ function EditEmployeeDialog({
 
             <Field label="اسم المستخدم" hint="لا يمكن تغييره — هو معرّف الدخول للحساب">
               <Input dir="ltr" value={employee?.username ?? ''} disabled readOnly />
+            </Field>
+
+            <Field
+              label="معرف تيليجرام"
+              htmlFor="edit-telegram"
+              hint={
+                employee?.telegram_username && !employee?.telegram
+                  ? 'لم يفتح الموظف البوت بعد — اطلب منه الضغط على ابدأ'
+                  : 'اتركه فارغاً لإلغاء الربط'
+              }
+            >
+              <Input
+                id="edit-telegram"
+                dir="ltr"
+                value={telegram}
+                onChange={(e) => setTelegram(e.target.value.toLowerCase())}
+                placeholder="@ahmed"
+              />
             </Field>
 
             <Field label="المجموعة">

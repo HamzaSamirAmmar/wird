@@ -1132,6 +1132,7 @@ interface CoverageRow {
   device_count: number;
   platforms: string[];
   installed: boolean;
+  telegram: boolean;
   last_seen_at: string | null;
 }
 
@@ -1142,9 +1143,10 @@ const PLATFORM_LABELS: Record<string, string> = {
 };
 
 /**
- * Who a push can actually reach. A send only ever lands on devices that registered, so the
- * practical question before and after any campaign is "who has not enabled notifications" —
- * those are the people to help in person.
+ * Who a send can actually reach. A push only ever lands on devices that registered, and
+ * Telegram only on accounts whose owner tapped Start — so the practical question before
+ * and after any campaign is "who is reachable on neither": those are the people to help
+ * in person.
  */
 function CoveragePanel({
   groupNames,
@@ -1164,8 +1166,8 @@ function CoveragePanel({
 
   if (!rows || rows.length === 0) return null;
 
-  const covered = rows.filter((r) => r.device_count > 0).length;
-  const missing = rows.filter((r) => r.device_count === 0);
+  const covered = rows.filter((r) => r.device_count > 0 || r.telegram).length;
+  const missing = rows.filter((r) => r.device_count === 0 && !r.telegram);
   const pct = Math.round((covered / rows.length) * 100);
 
   return (
@@ -1186,7 +1188,7 @@ function CoveragePanel({
           <div className="mt-0.5 text-xs text-neutral-500">
             {missing.length === 0
               ? 'كل المستخدمين يستقبلون الإشعارات'
-              : `${missing.length} لن تصلهم الإشعارات حتى يفعّلوها من التطبيق`}
+              : `${missing.length} لن تصلهم الإشعارات حتى يفعّلوها من التطبيق أو يربطوا تيليجرام`}
           </div>
         </div>
         <ChevronDown
@@ -1215,16 +1217,21 @@ function CoveragePanel({
                 )}
                 <TableCell>
                   {r.device_count === 0 ? (
-                    <Badge variant="danger" dot>
-                      غير مفعّلة
-                    </Badge>
+                    r.telegram ? (
+                      <Badge variant="pending" dot>
+                        تيليجرام فقط
+                      </Badge>
+                    ) : (
+                      <Badge variant="danger" dot>
+                        غير مفعّلة
+                      </Badge>
+                    )
                   ) : (
                     <span className="text-neutral-700">
                       {r.platforms.map((p) => PLATFORM_LABELS[p] ?? p).join('، ') ||
                         `${r.device_count} جهاز`}
-                      {!r.installed && (
-                        <span className="text-xs text-neutral-400"> · من المتصفح</span>
-                      )}
+                      {!r.installed && <span className="text-xs text-neutral-400"> · من المتصفح</span>}
+                      {r.telegram && <span className="text-xs text-neutral-400"> · تيليجرام</span>}
                     </span>
                   )}
                 </TableCell>
