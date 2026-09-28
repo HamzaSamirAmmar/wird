@@ -238,14 +238,3 @@ export async function unregisterPushDevice() {
     // since register_push_token keeps one token per device.
   }
 }
-
-/** Sends a test notification to this account's own devices (edge function, `auto: test`). */
-export async function sendTestPush(): Promise<{ error: string | null; sent: number }> {
-  const { data, error } = await supabase.functions.invoke<{ sent?: number }>('push-notifications', {
-    body: { auto: { kind: 'test' } },
-  });
-  if (error) return { error: 'تعذر إرسال الإشعار التجريبي', sent: 0 };
-  const sent = data?.sent ?? 0;
-  if (sent === 0) return { error: 'لم يُعثر على جهاز مسجّل لهذا الحساب', sent };
-  return { error: null, sent };
-}

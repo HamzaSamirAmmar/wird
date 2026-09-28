@@ -32,7 +32,7 @@ import { BannerRail } from '../components/BannerRail';
 import { DayStrip } from '../components/DayStrip';
 import { GroupStandings } from '../components/GroupStandings';
 import { MushafReader } from '../components/MushafReader';
-import { PushNotice, PushSettingsButton } from '../components/PushNotice';
+import { PushNotice } from '../components/PushNotice';
 import { ensurePushRegistered } from '../lib/notifications';
 import { clampToVisibleRange, formatRelativeDay, todayISO } from '../lib/dates';
 
@@ -283,7 +283,6 @@ export default function MyDuties() {
                 </span>
               )
             )}
-            <PushSettingsButton />
             <IconButton
               aria-label="تسجيل الخروج"
               onClick={async () => {
