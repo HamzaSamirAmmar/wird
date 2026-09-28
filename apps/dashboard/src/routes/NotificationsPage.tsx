@@ -16,8 +16,9 @@ import {
   NOTIFICATION_AUDIENCE_LABELS,
   SUPERVISOR_NOTIFICATION_AUDIENCES,
   CAMPAIGN_SCHEDULE_KINDS,
-  CAMPAIGN_SHAPE_LABELS,
   WEEKDAY_LABELS,
+  campaignCanSendNow,
+  campaignIsSent,
   campaignShape,
   notificationCampaignSchema,
   type CampaignShape,
@@ -201,7 +202,7 @@ export default function NotificationsPage() {
   const [composing, setComposing] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState<NotificationCampaign | null>(null);
   const [sendingNow, setSendingNow] = React.useState<string | null>(null);
-  const [tab, setTab] = React.useState<CampaignShape>('recurring');
+  const [tab, setTab] = React.useState<StatusTab>('all');
   const [query, setQuery] = React.useState('');
   // '*' rather than '' — Radix Select reserves the empty string, and 'all' is already a
   // real audience ("الجميع"), so the no-filter sentinel has to be neither.
@@ -298,11 +299,8 @@ export default function NotificationsPage() {
       ) ?? null,
     [campaigns, audienceFilter, needle],
   );
-  const byShape = (shape: CampaignShape) =>
-    filtered?.filter((c) => campaignShape(c.scheduleKind) === shape) ?? [];
-  const recurring = byShape('recurring');
-  const once = byShape('once');
-  const instant = byShape('instant');
+  const upcoming = filtered?.filter((c) => !campaignIsSent(c)) ?? [];
+  const sent = filtered?.filter(campaignIsSent) ?? [];
   // Distinguishes "nothing matches your filters" from "nothing exists yet" — the second
   // wants a create button, the first wants you to widen the search.
   const filtersActive = !!needle || audienceFilter !== '*';
@@ -339,20 +337,14 @@ export default function NotificationsPage() {
           </Card>
         ) : (
           <Card className="overflow-hidden">
-            <Tabs value={tab} onValueChange={(v) => setTab(v as CampaignShape)}>
+            <Tabs value={tab} onValueChange={(v) => setTab(v as StatusTab)}>
               <div className="flex flex-wrap items-center gap-3 border-b border-neutral-100 p-4">
-                {/* Three shapes, not three raw kinds: a supervisor thinks "does this repeat,
-                  does it end, or did it already go out" — not "is this row 'weekly'". */}
+                {/* What a supervisor asks is "what is still going to go out" vs "what already
+                  went out" — the repeat pattern is a column, not a place to hunt in. */}
                 <TabsList>
-                  <TabsTrigger value="recurring">
-                    {CAMPAIGN_SHAPE_LABELS.recurring} ({recurring.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="once">
-                    {CAMPAIGN_SHAPE_LABELS.once} ({once.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="instant">
-                    {CAMPAIGN_SHAPE_LABELS.instant} ({instant.length})
-                  </TabsTrigger>
+                  <TabsTrigger value="all">الكل ({filtered?.length ?? 0})</TabsTrigger>
+                  <TabsTrigger value="upcoming">القادمة ({upcoming.length})</TabsTrigger>
+                  <TabsTrigger value="sent">المُرسلة ({sent.length})</TabsTrigger>
                 </TabsList>
 
                 <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
@@ -382,119 +374,20 @@ export default function NotificationsPage() {
                 </div>
               </div>
 
-              {/* Standing rules: they keep firing, so enable/disable and next-run are the point. */}
-              <TabsContent value="recurring">
-                <ScheduledTable
-                  shape="recurring"
-                  rows={recurring}
-                  filtersActive={filtersActive}
-                  sendingNow={sendingNow}
-                  onCompose={() => setComposing(true)}
-                  onToggleActive={toggleActive}
-                  onSend={dispatchNow}
-                  onDelete={setConfirmDelete}
-                />
-              </TabsContent>
-
-              {/* One-offs: they end by themselves, so the question is only whether the moment
-                has passed yet — not whether the rule is still worth keeping on. */}
-              <TabsContent value="once">
-                <ScheduledTable
-                  shape="once"
-                  rows={once}
-                  filtersActive={filtersActive}
-                  sendingNow={sendingNow}
-                  onCompose={() => setComposing(true)}
-                  onToggleActive={toggleActive}
-                  onSend={dispatchNow}
-                  onDelete={setConfirmDelete}
-                />
-              </TabsContent>
-
-              {/* Instant: a send log. No enable/disable — a one-off send has nothing to disable
-                once it has fired, and toggling it off before it fires just loses it silently. */}
-              <TabsContent value="instant">
-                {instant.length === 0 ? (
-                  <EmptyState
-                    icon={Zap}
-                    title={filtersActive ? 'لا نتائج مطابقة' : 'لا توجد إشعارات فورية'}
-                    description={
-                      filtersActive
-                        ? 'جرّب كلمة بحث أخرى أو غيّر فئة المرسل إليهم.'
-                        : 'الإشعارات التي ترسلها فوراً تظهر هنا مع نتيجة كل إرسال.'
-                    }
-                    action={
-                      filtersActive ? undefined : (
-                        <Button size="sm" onClick={() => setComposing(true)}>
-                          <Plus className="h-4 w-4" />
-                          إشعار جديد
-                        </Button>
-                      )
-                    }
+              {(['all', 'upcoming', 'sent'] as const).map((t) => (
+                <TabsContent key={t} value={t}>
+                  <CampaignTable
+                    tab={t}
+                    rows={t === 'all' ? (filtered ?? []) : t === 'upcoming' ? upcoming : sent}
+                    filtersActive={filtersActive}
+                    sendingNow={sendingNow}
+                    onCompose={() => setComposing(true)}
+                    onToggleActive={toggleActive}
+                    onSend={dispatchNow}
+                    onDelete={setConfirmDelete}
                   />
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>الإشعار</TableHead>
-                        <TableHead>المرسل إليهم</TableHead>
-                        <TableHead>أُرسل في</TableHead>
-                        <TableHead>النتيجة</TableHead>
-                        <TableHead>
-                          <span className="sr-only">إجراءات</span>
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {instant.map((campaign) => (
-                        <TableRow key={campaign.id}>
-                          <TableCell>
-                            <CampaignCell campaign={campaign} />
-                          </TableCell>
-                          <TableCell>
-                            <AudienceCell campaign={campaign} />
-                          </TableCell>
-                          <TableCell>
-                            {campaign.lastSentAt ? (
-                              <span className="text-neutral-700">
-                                {compactDateTime.format(new Date(campaign.lastSentAt))}
-                              </span>
-                            ) : (
-                              /* Created but the immediate dispatch did not land; the cron
-                               dispatcher still owns it while next_run_at is set. */
-                              <Badge variant="in_progress" dot>
-                                بانتظار الإرسال
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {campaign.lastError ? (
-                              <div title={campaign.lastError}>
-                                <Badge variant="danger" dot>
-                                  فشل الإرسال
-                                </Badge>
-                              </div>
-                            ) : campaign.lastSentAt ? (
-                              <ReachSummary campaign={campaign} />
-                            ) : (
-                              <span className="text-neutral-400">—</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <RowActions
-                              campaign={campaign}
-                              canSend={!!campaign.nextRunAt}
-                              sending={sendingNow === campaign.id}
-                              onSend={() => dispatchNow(campaign)}
-                              onDelete={() => setConfirmDelete(campaign)}
-                            />
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </TabsContent>
+                </TabsContent>
+              ))}
             </Tabs>
           </Card>
         )}
@@ -509,9 +402,9 @@ export default function NotificationsPage() {
           onClose={() => setComposing(false)}
           onSaved={(kind) => {
             setComposing(false);
-            // Follow the campaign to its tab, otherwise composing an instant notification while
-            // the recurring tab is open looks like nothing happened.
-            setTab(campaignShape(kind));
+            // Follow the campaign to where it now lives, so saving never looks like nothing
+            // happened.
+            setTab(kind === 'now' ? 'sent' : 'upcoming');
             load();
           }}
         />
@@ -544,13 +437,36 @@ export default function NotificationsPage() {
   );
 }
 
+type StatusTab = 'all' | 'upcoming' | 'sent';
+
+const SHAPE_ICONS: Record<CampaignShape, typeof Zap> = {
+  instant: Zap,
+  once: CalendarClock,
+  recurring: Repeat,
+};
+
+const EMPTY_COPY: Record<StatusTab, { title: string; description: string }> = {
+  all: {
+    title: 'لا توجد إشعارات بعد',
+    description: 'أرسل إشعاراً فورياً، أو جدوله لموعد محدد، أو اجعله يتكرر يومياً أو أسبوعياً.',
+  },
+  upcoming: {
+    title: 'لا توجد إشعارات قادمة',
+    description: 'الإشعارات المجدولة والمتكررة التي لم تُرسل بعد تظهر هنا.',
+  },
+  sent: {
+    title: 'لم يُرسل شيء بعد',
+    description: 'الإشعارات الفورية والمجدولة لمرة واحدة تنتقل إلى هنا بعد إرسالها مع نتيجتها.',
+  },
+};
+
 /**
- * The two scheduled shapes share every column but one: a recurring rule shows its repeat
- * pattern, a one-off shows the single moment it is aimed at. Everything else — the toggle,
- * the last send, the actions — is identical, so they share a table rather than a copy of one.
+ * One table for every shape. What differs is per row: the active toggle only exists while
+ * something is still going to fire (a sent one-off has nothing left to enable), and "send now"
+ * follows campaignCanSendNow — instant messages re-send freely, spent one-offs never.
  */
-function ScheduledTable({
-  shape,
+function CampaignTable({
+  tab,
   rows,
   filtersActive,
   sendingNow,
@@ -559,7 +475,7 @@ function ScheduledTable({
   onSend,
   onDelete,
 }: {
-  shape: 'recurring' | 'once';
+  tab: StatusTab;
   rows: NotificationCampaign[];
   filtersActive: boolean;
   sendingNow: string | null;
@@ -568,28 +484,17 @@ function ScheduledTable({
   onSend: (c: NotificationCampaign) => void;
   onDelete: (c: NotificationCampaign) => void;
 }) {
-  const isOnce = shape === 'once';
-
   if (rows.length === 0) {
+    const copy = EMPTY_COPY[tab];
     return (
       <EmptyState
-        icon={isOnce ? CalendarClock : Repeat}
-        title={
-          filtersActive
-            ? 'لا نتائج مطابقة'
-            : isOnce
-              ? 'لا توجد إشعارات لمرة واحدة'
-              : 'لا توجد إشعارات متكررة'
-        }
+        icon={tab === 'sent' ? Send : tab === 'upcoming' ? CalendarClock : Zap}
+        title={filtersActive ? 'لا نتائج مطابقة' : copy.title}
         description={
-          filtersActive
-            ? 'جرّب كلمة بحث أخرى أو غيّر فئة المرسل إليهم.'
-            : isOnce
-              ? 'جدول إشعاراً لموعد محدد؛ يُرسل مرة واحدة ثم ينتهي.'
-              : 'جدول تذكيراً يومياً أو أسبوعياً يتكرر حتى تعطّله.'
+          filtersActive ? 'جرّب كلمة بحث أخرى أو غيّر فئة المرسل إليهم.' : copy.description
         }
         action={
-          filtersActive ? undefined : (
+          filtersActive || tab === 'sent' ? undefined : (
             <Button size="sm" onClick={onCompose}>
               <Plus className="h-4 w-4" />
               إشعار جديد
@@ -606,7 +511,7 @@ function ScheduledTable({
         <TableRow>
           <TableHead>الإشعار</TableHead>
           <TableHead>المرسل إليهم</TableHead>
-          <TableHead>{isOnce ? 'موعد الإرسال' : 'التكرار'}</TableHead>
+          <TableHead>التوقيت</TableHead>
           <TableHead>آخر إرسال</TableHead>
           <TableHead>مفعّل</TableHead>
           <TableHead>
@@ -616,41 +521,66 @@ function ScheduledTable({
       </TableHeader>
       <TableBody>
         {rows.map((campaign) => {
-          // A one-off whose moment has passed is spent, not "upcoming" — the claim nulls
-          // next_run_at on send, so that is what distinguishes the two.
-          const spent = isOnce && !campaign.nextRunAt;
+          const shape = campaignShape(campaign.scheduleKind);
+          const isSent = campaignIsSent(campaign);
+          // Only a scheduled message that has yet to fire has anything to switch off.
+          const toggleable = shape !== 'instant' && !isSent;
+          const muted = toggleable && !campaign.isActive;
+          const ShapeIcon = SHAPE_ICONS[shape];
           return (
-            <TableRow key={campaign.id} className={cn(!campaign.isActive && 'bg-neutral-50/70')}>
+            <TableRow key={campaign.id} className={cn(muted && 'bg-neutral-50/70')}>
               <TableCell>
-                <CampaignCell campaign={campaign} muted={!campaign.isActive} />
+                <CampaignCell campaign={campaign} muted={muted} />
               </TableCell>
               <TableCell>
                 <AudienceCell campaign={campaign} />
               </TableCell>
               <TableCell>
-                <div className="text-neutral-700">{scheduleSummary(campaign)}</div>
-                {campaign.isActive && campaign.nextRunAt ? (
+                <div className="flex items-center gap-1.5 text-neutral-700">
+                  <ShapeIcon className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+                  <span>{scheduleSummary(campaign)}</span>
+                </div>
+                {!isSent && campaign.nextRunAt && campaign.isActive ? (
                   <div className="mt-0.5 text-xs text-primary-700">
                     القادم: {compactDateTime.format(new Date(campaign.nextRunAt))}
                   </div>
+                ) : shape === 'instant' && !campaign.lastSentAt ? (
+                  /* Created but the immediate dispatch did not land; the cron dispatcher
+                     still owns it while next_run_at is set. */
+                  <div className="mt-1">
+                    <Badge variant="in_progress" dot>
+                      بانتظار الإرسال
+                    </Badge>
+                  </div>
                 ) : (
-                  spent && <div className="mt-0.5 text-xs text-neutral-400">انتهى</div>
+                  isSent && (
+                    <div className="mt-1">
+                      <Badge variant="completed" dot>
+                        أُرسل
+                      </Badge>
+                    </div>
+                  )
                 )}
               </TableCell>
               <TableCell>
                 <LastSendCell campaign={campaign} />
               </TableCell>
               <TableCell>
-                <Checkbox
-                  checked={campaign.isActive}
-                  onCheckedChange={() => onToggleActive(campaign)}
-                  aria-label={campaign.isActive ? 'تعطيل الإشعار' : 'تفعيل الإشعار'}
-                />
+                {toggleable ? (
+                  <Checkbox
+                    checked={campaign.isActive}
+                    onCheckedChange={() => onToggleActive(campaign)}
+                    aria-label={campaign.isActive ? 'تعطيل الإشعار' : 'تفعيل الإشعار'}
+                  />
+                ) : (
+                  <span className="text-neutral-300">—</span>
+                )}
               </TableCell>
               <TableCell>
                 <RowActions
                   campaign={campaign}
-                  canSend={campaign.isActive && !!campaign.nextRunAt}
+                  canSend={campaignCanSendNow(campaign)}
+                  resend={shape === 'instant' && !!campaign.lastSentAt}
                   sending={sendingNow === campaign.id}
                   onSend={() => onSend(campaign)}
                   onDelete={() => onDelete(campaign)}
@@ -752,20 +682,23 @@ function LastSendCell({ campaign }: { campaign: NotificationCampaign }) {
 function RowActions({
   campaign,
   canSend,
+  resend,
   sending,
   onSend,
   onDelete,
 }: {
   campaign: NotificationCampaign;
   canSend: boolean;
+  resend: boolean;
   sending: boolean;
   onSend: () => void;
   onDelete: () => void;
 }) {
+  const label = resend ? 'إعادة الإرسال' : 'إرسال الآن';
   return (
     <div className="flex items-center justify-end gap-1">
       {canSend && (
-        <IconButton aria-label="إرسال الآن" disabled={sending} onClick={onSend}>
+        <IconButton aria-label={label} title={label} disabled={sending} onClick={onSend}>
           <Send className={cn('h-4 w-4', sending && 'animate-pulse')} />
         </IconButton>
       )}
@@ -1057,7 +990,7 @@ function ComposeDialog({
 
             {scheduleKind === 'now' && (
               <p className="text-xs leading-relaxed text-neutral-500">
-                يُرسل فوراً عند الحفظ إلى الأجهزة المسجّلة للإشعارات.
+                يُرسل فوراً عند الحفظ إلى التطبيق وتيليجرام معاً، ويمكن إعادة إرساله لاحقاً.
               </p>
             )}
 
@@ -1168,7 +1101,16 @@ function CoveragePanel({
 
   const covered = rows.filter((r) => r.device_count > 0 || r.telegram).length;
   const missing = rows.filter((r) => r.device_count === 0 && !r.telegram);
+  const appCount = rows.filter((r) => r.device_count > 0).length;
+  const telegramCount = rows.filter((r) => r.telegram).length;
   const pct = Math.round((covered / rows.length) * 100);
+  // People reachable on neither channel first — they are who the supervisor has to help.
+  const sorted = [...rows].sort(
+    (a, b) =>
+      Number(a.device_count > 0) + Number(a.telegram) -
+        (Number(b.device_count > 0) + Number(b.telegram)) ||
+      a.full_name.localeCompare(b.full_name, 'ar'),
+  );
 
   return (
     <Card className="overflow-hidden">
@@ -1191,6 +1133,10 @@ function CoveragePanel({
               : `${missing.length} لن تصلهم الإشعارات حتى يفعّلوها من التطبيق أو يربطوا تيليجرام`}
           </div>
         </div>
+        <div className="hidden shrink-0 items-center gap-2 sm:flex">
+          <Badge variant="brand">التطبيق: {appCount}</Badge>
+          <Badge variant="in_progress">تيليجرام: {telegramCount}</Badge>
+        </div>
         <ChevronDown
           className={cn('h-4 w-4 text-neutral-400 transition-transform', open && 'rotate-180')}
         />
@@ -1202,12 +1148,13 @@ function CoveragePanel({
             <TableRow>
               <TableHead>المستخدم</TableHead>
               {showGroup && <TableHead>المجموعة</TableHead>}
-              <TableHead>الأجهزة</TableHead>
+              <TableHead>إشعارات التطبيق</TableHead>
+              <TableHead>تيليجرام</TableHead>
               <TableHead>آخر ظهور</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((r) => (
+            {sorted.map((r) => (
               <TableRow key={r.profile_id}>
                 <TableCell className="font-medium text-neutral-900">{r.full_name}</TableCell>
                 {showGroup && (
@@ -1217,23 +1164,26 @@ function CoveragePanel({
                 )}
                 <TableCell>
                   {r.device_count === 0 ? (
-                    r.telegram ? (
-                      <Badge variant="pending" dot>
-                        تيليجرام فقط
-                      </Badge>
-                    ) : (
-                      <Badge variant="danger" dot>
-                        غير مفعّلة
-                      </Badge>
-                    )
+                    <Badge variant="danger" dot>
+                      غير مفعّلة
+                    </Badge>
                   ) : (
-                    <span className="text-neutral-700">
-                      {r.platforms.map((p) => PLATFORM_LABELS[p] ?? p).join('، ') ||
-                        `${r.device_count} جهاز`}
-                      {!r.installed && <span className="text-xs text-neutral-400"> · من المتصفح</span>}
-                      {r.telegram && <span className="text-xs text-neutral-400"> · تيليجرام</span>}
-                    </span>
+                    <div className="flex flex-col items-start gap-0.5">
+                      <Badge variant="completed" dot>
+                        مفعّلة
+                      </Badge>
+                      <span className="text-xs text-neutral-500">
+                        {r.platforms.map((p) => PLATFORM_LABELS[p] ?? p).join('، ') ||
+                          `${r.device_count} جهاز`}
+                        {!r.installed && ' · من المتصفح'}
+                      </span>
+                    </div>
                   )}
+                </TableCell>
+                <TableCell>
+                  <Badge variant={r.telegram ? 'completed' : 'danger'} dot>
+                    {r.telegram ? 'مربوط' : 'غير مربوط'}
+                  </Badge>
                 </TableCell>
                 <TableCell className="text-neutral-600">
                   {r.last_seen_at ? compactDateTime.format(new Date(r.last_seen_at)) : '—'}

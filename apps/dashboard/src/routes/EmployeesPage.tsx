@@ -31,7 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from '@wird/ui-web';
-import { createEmployeeSchema, updateEmployeeSchema } from '@wird/domain';
+import { createEmployeeSchema, formatTelegramInput, updateEmployeeSchema } from '@wird/domain';
 import { supabase } from '../lib/supabase';
 import { suggestUsername } from '../lib/suggest-username';
 import { BulkCreateDialog, type BulkCreatedCreds } from '../components/BulkCreateDialog';
@@ -472,14 +472,15 @@ function CreateEmployeeDialog({
             <Field
               label="معرف تيليجرام"
               htmlFor="telegram"
-              hint="اختياري — بعد حفظه يفتح الموظف البوت ويضغط ابدأ ليصله ورده يومياً"
+              hint="مطلوب — يفتح الموظف البوت ويضغط ابدأ ليصله ورده يومياً"
             >
               <Input
                 id="telegram"
                 dir="ltr"
                 value={telegram}
-                onChange={(e) => setTelegram(e.target.value.toLowerCase())}
+                onChange={(e) => setTelegram(formatTelegramInput(e.target.value))}
                 placeholder="@ahmed"
+                required
               />
             </Field>
           </DialogBody>
@@ -529,7 +530,7 @@ function EditEmployeeDialog({
     setFullName(employee.full_name);
     setGroupId(employee.group?.id ?? '');
     setIsActive(employee.is_active);
-    setTelegram(employee.telegram_username ?? '');
+    setTelegram(formatTelegramInput(employee.telegram_username ?? ''));
     setError(null);
   }, [employee]);
 
@@ -606,7 +607,7 @@ function EditEmployeeDialog({
                 id="edit-telegram"
                 dir="ltr"
                 value={telegram}
-                onChange={(e) => setTelegram(e.target.value.toLowerCase())}
+                onChange={(e) => setTelegram(formatTelegramInput(e.target.value))}
                 placeholder="@ahmed"
               />
             </Field>

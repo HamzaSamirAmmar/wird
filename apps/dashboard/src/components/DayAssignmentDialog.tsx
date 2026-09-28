@@ -1,5 +1,11 @@
 import * as React from 'react';
-import { SURAHS, formatRange, getSurah, validateRange } from '@wird/quran-data';
+import {
+  SURAHS,
+  formatRange,
+  getSurah,
+  isWholeSurahRange,
+  validateRange,
+} from '@wird/quran-data';
 import { DUTY_CATEGORIES, DUTY_CATEGORY_LABELS, type DutyCategory } from '@wird/domain';
 import {
   Alert,
@@ -290,7 +296,27 @@ function CategorySection({
       </label>
 
       {draft.enabled && (
-        <div className="grid gap-4 border-t border-neutral-100 p-4 sm:grid-cols-2">
+        <div className="flex flex-wrap items-center gap-2 border-t border-neutral-100 px-4 pt-3">
+          <Button
+            type="button"
+            size="sm"
+            variant={isWholeSurahRange(draft) && draft.surahFrom === draft.surahTo ? 'secondary' : 'outline'}
+            onClick={() =>
+              onChange({
+                ayahFrom: 1,
+                surahTo: draft.surahFrom,
+                ayahTo: getSurah(draft.surahFrom).ayahCount,
+              })
+            }
+          >
+            سورة {getSurah(draft.surahFrom).nameAr} كاملة
+          </Button>
+          <span className="text-xs text-neutral-400">يظهر في الإشعار: {formatRange(draft)}</span>
+        </div>
+      )}
+
+      {draft.enabled && (
+        <div className="grid gap-4 p-4 sm:grid-cols-2">
           <Field label="من سورة">
             <SurahSelect
               value={draft.surahFrom}

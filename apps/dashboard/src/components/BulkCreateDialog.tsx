@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@wird/ui-web';
-import { createEmployeeSchema } from '@wird/domain';
+import { createEmployeeSchema, formatTelegramInput } from '@wird/domain';
 import { supabase } from '../lib/supabase';
 import { suggestUsername } from '../lib/suggest-username';
 
@@ -30,6 +30,8 @@ interface EmployeeEntry {
   key: number;
   fullName: string;
   username: string;
+  /** Shown with a leading '@'; the schema strips it for storage. */
+  telegram: string;
   /** true when the user has manually edited the username (disables auto-suggestion) */
   usernameTouched: boolean;
 }
@@ -42,7 +44,7 @@ export interface BulkCreatedCreds {
 
 let nextKey = 0;
 function freshEntry(): EmployeeEntry {
-  return { key: ++nextKey, fullName: '', username: '', usernameTouched: false };
+  return { key: ++nextKey, fullName: '', username: '', telegram: '', usernameTouched: false };
 }
 
 export function BulkCreateDialog({
@@ -107,17 +109,25 @@ export function BulkCreateDialog({
     }
 
     // Validate all entries
-    const validEntries: { username: string; fullName: string; groupId: string }[] = [];
+    const validEntries: {
+      username: string;
+      fullName: string;
+      groupId: string;
+      telegramUsername?: string | null;
+    }[] = [];
     const seenUsernames = new Set<string>();
+    const seenTelegram = new Set<string>();
 
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i];
-      if (!entry.fullName.trim() && !entry.username.trim()) continue; // skip empty rows
+      // skip empty rows
+      if (!entry.fullName.trim() && !entry.username.trim() && !entry.telegram.trim()) continue;
 
       const parsed = createEmployeeSchema.safeParse({
         username: entry.username,
         fullName: entry.fullName,
         groupId,
+        telegramUsername: entry.telegram,
       });
 
       if (!parsed.success) {
@@ -129,7 +139,13 @@ export function BulkCreateDialog({
         setError(`صف ${i + 1}: اسم المستخدم "${parsed.data.username}" مكرر`);
         return;
       }
+      const tg = parsed.data.telegramUsername;
+      if (tg && seenTelegram.has(tg)) {
+        setError(`صف ${i + 1}: معرف تيليجرام "@${tg}" مكرر`);
+        return;
+      }
       seenUsernames.add(parsed.data.username);
+      if (tg) seenTelegram.add(tg);
       validEntries.push(parsed.data);
     }
 
@@ -213,14 +229,18 @@ export function BulkCreateDialog({
             </Field>
 
             <div className="mt-2 flex flex-col gap-3">
-              <div className="grid grid-cols-[1fr_1fr_2.5rem] gap-2 text-xs font-medium text-neutral-500">
+              <div className="grid grid-cols-[1fr_1fr_1fr_2.5rem] gap-2 text-xs font-medium text-neutral-500">
                 <span>الاسم الكامل</span>
                 <span>اسم المستخدم</span>
+                <span>معرف تيليجرام</span>
                 <span />
               </div>
 
               {entries.map((entry, i) => (
-                <div key={entry.key} className="grid grid-cols-[1fr_1fr_2.5rem] items-center gap-2">
+                <div
+                  key={entry.key}
+                  className="grid grid-cols-[1fr_1fr_1fr_2.5rem] items-center gap-2"
+                >
                   <Input
                     value={entry.fullName}
                     onChange={(e) => updateEntry(entry.key, { fullName: e.target.value })}
@@ -237,6 +257,15 @@ export function BulkCreateDialog({
                       })
                     }
                     placeholder="ahmed_ali"
+                  />
+                  <Input
+                    dir="ltr"
+                    value={entry.telegram}
+                    onChange={(e) =>
+                      updateEntry(entry.key, { telegram: formatTelegramInput(e.target.value) })
+                    }
+                    placeholder="@ahmed"
+                    aria-label={`معرف تيليجرام للصف ${i + 1}`}
                   />
                   <button
                     type="button"

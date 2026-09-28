@@ -26,8 +26,10 @@ function normalizeTelegramUsername(v: unknown): string | null {
   return s === '' ? null : s;
 }
 
-function generatePassword(length = 12): string {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+// Short and lowercase so it can be typed on a phone; it is temporary (must_change_password)
+// and 6 is Supabase Auth's minimum. No look-alikes (0/o, 1/l/i).
+function generatePassword(length = 6): string {
+  const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789';
   const bytes = new Uint8Array(length);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
@@ -89,6 +91,9 @@ Deno.serve(async (req) => {
     }
     if (!groupId) {
       return json({ error: 'يجب اختيار مجموعة' }, 400);
+    }
+    if (role === 'employee' && !telegramUsername) {
+      return json({ error: 'معرف تيليجرام مطلوب' }, 400);
     }
     if (telegramUsername && !TELEGRAM_USERNAME_PATTERN.test(telegramUsername)) {
       return json({ error: 'معرف تيليجرام غير صالح' }, 400);
