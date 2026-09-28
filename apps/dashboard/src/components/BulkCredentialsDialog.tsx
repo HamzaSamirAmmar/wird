@@ -12,6 +12,7 @@ import {
   IconButton,
 } from '@wird/ui-web';
 import type { BulkCreatedCreds } from './BulkCreateDialog';
+import { buildWelcomeMessage } from '../lib/welcomeMessage';
 
 export function BulkCredentialsDialog({
   creds,
@@ -108,7 +109,7 @@ function CredentialTableRow({ cred }: { cred: BulkCreatedCreds }) {
   }, [copied]);
 
   function copyRow() {
-    navigator.clipboard.writeText(`${cred.username}\t${cred.password}`);
+    navigator.clipboard.writeText(buildWelcomeMessage(cred));
     setCopied(true);
   }
 
@@ -127,7 +128,7 @@ function CredentialTableRow({ cred }: { cred: BulkCreatedCreds }) {
       </td>
       <td className="py-2">
         <IconButton
-          aria-label={`نسخ بيانات ${cred.fullName}`}
+          aria-label={`نسخ رسالة الترحيب لـ ${cred.fullName}`}
           onClick={copyRow}
           className={copied ? 'text-mint-600' : undefined}
         >

@@ -36,6 +36,7 @@ import { supabase } from '../lib/supabase';
 import { suggestUsername } from '../lib/suggest-username';
 import { BulkCreateDialog, type BulkCreatedCreds } from '../components/BulkCreateDialog';
 import { BulkCredentialsDialog } from '../components/BulkCredentialsDialog';
+import { buildWelcomeMessage } from '../lib/welcomeMessage';
 
 interface EmployeeRow {
   id: string;
@@ -61,6 +62,7 @@ export default function EmployeesPage() {
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [bulkDialogOpen, setBulkDialogOpen] = React.useState(false);
   const [createdCreds, setCreatedCreds] = React.useState<{
+    fullName: string;
     username: string;
     password: string;
   } | null>(null);
@@ -364,7 +366,7 @@ function CreateEmployeeDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   groups: GroupOption[];
-  onCreated: (creds: { username: string; password: string }) => void;
+  onCreated: (creds: { fullName: string; username: string; password: string }) => void;
 }) {
   const [username, setUsername] = React.useState('');
   const [fullName, setFullName] = React.useState('');
@@ -415,7 +417,7 @@ function CreateEmployeeDialog({
       setError(data?.error ?? 'تعذر إنشاء المستخدم');
       return;
     }
-    onCreated({ username: data.username, password: data.password });
+    onCreated({ fullName: data.fullName, username: data.username, password: data.password });
   }
 
   return (
@@ -653,9 +655,23 @@ function CredentialsDialog({
   creds,
   onClose,
 }: {
-  creds: { username: string; password: string } | null;
+  creds: { fullName: string; username: string; password: string } | null;
   onClose: () => void;
 }) {
+  const [copied, setCopied] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  function copyMessage() {
+    if (!creds) return;
+    navigator.clipboard.writeText(buildWelcomeMessage(creds));
+    setCopied(true);
+  }
+
   return (
     <Dialog open={!!creds} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-md" preventClose>
@@ -672,6 +688,10 @@ function CredentialsDialog({
           </div>
         </DialogBody>
         <DialogFooter>
+          <Button variant="outline" onClick={copyMessage}>
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            {copied ? 'تم النسخ' : 'نسخ رسالة الترحيب'}
+          </Button>
           <Button onClick={onClose}>تم</Button>
         </DialogFooter>
       </DialogContent>
