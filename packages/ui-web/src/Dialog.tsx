@@ -10,8 +10,15 @@ export const DialogClose = DialogPrimitive.Close;
 export function DialogContent({
   className,
   children,
+  preventClose,
+  onEscapeKeyDown,
+  onPointerDownOutside,
+  onInteractOutside,
   ...props
-}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>) {
+}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+  /** Blocks Escape/outside-click/X dismissal — for dialogs showing one-time secrets (passwords) the user must not lose by an accidental click. */
+  preventClose?: boolean;
+}) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-primary-950/45 backdrop-blur-[2px] animate-fade-in" />
@@ -25,15 +32,29 @@ export function DialogContent({
           'animate-scale-in',
           className,
         )}
+        onEscapeKeyDown={(e) => {
+          if (preventClose) e.preventDefault();
+          onEscapeKeyDown?.(e);
+        }}
+        onPointerDownOutside={(e) => {
+          if (preventClose) e.preventDefault();
+          onPointerDownOutside?.(e);
+        }}
+        onInteractOutside={(e) => {
+          if (preventClose) e.preventDefault();
+          onInteractOutside?.(e);
+        }}
         {...props}
       >
         {children}
-        <DialogPrimitive.Close
-          aria-label="إغلاق"
-          className="absolute end-4 top-4 rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-        >
-          <X className="h-4.5 w-4.5" />
-        </DialogPrimitive.Close>
+        {!preventClose && (
+          <DialogPrimitive.Close
+            aria-label="إغلاق"
+            className="absolute end-4 top-4 rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          >
+            <X className="h-4.5 w-4.5" />
+          </DialogPrimitive.Close>
+        )}
       </DialogPrimitive.Content>
     </DialogPrimitive.Portal>
   );
