@@ -53,7 +53,7 @@ export function BulkCredentialsDialog({
 
   return (
     <Dialog open={!!creds} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl" preventClose>
         <DialogHeader>
           <DialogTitle>تم إنشاء {creds.length} حساب</DialogTitle>
         </DialogHeader>

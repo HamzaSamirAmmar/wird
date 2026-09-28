@@ -598,7 +598,7 @@ function CredentialsDialog({
 }) {
   return (
     <Dialog open={!!creds} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" preventClose>
         <DialogHeader>
           <DialogTitle>تم إنشاء الحساب</DialogTitle>
         </DialogHeader>
