@@ -21,6 +21,7 @@ import {
 } from '@wird/ui-web';
 import { supabase } from '../lib/supabase';
 import { todayISO } from '../lib/dates';
+import { getMetaJSON, setMetaJSON } from '../lib/offline';
 
 const WINDOW_KEY = 'wird.leaderboard.window';
 
@@ -118,29 +119,45 @@ export function GroupStandings({ reloadKey }: { reloadKey: number }) {
 
   React.useEffect(() => {
     let cancelled = false;
-    if (!navigator.onLine) return;
+    const cacheKey = `leaderboard:${win}`;
 
-    const { from, to } = leaderboardWindowRange(win, todayISO());
-    supabase.rpc('group_leaderboard', { p_from: from, p_to: to }).then(({ data, error }) => {
+    (async () => {
+      // Cache first, so the standings are there offline and don't flash a skeleton online.
+      const cached = await getMetaJSON<LeaderboardEntry[]>(cacheKey);
       if (cancelled) return;
-      if (error) {
-        setFailed(true);
-        setEntries([]);
+      if (cached) {
+        setEntries(cached);
+        setFailed(false);
+      }
+      if (!navigator.onLine) {
+        if (!cached) setFailed(true);
         return;
       }
+
+      const { from, to } = leaderboardWindowRange(win, todayISO());
+      const { data, error } = await supabase.rpc('group_leaderboard', { p_from: from, p_to: to });
+      if (cancelled) return;
+      if (error) {
+        // A failed refresh keeps the cached board rather than blanking it.
+        if (!cached) {
+          setFailed(true);
+          setEntries([]);
+        }
+        return;
+      }
+      const fresh = (data ?? []).map((r) => ({
+        employeeId: r.employee_id,
+        fullName: r.full_name,
+        assignedCount: r.assigned_count,
+        completedCount: r.completed_count,
+        completionRate: Number(r.completion_rate),
+        currentStreak: r.current_streak,
+        isMe: r.is_me,
+      }));
       setFailed(false);
-      setEntries(
-        (data ?? []).map((r) => ({
-          employeeId: r.employee_id,
-          fullName: r.full_name,
-          assignedCount: r.assigned_count,
-          completedCount: r.completed_count,
-          completionRate: Number(r.completion_rate),
-          currentStreak: r.current_streak,
-          isMe: r.is_me,
-        })),
-      );
-    });
+      setEntries(fresh);
+      await setMetaJSON(cacheKey, fresh);
+    })();
 
     return () => {
       cancelled = true;

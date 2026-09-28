@@ -241,21 +241,33 @@ export type Database = {
       fcm_tokens: {
         Row: {
           created_at: string;
+          device_id: string | null;
           last_seen_at: string;
+          platform: string | null;
           profile_id: string;
+          standalone: boolean;
           token: string;
+          user_agent: string | null;
         };
         Insert: {
           created_at?: string;
+          device_id?: string | null;
           last_seen_at?: string;
+          platform?: string | null;
           profile_id: string;
+          standalone?: boolean;
           token: string;
+          user_agent?: string | null;
         };
         Update: {
           created_at?: string;
+          device_id?: string | null;
           last_seen_at?: string;
+          platform?: string | null;
           profile_id?: string;
+          standalone?: boolean;
           token?: string;
+          user_agent?: string | null;
         };
         Relationships: [
           {
@@ -302,11 +314,15 @@ export type Database = {
           body: string;
           created_at: string;
           created_by: string | null;
+          group_id: string | null;
           id: string;
           is_active: boolean;
           last_error: string | null;
+          last_failed_count: number | null;
+          last_recipient_count: number | null;
           last_sent_at: string | null;
           last_sent_count: number | null;
+          last_target_count: number | null;
           next_run_at: string | null;
           recur_time: string | null;
           recur_weekday: number | null;
@@ -320,11 +336,15 @@ export type Database = {
           body: string;
           created_at?: string;
           created_by?: string | null;
+          group_id?: string | null;
           id?: string;
           is_active?: boolean;
           last_error?: string | null;
+          last_failed_count?: number | null;
+          last_recipient_count?: number | null;
           last_sent_at?: string | null;
           last_sent_count?: number | null;
+          last_target_count?: number | null;
           next_run_at?: string | null;
           recur_time?: string | null;
           recur_weekday?: number | null;
@@ -338,11 +358,15 @@ export type Database = {
           body?: string;
           created_at?: string;
           created_by?: string | null;
+          group_id?: string | null;
           id?: string;
           is_active?: boolean;
           last_error?: string | null;
+          last_failed_count?: number | null;
+          last_recipient_count?: number | null;
           last_sent_at?: string | null;
           last_sent_count?: number | null;
+          last_target_count?: number | null;
           next_run_at?: string | null;
           recur_time?: string | null;
           recur_weekday?: number | null;
@@ -441,6 +465,44 @@ export type Database = {
           completion_rate: number;
           current_streak: number;
           is_me: boolean;
+        }[];
+      };
+      register_push_token: {
+        Args: {
+          p_token: string;
+          p_device_id: string;
+          p_platform?: string | null;
+          p_standalone?: boolean;
+          p_user_agent?: string | null;
+        };
+        Returns: undefined;
+      };
+      unregister_push_device: {
+        Args: { p_device_id: string };
+        Returns: undefined;
+      };
+      in_caller_group: {
+        Args: { p_profile_id: string };
+        Returns: boolean;
+      };
+      campaign_profile_ids: {
+        Args: { p_campaign_id: string };
+        Returns: string[];
+      };
+      push_targets: {
+        Args: { p_profile_ids: string[] };
+        Returns: Json;
+      };
+      push_coverage: {
+        Args: { p_group_id?: string | null };
+        Returns: {
+          profile_id: string;
+          full_name: string;
+          group_id: string;
+          device_count: number;
+          platforms: string[];
+          installed: boolean;
+          last_seen_at: string | null;
         }[];
       };
       duty_followup: {

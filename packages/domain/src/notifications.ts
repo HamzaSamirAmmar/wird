@@ -1,4 +1,4 @@
-export const NOTIFICATION_AUDIENCES = ['all', 'user', 'incomplete_today'] as const;
+export const NOTIFICATION_AUDIENCES = ['all', 'group', 'user', 'incomplete_today'] as const;
 export type NotificationAudience = (typeof NOTIFICATION_AUDIENCES)[number];
 /** camelCase alias used by z.enum in ./validation. */
 export const notificationAudiences = NOTIFICATION_AUDIENCES;
@@ -40,6 +40,8 @@ export interface NotificationCampaign {
   body: string;
   audience: NotificationAudience;
   targetProfileId: string | null;
+  /** null = every group (superadmin only). Set = scoped to that group, for any audience. */
+  groupId: string | null;
   scheduleKind: CampaignScheduleKind;
   scheduledAt: string | null;
   recurWeekday: number | null;
@@ -47,16 +49,27 @@ export interface NotificationCampaign {
   isActive: boolean;
   nextRunAt: string | null;
   lastSentAt: string | null;
+  /** Devices the last send reached. */
   lastSentCount: number | null;
+  /** Devices the last send failed on. */
+  lastFailedCount: number | null;
+  /** People the audience resolved to at the last send… */
+  lastTargetCount: number | null;
+  /** …and how many of them at least one device reached. */
+  lastRecipientCount: number | null;
   lastError: string | null;
   createdAt: string;
 }
 
 export const NOTIFICATION_AUDIENCE_LABELS: Record<NotificationAudience, string> = {
   all: 'الجميع',
+  group: 'مجموعة',
   user: 'مستخدم محدد',
   incomplete_today: 'من لم يُتمّ واجب اليوم',
 };
+
+/** Audiences a group-scoped supervisor may use — never 'all'. */
+export const SUPERVISOR_NOTIFICATION_AUDIENCES = ['group', 'user', 'incomplete_today'] as const;
 
 /** 0=Sunday … 5=Friday … 6=Saturday — matches Postgres dow and JS Date.getDay. */
 export const WEEKDAY_LABELS: Record<number, string> = {

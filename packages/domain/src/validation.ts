@@ -73,6 +73,8 @@ export const notificationCampaignSchema = z
     body: z.string().trim().min(2, 'النص قصير جداً').max(500),
     audience: notificationAudiencesSchema,
     targetProfileId: z.string().uuid().nullable().optional(),
+    /** Group scope. Required for the 'group' audience; a supervisor's campaigns always carry it. */
+    groupId: z.string().uuid().nullable().optional(),
     scheduleKind: campaignScheduleKindsSchema,
     /** Local wall-clock `YYYY-MM-DDTHH:mm` in Asia/Damascus; the UI converts to an instant. */
     scheduledLocal: z.string().optional(),
@@ -87,6 +89,10 @@ export const notificationCampaignSchema = z
   .refine((v) => v.audience !== 'user' || !!v.targetProfileId, {
     message: 'اختر المستخدم',
     path: ['targetProfileId'],
+  })
+  .refine((v) => v.audience !== 'group' || !!v.groupId, {
+    message: 'اختر المجموعة',
+    path: ['groupId'],
   })
   .refine((v) => v.scheduleKind !== 'once' || !!v.scheduledLocal, {
     message: 'اختر تاريخ ووقت الإرسال',

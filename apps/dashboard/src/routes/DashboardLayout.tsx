@@ -22,7 +22,7 @@ const navItems = [
   { to: '/followup', label: 'المتابعة', icon: ClipboardCheck },
   { to: '/supervisors', label: 'المشرفون', icon: ShieldCheck, superadminOnly: true },
   { to: '/banners', label: 'البطاقات', icon: MessageSquareQuote, superadminOnly: true },
-  { to: '/notifications', label: 'الإشعارات', icon: BellRing, superadminOnly: true },
+  { to: '/notifications', label: 'الإشعارات', icon: BellRing },
 ];
 
 export default function DashboardLayout() {

@@ -29,6 +29,11 @@ export default function ChangePassword() {
       return;
     }
 
+    if (!navigator.onLine) {
+      setError('يلزم الاتصال بالإنترنت لتغيير كلمة المرور');
+      return;
+    }
+
     setSubmitting(true);
     const { error } = await changeOwnPassword(supabase, newPassword);
     setSubmitting(false);

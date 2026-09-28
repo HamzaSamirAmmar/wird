@@ -13,11 +13,11 @@ function AuthSplash() {
 }
 
 export default function ProtectedRoute() {
-  const { session, profile, loading } = useAuth();
+  const { signedIn, profile, loading } = useAuth();
 
   if (loading) return <AuthSplash />;
 
-  if (!session || !profile) return <Navigate to="/login" replace />;
+  if (!signedIn || !profile) return <Navigate to="/login" replace />;
   if (profile.mustChangePassword) return <Navigate to="/change-password" replace />;
 
   return <Outlet />;

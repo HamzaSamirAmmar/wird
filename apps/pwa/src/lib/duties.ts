@@ -1,6 +1,16 @@
 import { supabase } from './supabase';
 import { earliestVisibleDay, todayISO } from './dates';
-import { db, setLastSyncedAt, type CachedDuty, type CachedStep } from './offline';
+import {
+  db,
+  flushOutboxWith,
+  OUTBOX_SYNC_TAG,
+  overlayPendingOutbox,
+  recomputeLocalDutyStatus,
+  setLastSyncedAt,
+  type CachedDuty,
+  type CachedStep,
+  type StepPatcher,
+} from './offline';
 
 function dateWindow() {
   // Exactly the range the day rail can display — HISTORY_DAYS back through today, nothing
@@ -15,6 +25,8 @@ function dateWindow() {
 export async function refreshDutiesFromServer(
   employeeId: string,
 ): Promise<{ error: string | null }> {
+  // Only the OS's "definitely offline" skips the attempt. A request that timed out on lie-fi
+  // must not stop the next one — a real request is the only thing that can prove we're back.
   if (!navigator.onLine) return { error: null };
 
   const { from, to } = dateWindow();
@@ -70,6 +82,9 @@ export async function refreshDutiesFromServer(
     await db.duties.bulkPut(duties);
   });
 
+  // Ticks that could not be flushed yet must stay ticked on screen.
+  await overlayPendingOutbox();
+
   // Stamped only on a completed sync, so the freshness the UI reports is the truth: a failed
   // or skipped refresh leaves the previous timestamp standing.
   await setLastSyncedAt();
@@ -100,52 +115,95 @@ export async function toggleStep(stepId: string, isCompleted: boolean) {
   const completedAt = isCompleted ? new Date().toISOString() : null;
   const step = await db.steps.get(stepId);
   await db.steps.update(stepId, { isCompleted, completedAt });
-  await db.outbox.add({ createdAt: Date.now(), stepId, isCompleted, completedAt });
+
+  // One queued write per step, latest wins: ticking and unticking five times offline should
+  // replay as one update, not five.
+  await db.transaction('rw', db.outbox, async () => {
+    await db.outbox.where('stepId').equals(stepId).delete();
+    await db.outbox.add({
+      createdAt: Date.now(),
+      stepId,
+      isCompleted,
+      completedAt,
+      dutyId: step?.dutyId,
+      stepKey: step?.stepKey,
+    });
+  });
 
   if (step) await recomputeLocalDutyStatus(step.dutyId);
+  await requestBackgroundSync();
   await flushOutbox();
 }
 
-// Mirrors the server-side sync_duty_status() trigger, so the UI's status badge updates
-// instantly offline instead of waiting for the next server refresh.
-async function recomputeLocalDutyStatus(dutyId: string) {
-  const steps = await db.steps.where('dutyId').equals(dutyId).toArray();
-  const completed = steps.filter((s) => s.isCompleted).length;
-  const status =
-    completed === 0 ? 'pending' : completed === steps.length ? 'completed' : 'in_progress';
-  await db.duties.update(dutyId, { status });
+/**
+ * Asks the service worker to flush the outbox when the connection returns, even if the app
+ * has been closed by then. Android/Chromium only; elsewhere the app flushes on open.
+ */
+async function requestBackgroundSync() {
+  try {
+    const registration = await navigator.serviceWorker?.ready;
+    const sync = (
+      registration as ServiceWorkerRegistration & {
+        sync?: { register(tag: string): Promise<void> };
+      }
+    )?.sync;
+    await sync?.register(OUTBOX_SYNC_TAG);
+  } catch {
+    // Unsupported or denied — the in-app triggers still cover it.
+  }
 }
 
-/**
- * Replays queued step updates to Supabase in order; stops at the first failure.
- *
- * Never throws. This runs ahead of the duty fetch on every refresh, so letting it reject
- * would abort the sync entirely — which is exactly what a missing index here used to do.
- */
+const supabasePatcher: StepPatcher = async (match, values) => {
+  let query = supabase
+    .from('duty_step_progress')
+    .update({ is_completed: values.isCompleted, completed_at: values.completedAt });
+  query =
+    'id' in match
+      ? query.eq('id', match.id)
+      : query.eq('duty_id', match.dutyId).eq('step_key', match.stepKey);
+  const { data, error } = await query.select('id');
+  if (error) return null;
+  if (data.length === 0) {
+    // Zero rows can also mean the session lapsed and RLS hid the row. Only a live session
+    // makes "zero rows" mean "the step is gone".
+    const { data: session } = await supabase.auth.getSession();
+    if (!session.session) return null;
+  }
+  return data.length;
+};
+
+/** Replays queued step updates to Supabase. Never throws. */
 export async function flushOutbox(): Promise<void> {
   if (!navigator.onLine) return;
-
   try {
-    // sortBy (in memory), not orderBy: `createdAt` is not an index on the outbox store, and
-    // orderBy on an unindexed keyPath throws SchemaError. The outbox only ever holds writes
-    // that have not reached the server yet, so sorting it in memory costs nothing.
-    const entries = await db.outbox.toCollection().sortBy('createdAt');
-
-    for (const entry of entries) {
-      const { error } = await supabase
-        .from('duty_step_progress')
-        .update({ is_completed: entry.isCompleted, completed_at: entry.completedAt })
-        .eq('id', entry.stepId);
-
-      if (error) return; // keep remaining entries queued, try again next time
-
-      if (entry.id !== undefined) await db.outbox.delete(entry.id);
-    }
+    await flushOutboxWith(supabasePatcher);
   } catch {
-    // Best-effort: the entries stay queued and the next refresh retries them.
+    // Best-effort: the entries stay queued and the next sync retries them.
   }
 }
 
 export async function pendingOutboxCount(): Promise<number> {
   return db.outbox.count();
+}
+
+let inFlight: Promise<void> | null = null;
+
+/**
+ * Flush queued ticks, then pull the server's view. Single-flight: mount, `online`, returning to
+ * the foreground, realtime events and pushes all ask for a sync, often at the same moment, and
+ * overlapping flushes would replay the same outbox entry twice.
+ */
+export function syncNow(employeeId: string): Promise<void> {
+  if (inFlight) return inFlight;
+  inFlight = (async () => {
+    try {
+      await flushOutbox();
+      await refreshDutiesFromServer(employeeId);
+    } catch {
+      // The cache stays as it was; the next trigger retries.
+    } finally {
+      inFlight = null;
+    }
+  })();
+  return inFlight;
 }

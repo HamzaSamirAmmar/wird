@@ -1,55 +1,50 @@
-// Firebase Cloud Messaging service worker.
+// LEGACY push worker — kept only for devices that have not opened the app since push moved
+// into the app's own service worker (src/sw.ts).
 //
-// Deliberately a hand-written static file (not bundled): the FCM SDK registers it at the
-// dedicated scope '/firebase-cloud-messaging-push-scope', which is what lets it coexist
-// with the Workbox app service worker at '/' (only one worker may control a given scope).
-// Version must stay in sync with the `firebase` npm package used by the app.
+// Those devices still hold a token minted against this worker's registration
+// (scope /firebase-cloud-messaging-push-scope). The next app open registers a token on the new
+// worker, register_push_token() replaces this device's old row, and the app unregisters this
+// worker. Until then it must keep displaying pushes — correctly — which the old FCM-SDK version
+// did not always do (it never returned the showNotification promise, so iOS counted pushes as
+// silent and revoked the subscription).
+//
+// No Firebase SDK, no CDN import: a raw push handler. Do not add features here; add them to
+// src/sw.ts. Delete this file once fcm_tokens has no rows left without a device_id.
 
-importScripts('https://www.gstatic.com/firebasejs/12.18.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/12.18.0/firebase-messaging-compat.js');
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 
-firebase.initializeApp({
-  apiKey: 'AIzaSyDntl1C3n2UtNC5cjYLO1OjbQaIz43sNNc',
-  authDomain: 'wird-dhikr.firebaseapp.com',
-  projectId: 'wird-dhikr',
-  storageBucket: 'wird-dhikr.firebasestorage.app',
-  messagingSenderId: '102858254897',
-  appId: '1:102858254897:web:94bfa8771385ccb76c8310',
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    const json = event.data ? event.data.json() : {};
+    data = (json && json.data) || json || {};
+  } catch {
+    data = {};
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'ورد', {
+      body: data.body || '',
+      dir: 'rtl',
+      lang: 'ar',
+      icon: '/icon-192.png',
+      badge: '/favicon-32.png',
+      tag: data.tag || 'wird',
+      data: { link: data.link || '/' },
+    }),
+  );
 });
 
-const messaging = firebase.messaging();
-
-// Push arrives while the app is closed/backgrounded → raise a system notification.
-//
-// The server sends DATA-ONLY messages on purpose. A `notification` payload would make FCM's
-// own handler display the push as well as this one, and every notification would arrive
-// twice — once from the SDK, once from here. Reading payload.data keeps a single displayer.
-messaging.onBackgroundMessage((payload) => {
-  const data = payload.data || {};
-  const title = data.title || 'ورد';
-  const body = data.body || '';
-  self.registration.showNotification(title, {
-    body,
-    dir: 'rtl',
-    lang: 'ar',
-    icon: '/icon-192.png',
-    badge: '/favicon-32.png',
-    // Per-message, not a single shared 'wird': one shared tag made each notification
-    // silently replace the previous one.
-    tag: data.tag || 'wird',
-  });
-});
-
-// Tapping the notification focuses an open app or launches it.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const link = (event.notification.data && event.notification.data.link) || '/';
   event.waitUntil(
     (async () => {
       const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       for (const client of clientList) {
         if ('focus' in client) return client.focus();
       }
-      return self.clients.openWindow('/');
+      return self.clients.openWindow(link);
     })(),
   );
 });

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import {
   BookOpen,
   CheckCircle2,
@@ -25,20 +25,15 @@ import {
 } from '@wird/ui-web';
 import { useAuth } from '../lib/auth-context';
 import { supabase } from '../lib/supabase';
-import {
-  getCachedDuties,
-  refreshDutiesFromServer,
-  toggleStep,
-  pendingOutboxCount,
-  flushOutbox,
-} from '../lib/duties';
+import { getCachedDuties, pendingOutboxCount, syncNow, toggleStep } from '../lib/duties';
+import { useOnline } from '../lib/connectivity';
 import { getLastSyncedAt, type CachedDuty, type CachedStep } from '../lib/offline';
 import { BannerRail } from '../components/BannerRail';
 import { DayStrip } from '../components/DayStrip';
 import { GroupStandings } from '../components/GroupStandings';
 import { MushafReader } from '../components/MushafReader';
-import { PushNotice } from '../components/PushNotice';
-import { ensurePushRegistered, listenForForegroundNotifications } from '../lib/notifications';
+import { PushNotice, PushSettingsButton } from '../components/PushNotice';
+import { ensurePushRegistered } from '../lib/notifications';
 import { clampToVisibleRange, formatRelativeDay, todayISO } from '../lib/dates';
 
 type DutyWithSteps = CachedDuty & { steps: CachedStep[] };
@@ -71,19 +66,41 @@ const categoryIcon: Record<DutyCategory, typeof BookOpen> = {
   major_review: BookOpen,
 };
 
+/** `?date=YYYY-MM-DD` (from a notification tap), clamped to what the rail can show. */
+function dateFromLink(link: string | null | undefined): string | null {
+  if (!link) return null;
+  try {
+    const date = new URL(link, window.location.origin).searchParams.get('date');
+    return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? clampToVisibleRange(date) : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function MyDuties() {
   const { profile, signOut } = useAuth();
-  const [selectedDate, setSelectedDate] = React.useState(todayISO());
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedDate, setSelectedDate] = React.useState(
+    () => dateFromLink(`/?${searchParams.toString()}`) ?? todayISO(),
+  );
   const [duties, setDuties] = React.useState<DutyWithSteps[] | null>(null);
-  const [isOnline, setIsOnline] = React.useState(navigator.onLine);
+  const isOnline = useOnline();
   const [pendingSync, setPendingSync] = React.useState(0);
   const [refreshing, setRefreshing] = React.useState(false);
+  // Brief "synced" confirmation when queued ticks finally reach the server.
+  const [justSynced, setJustSynced] = React.useState(false);
   // Bumped after every server sync so the standings below refetch on the same signal,
   // instead of opening a second realtime subscription of their own.
   const [syncTick, setSyncTick] = React.useState(0);
   const [lastSynced, setLastSynced] = React.useState<number | null>(null);
 
   const employeeId = profile?.id ?? '';
+
+  // The notification's ?date= has done its job once read; drop it so a reload opens on today.
+  React.useEffect(() => {
+    if (searchParams.has('date')) setSearchParams({}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const reloadFromCache = React.useCallback(async () => {
     if (!employeeId) return;
@@ -93,19 +110,34 @@ export default function MyDuties() {
     setLastSynced(await getLastSyncedAt());
   }, [employeeId, selectedDate]);
 
+  const pendingRef = React.useRef(0);
+  pendingRef.current = pendingSync;
+
   const refresh = React.useCallback(async () => {
     if (!employeeId) return;
+    const hadPending = pendingRef.current > 0;
     setRefreshing(true);
     try {
-      await flushOutbox();
-      await refreshDutiesFromServer(employeeId);
+      await syncNow(employeeId);
       await reloadFromCache();
       setSyncTick((t) => t + 1);
+      if (hadPending && (await pendingOutboxCount()) === 0) {
+        setJustSynced(true);
+        setTimeout(() => setJustSynced(false), 2500);
+      }
     } finally {
       // Without this the spinner spins forever whenever any step above rejects.
       setRefreshing(false);
     }
   }, [employeeId, reloadFromCache]);
+
+  // Realtime and service-worker messages arrive in bursts (one assignment = several rows);
+  // coalesce them into one sync.
+  const refreshTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshSoon = React.useCallback(() => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(() => refresh(), 500);
+  }, [refresh]);
 
   React.useEffect(() => {
     reloadFromCache();
@@ -117,29 +149,53 @@ export default function MyDuties() {
   }, [employeeId]);
 
   React.useEffect(() => {
-    function onOnline() {
-      setIsOnline(true);
-      refresh();
-    }
-    function onOffline() {
-      setIsOnline(false);
-    }
     // An installed PWA resumed from the background never remounts, so the mount-time refresh
     // does not fire — it can sit for days showing a stale checklist with a full outbox. Coming
     // back to the foreground is the reliable "the user is looking at this again" signal.
     function onVisible() {
-      if (document.visibilityState === 'visible') refresh();
+      if (document.visibilityState === 'visible') {
+        refreshSoon();
+        if (employeeId) ensurePushRegistered(employeeId);
+      }
     }
 
-    window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
+    window.addEventListener('online', refreshSoon);
     document.addEventListener('visibilitychange', onVisible);
     return () => {
-      window.removeEventListener('online', onOnline);
-      window.removeEventListener('offline', onOffline);
+      window.removeEventListener('online', refreshSoon);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [refresh]);
+  }, [refreshSoon, employeeId]);
+
+  // While ticks are waiting and the app is on screen, keep retrying: `online` does not fire
+  // when Wi-Fi was connected all along but the internet behind it was not.
+  React.useEffect(() => {
+    if (pendingSync === 0) return;
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') refresh();
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [pendingSync, refresh]);
+
+  // Messages from the service worker (src/sw.ts).
+  React.useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    function onMessage(event: MessageEvent) {
+      const msg = event.data as { type?: string; link?: string } | null;
+      if (msg?.type === 'wird:open') {
+        // A notification was tapped while the app was already open.
+        setSelectedDate(dateFromLink(msg.link) ?? todayISO());
+        refreshSoon();
+      } else if (msg?.type === 'wird:push' || msg?.type === 'wird:synced') {
+        // The worker already wrote the pushed day / flushed the outbox; show it, then confirm
+        // with the server.
+        reloadFromCache();
+        refreshSoon();
+      }
+    }
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, [reloadFromCache, refreshSoon]);
 
   React.useEffect(() => {
     if (!employeeId) return;
@@ -148,10 +204,10 @@ export default function MyDuties() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'duties', filter: `employee_id=eq.${employeeId}` },
-        () => refresh(),
+        () => refreshSoon(),
       )
       .on('postgres_changes', { event: '*', schema: 'public', table: 'duty_step_progress' }, () =>
-        refresh(),
+        refreshSoon(),
       )
       .subscribe();
     return () => {
@@ -160,11 +216,12 @@ export default function MyDuties() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employeeId]);
 
-  // Foreground pushes + idempotent token re-registration (covers token rotation).
+  // Idempotent token re-registration (covers token rotation and account switches), and ask the
+  // browser not to evict the offline cache under storage pressure.
   React.useEffect(() => {
     if (!employeeId) return;
-    listenForForegroundNotifications();
     ensurePushRegistered(employeeId);
+    navigator.storage?.persist?.().catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employeeId]);
 
@@ -214,14 +271,26 @@ export default function MyDuties() {
                 {formatSyncAge(lastSynced)}
               </span>
             )}
-            {pendingSync > 0 && (
+            {pendingSync > 0 ? (
               <span className="rounded-full bg-accent-400/20 px-2.5 py-1 text-[11px] font-medium text-accent-100 ring-1 ring-accent-300/30">
-                {pendingSync} بانتظار المزامنة
+                {pendingSync.toLocaleString('ar-EG')} بانتظار المزامنة
               </span>
+            ) : (
+              justSynced && (
+                <span className="flex animate-fade-in items-center gap-1 rounded-full bg-mint-300/20 px-2.5 py-1 text-[11px] font-medium text-mint-100 ring-1 ring-mint-300/30">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  تمت المزامنة
+                </span>
+              )
             )}
+            <PushSettingsButton />
             <IconButton
               aria-label="تسجيل الخروج"
-              onClick={() => signOut()}
+              onClick={async () => {
+                // Give queued ticks one last chance to reach the server before the session goes.
+                if (pendingSync > 0) await refresh();
+                signOut();
+              }}
               className="text-primary-100 active:bg-white/10"
             >
               <LogOut className="h-4.5 w-4.5" />

@@ -8,12 +8,15 @@ export interface CreateWirdClientOptions {
   anonKey: string;
   /** Pass a storage adapter for RN (e.g. AsyncStorage/MMKV). Web apps can omit this — defaults to localStorage. */
   storage?: SupportedStorage;
+  /** Custom fetch for every REST/auth/functions request (e.g. to add a timeout). */
+  fetch?: typeof fetch;
 }
 
 export function createWirdClient({
   url,
   anonKey,
   storage,
+  fetch: customFetch,
 }: CreateWirdClientOptions): WirdSupabaseClient {
   return createClient<Database>(url, anonKey, {
     auth: {
@@ -22,5 +25,6 @@ export function createWirdClient({
       detectSessionInUrl: false, // no OAuth/magic-link redirects — username+password only
       ...(storage ? { storage } : {}),
     },
+    ...(customFetch ? { global: { fetch: customFetch } } : {}),
   });
 }

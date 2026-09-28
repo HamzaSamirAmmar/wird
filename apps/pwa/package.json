@@ -11,6 +11,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource/amiri": "^5.3.0",
+    "@fontsource/ibm-plex-sans-arabic": "^5.3.0",
+    "@fontsource/reem-kufi": "^5.3.0",
     "@wird/brand": "workspace:*",
     "@wird/design-tokens": "workspace:*",
     "@wird/domain": "workspace:*",
@@ -22,6 +25,9 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.1.1",
+    "workbox-core": "^7.4.1",
+    "workbox-precaching": "^7.4.1",
+    "workbox-routing": "^7.4.1",
     "zod": "^3.24.1"
   },
   "devDependencies": {

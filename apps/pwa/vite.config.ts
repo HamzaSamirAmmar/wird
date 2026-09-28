@@ -8,6 +8,11 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
+      // Our own worker (src/sw.ts) rather than a generated one: it also handles push and
+      // Background Sync, and writes pushed duties into the same Dexie cache as the app.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       registerType: 'autoUpdate',
       includeAssets: ['favicon-32.png', 'apple-touch-icon.png'],
       manifest: {
@@ -33,17 +38,13 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
+      injectManifest: {
         // json: the muṣḥaf text asset must be precached, or the reader is online-only.
+        // woff2: the self-hosted fonts (Amiri for the muṣḥaf) — offline typography.
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2,json}'],
-        // The FCM worker registers itself at /firebase-cloud-messaging-push-scope and must
-        // not be precached/revision-hashed by Workbox — it has to exist verbatim at /.
+        // The legacy FCM worker lives at its own scope and must exist verbatim at /.
         globIgnores: ['firebase-messaging-sw.js'],
-        navigateFallback: '/index.html',
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
-        // Data offline-ability is handled at the app level via IndexedDB (see src/lib/offline),
-        // not by caching Supabase API responses in the service worker.
-        runtimeCaching: [],
       },
     }),
   ],

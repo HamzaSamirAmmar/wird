@@ -6,13 +6,13 @@ import { AuthShell } from '../components/AuthShell';
 import { useAuth } from '../lib/auth-context';
 
 export default function Login() {
-  const { session, profile, signIn, loading } = useAuth();
+  const { signedIn, profile, signIn, loading } = useAuth();
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
 
-  if (!loading && session && profile) {
+  if (!loading && signedIn && profile) {
     if (profile.mustChangePassword) return <Navigate to="/change-password" replace />;
     if (profile.role !== 'employee') return <Navigate to="/supervisor" replace />;
     return <Navigate to="/" replace />;
