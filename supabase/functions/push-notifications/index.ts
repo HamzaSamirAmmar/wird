@@ -1,4 +1,6 @@
-// Sends FCM web-push notifications for a notification_campaigns row.
+// Sends FCM web-push notifications for a notification_campaigns row — and, for campaigns
+// flagged `telegram` (plus duty pings), the same message to linked Telegram chats
+// (telegram_chats, populated by the telegram-webhook function when employees tap Start).
 //
 // Called four ways:
 //   1. Dashboard (superadmin, or a supervisor for their own group's campaigns):
@@ -19,7 +21,8 @@
 // concurrent cron tick + dashboard click can never double-send the same campaign.
 //
 // Requires the secret: FCM_SERVICE_ACCOUNT = the Firebase service-account JSON
-// (supabase secrets set FCM_SERVICE_ACCOUNT='{...}').
+// (supabase secrets set FCM_SERVICE_ACCOUNT='{...}'). Telegram sends additionally need
+// TELEGRAM_BOT_TOKEN; without it the Telegram pass is silently skipped (push-only).
 
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 
@@ -132,6 +135,8 @@ const MAX_DUTIES_BYTES = 3000;
 interface PushTarget {
   p: string;
   t: string[] | null;
+  /** Linked Telegram chat (telegram_chats.chat_id); null when the employee never tapped Start. */
+  g?: number | null;
   d: unknown[];
 }
 
@@ -152,7 +157,9 @@ interface Message {
 interface SendResult {
   sent: number;
   failed: number;
-  recipients: number;
+  /** Profiles that received the message on at least one device — a set, so the Telegram
+   *  pass can union with it instead of double-counting a person reached on both channels. */
+  reached: Set<string>;
   invalidTokens: string[];
 }
 
@@ -251,7 +258,147 @@ async function sendToTargets(
     }
   }
 
-  return { sent, failed, recipients: reached.size, invalidTokens };
+  return { sent, failed, reached, invalidTokens };
+}
+
+// ─── Telegram send ────────────────────────────────────────────────────────────
+//
+// The second delivery channel for duty notifications. Same snapshot, same wording as the
+// push notification the service worker would build — the bot is simply the one displayer
+// there, where here it is the app.
+
+// Telegram allows ~30 messages/s overall but only ~1/s per chat; a small concurrency cap
+// keeps a morning burst polite. Workplace group sizes sit far below the global limit.
+const TELEGRAM_CONCURRENCY = 3;
+
+// Edge functions cannot import workspace packages (see create-employee), so the surah
+// names and duty category labels — duplicated in packages/quran-data and packages/domain —
+// are inlined here. Keep in sync with those.
+const TELEGRAM_SURAHS = [
+  'الفاتحة', 'البقرة', 'آل عمران', 'النساء', 'المائدة', 'الأنعام', 'الأعراف', 'الأنفال',
+  'التوبة', 'يونس', 'هود', 'يوسف', 'الرعد', 'إبراهيم', 'الحجر', 'النحل', 'الإسراء',
+  'الكهف', 'مريم', 'طه', 'الأنبياء', 'الحج', 'المؤمنون', 'النور', 'الفرقان', 'الشعراء',
+  'النمل', 'القصص', 'العنكبوت', 'الروم', 'لقمان', 'السجدة', 'الأحزاب', 'سبأ', 'فاطر',
+  'يس', 'الصافات', 'ص', 'الزمر', 'غافر', 'فصلت', 'الشورى', 'الزخرف', 'الدخان',
+  'الجاثية', 'الأحقاف', 'محمد', 'الفتح', 'الحجرات', 'ق', 'الذاريات', 'الطور', 'النجم',
+  'القمر', 'الرحمن', 'الواقعة', 'الحديد', 'المجادلة', 'الحشر', 'الممتحنة', 'الصف',
+  'الجمعة', 'المنافقون', 'التغابن', 'الطلاق', 'التحريم', 'الملك', 'القلم', 'الحاقة',
+  'المعارج', 'نوح', 'الجن', 'المزمل', 'المدثر', 'القيامة', 'الإنسان', 'المرسلات',
+  'النبأ', 'النازعات', 'عبس', 'التكوير', 'الانفطار', 'المطففين', 'الانشقاق', 'البروج',
+  'الطارق', 'الأعلى', 'الغاشية', 'الفجر', 'البلد', 'الشمس', 'الليل', 'الضحى', 'الشرح',
+  'التين', 'العلق', 'القدر', 'البينة', 'الزلزلة', 'العاديات', 'القارعة', 'التكاثر',
+  'العصر', 'الهمزة', 'الفيل', 'قريش', 'الماعون', 'الكوثر', 'الكافرون', 'النصر',
+  'المسد', 'الإخلاص', 'الفلق', 'الناس',
+];
+
+const TELEGRAM_CATEGORY_LABELS: Record<string, string> = {
+  new_memorization: 'حفظ جديد',
+  minor_review: 'مراجعة صغرى',
+  major_review: 'مراجعة كبرى',
+};
+
+/** One duty as built by push_targets(): { i, c, s: [surahFrom, ayahFrom, surahTo, ayahTo], … }. */
+interface SnapshotDuty {
+  c: string;
+  s: number[];
+  t: string;
+}
+
+// Telegram's parse_mode=HTML has exactly these three entities to escape in plain text.
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Mirrors formatRange() in packages/quran-data — same output, inlined names.
+function formatSnapshotRange(d: SnapshotDuty): string {
+  const [surahFrom, ayahFrom, surahTo, ayahTo] = d.s;
+  const from = TELEGRAM_SURAHS[surahFrom - 1];
+  const to = TELEGRAM_SURAHS[surahTo - 1];
+  if (surahFrom === surahTo) return `${from} (${ayahFrom}-${ayahTo})`;
+  return `${from} (${ayahFrom}) - ${to} (${ayahTo})`;
+}
+
+// Mirrors wirdSummary() in apps/pwa/src/sw.ts: the day's unfinished duties, or a
+// well-done line when everything is already complete.
+function telegramWirdSummary(duties: SnapshotDuty[]): string | null {
+  if (duties.length === 0) return null;
+  const open = duties.filter((d) => d.t !== 'completed');
+  if (open.length === 0) return 'أتممت ورد اليوم — بارك الله فيك';
+  return open
+    .map((d) => `${TELEGRAM_CATEGORY_LABELS[d.c] ?? d.c}: ${formatSnapshotRange(d)}`)
+    .join('\n');
+}
+
+function telegramMessageText(message: Message, duties: unknown[]): string {
+  const summary = telegramWirdSummary(duties as SnapshotDuty[]);
+  let body = message.body;
+  if (message.showWird && summary) {
+    // Same rule as the service worker: a new-duty ping leads with the wird; everywhere
+    // else the authored text leads and the wird follows.
+    body = message.kind === 'new_duty' ? summary : [body, summary].filter(Boolean).join('\n');
+  }
+  return `<b>${escapeHtml(message.title)}</b>${body ? `\n\n${escapeHtml(body)}` : ''}`;
+}
+
+interface TelegramResult {
+  sent: number;
+  failed: number;
+  reached: Set<string>;
+}
+
+// A chat that rejects the message is dead — the employee blocked the bot or deleted the
+// chat. Telegram answers 403 ("bot was blocked by the user") or 400 "chat not found";
+// prune exactly like an unregistered FCM token.
+function isDeadChat(status: number, text: string): boolean {
+  return status === 403 || (status === 400 && text.includes('chat not found'));
+}
+
+async function sendTelegram(
+  admin: SupabaseClient,
+  targets: PushTarget[],
+  message: Message,
+): Promise<TelegramResult> {
+  const token = Deno.env.get('TELEGRAM_BOT_TOKEN');
+  const withChat = targets.filter((t) => typeof t.g === 'number');
+  if (!token || withChat.length === 0) return { sent: 0, failed: 0, reached: new Set() };
+
+  const deadChats: number[] = [];
+  const reached = new Set<string>();
+  let sent = 0;
+  let failed = 0;
+
+  for (let i = 0; i < withChat.length; i += TELEGRAM_CONCURRENCY) {
+    const chunk = withChat.slice(i, i + TELEGRAM_CONCURRENCY);
+    const results = await Promise.all(
+      chunk.map(async (target) => {
+        const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: target.g,
+            text: telegramMessageText(message, target.d),
+            parse_mode: 'HTML',
+            link_preview_options: { is_disabled: true },
+          }),
+        });
+        return { target, ok: res.ok, status: res.status, text: await res.text() };
+      }),
+    );
+    for (const r of results) {
+      if (r.ok) {
+        sent++;
+        reached.add(r.target.p);
+      } else {
+        failed++;
+        if (isDeadChat(r.status, r.text)) deadChats.push(r.target.g as number);
+      }
+    }
+  }
+
+  if (deadChats.length > 0) {
+    await admin.from('telegram_chats').delete().in('chat_id', deadChats);
+  }
+  return { sent, failed, reached };
 }
 
 // ─── System pings ─────────────────────────────────────────────────────────────
@@ -361,8 +508,7 @@ Deno.serve(async (req) => {
       if (targets.length === 0) return json({ sent: 0, failed: 0, recipients: 0 });
 
       const text = AUTO_MESSAGES[auto.kind as AutoKind];
-      const accessToken = await getAccessToken(sa);
-      const result = await sendToTargets(sa, accessToken, targets, {
+      const message: Message = {
         title: text.title,
         body: text.body,
         // One tag per kind: assigning three duties in a row should land as one standing
@@ -370,11 +516,20 @@ Deno.serve(async (req) => {
         tag: `auto-${auto.kind}`,
         kind: auto.kind,
         showWird: true,
-      });
+      };
+      const accessToken = await getAccessToken(sa);
+      const result = await sendToTargets(sa, accessToken, targets, message);
+      // Duty pings are about the wird itself, so they mirror to Telegram alongside push.
+      const tg = await sendTelegram(admin, targets, message);
       if (result.invalidTokens.length > 0) {
         await admin.from('fcm_tokens').delete().in('token', result.invalidTokens);
       }
-      return json({ sent: result.sent, failed: result.failed, recipients: result.recipients });
+      const reached = new Set([...result.reached, ...tg.reached]);
+      return json({
+        sent: result.sent + tg.sent,
+        failed: result.failed + tg.failed,
+        recipients: reached.size,
+      });
     }
 
     // Dashboard sends: superadmin anything, a supervisor only their own group's campaigns.
@@ -406,7 +561,7 @@ Deno.serve(async (req) => {
       .eq('is_active', true)
       .lte('next_run_at', new Date().toISOString())
       .select(
-        'id, title, body, audience, target_profile_id, schedule_kind, recur_weekday, recur_time',
+        'id, title, body, audience, target_profile_id, schedule_kind, recur_weekday, recur_time, telegram',
       )
       .single();
 
@@ -433,18 +588,25 @@ Deno.serve(async (req) => {
 
       const targets = await pushTargets(admin, profileIds);
       if (targets.length > 0) {
-        const accessToken = await getAccessToken(sa);
-        const result = await sendToTargets(sa, accessToken, targets, {
+        const message: Message = {
           title: campaign.title,
           body: campaign.body,
           tag: `campaign-${campaign.id}`,
           kind: 'campaign',
           // A "you haven't finished today" reminder is about the wird itself — show it.
           showWird: campaign.audience === 'incomplete_today',
-        });
-        sent = result.sent;
-        failed = result.failed;
-        recipients = result.recipients;
+        };
+        const accessToken = await getAccessToken(sa);
+        const result = await sendToTargets(sa, accessToken, targets, message);
+        // Only campaigns flagged telegram (today: the seeded daily wird reminder) mirror
+        // to Telegram; an authored motivational message stays push-only unless flipped.
+        const tg = campaign.telegram
+          ? await sendTelegram(admin, targets, message)
+          : { sent: 0, failed: 0, reached: new Set<string>() };
+        sent = result.sent + tg.sent;
+        failed = result.failed + tg.failed;
+        const reached = new Set([...result.reached, ...tg.reached]);
+        recipients = reached.size;
 
         if (result.invalidTokens.length > 0) {
           await admin.from('fcm_tokens').delete().in('token', result.invalidTokens);
