@@ -106,6 +106,13 @@ export const notificationCampaignSchema = z
   .object({
     title: z.string().trim().min(2, 'العنوان قصير جداً').max(100),
     body: z.string().trim().min(2, 'النص قصير جداً').max(500),
+    telegramBody: z
+      .string()
+      .trim()
+      .max(2000, 'نص تيليجرام طويل جداً')
+      .transform((v) => v || null)
+      .nullable()
+      .optional(),
     audience: notificationAudiencesSchema,
     targetProfileId: z.string().uuid().nullable().optional(),
     /** Group scope. Required for the 'group' audience; a supervisor's campaigns always carry it. */

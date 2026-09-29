@@ -145,6 +145,8 @@ interface PushTarget {
 interface Message {
   title: string;
   body: string;
+  // Telegram's own text (notification_campaigns.telegram_body); absent = same as body.
+  telegramBody?: string | null;
   // Collapses re-sends of the *same* campaign, while letting different campaigns stack.
   // A single shared tag would make a duty reminder silently replace a supervisor's message.
   tag: string;
@@ -362,9 +364,10 @@ function telegramMessageText(message: Message, duties: unknown[]): string {
   const snapshot = duties as SnapshotDuty[];
   const wird = message.showWird ? telegramWirdLines(snapshot) : null;
   const parts = [`<b>${escapeHtml(message.title)}</b>`];
+  const body = message.telegramBody || message.body;
   // A new-duty ping is *about* the wird, so the wird replaces the canned body; elsewhere the
   // authored text leads and the wird follows.
-  if (message.body && !(message.kind === 'new_duty' && wird)) parts.push(escapeHtml(message.body));
+  if (body && !(message.kind === 'new_duty' && wird)) parts.push(escapeHtml(body));
   if (wird) parts.push(wird);
   // Ticking happens in the app, not the bot: point at today's checklist while anything is open.
   if (wird && snapshot.some((d) => d.t !== 'completed')) {
@@ -608,7 +611,7 @@ Deno.serve(async (req) => {
     }
     const { data: campaign, error: claimError } = await claim
       .select(
-        'id, title, body, audience, target_profile_id, schedule_kind, recur_weekday, recur_time, channel',
+        'id, title, body, audience, target_profile_id, schedule_kind, recur_weekday, recur_time, channel, telegram_body',
       )
       .single();
 
@@ -638,6 +641,7 @@ Deno.serve(async (req) => {
         const message: Message = {
           title: campaign.title,
           body: campaign.body,
+          telegramBody: campaign.telegram_body,
           tag: `campaign-${campaign.id}`,
           kind: 'campaign',
           // Today's-wird audiences are about the wird itself — show it.
