@@ -68,7 +68,14 @@ export function BulkCredentialsDialog({
             لن تظهر كلمات المرور مرة أخرى بعد إغلاق هذه النافذة.
           </Alert>
 
-          <div className="mt-3 w-full overflow-x-auto">
+          {/* Phones: stacked credential cards — the four-column table does not fit. */}
+          <ul className="mt-3 flex flex-col gap-2 md:hidden">
+            {paginatedCreds.map((c) => (
+              <CredentialCard key={c.username} cred={c} />
+            ))}
+          </ul>
+
+          <div className="mt-3 hidden w-full overflow-x-auto md:block">
             <table className="w-full min-w-[420px] text-sm">
               <thead>
                 <tr className="border-b text-xs text-neutral-500">
@@ -86,16 +93,16 @@ export function BulkCredentialsDialog({
                 ))}
               </tbody>
             </table>
-
-            {creds.length > pageSize && (
-              <Pagination
-                page={currentPage}
-                pageSize={pageSize}
-                totalItems={creds.length}
-                onPageChange={setPage}
-              />
-            )}
           </div>
+
+          {creds.length > pageSize && (
+            <Pagination
+              page={currentPage}
+              pageSize={pageSize}
+              totalItems={creds.length}
+              onPageChange={setPage}
+            />
+          )}
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={downloadCSV}>
@@ -110,6 +117,43 @@ export function BulkCredentialsDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Phone-width rendition of a credentials row — the data is read left-to-right either way. */
+function CredentialCard({ cred }: { cred: BulkCreatedCreds }) {
+  const [copied, setCopied] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  function copyCard() {
+    navigator.clipboard.writeText(buildWelcomeMessage(cred));
+    setCopied(true);
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg bg-neutral-50 p-3 ring-1 ring-neutral-200">
+      <div className="min-w-0">
+        <div className="truncate text-sm font-medium text-neutral-900">{cred.fullName}</div>
+        <div dir="ltr" className="truncate font-mono text-xs text-neutral-600">
+          {cred.username}
+        </div>
+        <div dir="ltr" className="truncate font-mono text-xs text-neutral-600">
+          {cred.password}
+        </div>
+      </div>
+      <IconButton
+        aria-label={`نسخ رسالة الترحيب لـ ${cred.fullName}`}
+        onClick={copyCard}
+        className={copied ? 'text-mint-600' : undefined}
+      >
+        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      </IconButton>
+    </div>
   );
 }
 

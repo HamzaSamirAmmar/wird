@@ -31,6 +31,7 @@ import {
   TableHeader,
   TableRow,
   Pagination,
+  cn,
 } from '@wird/ui-web';
 import { createEmployeeSchema, formatTelegramInput, updateEmployeeSchema } from '@wird/domain';
 import { supabase } from '../lib/supabase';
@@ -267,78 +268,97 @@ export default function EmployeesPage() {
             }
           />
         ) : (
-          <Table className="min-w-[620px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10">
-                  <Checkbox
-                    checked={allPageSelected}
-                    onCheckedChange={toggleSelectPage}
-                    aria-label="تحديد الصفحة"
-                  />
-                </TableHead>
-                <TableHead>الاسم</TableHead>
-                <TableHead>اسم المستخدم</TableHead>
-                <TableHead>المجموعة</TableHead>
-                <TableHead>تيليجرام</TableHead>
-                <TableHead>الحالة</TableHead>
-                <TableHead>
-                  <span className="sr-only">إجراءات</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <>
+            {/* Phones: the roster as stacked cards — the seven-column table does not fit. */}
+            <ul className="flex flex-col divide-y divide-neutral-100 md:hidden">
               {paginatedEmployees.map((e) => (
-                <TableRow key={e.id} className={selected.has(e.id) ? 'bg-primary-50/50' : ''}>
-                  <TableCell>
-                    <Checkbox
-                      checked={selected.has(e.id)}
-                      onCheckedChange={() => toggleSelect(e.id)}
-                      aria-label={`تحديد ${e.full_name}`}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <Avatar name={e.full_name} size="sm" />
-                      <span className="font-medium text-neutral-900">{e.full_name}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span dir="ltr" className="font-mono text-xs text-neutral-500">
-                      {e.username}
-                    </span>
-                  </TableCell>
-                  <TableCell>{e.group?.name ?? '—'}</TableCell>
-                  <TableCell>
-                    {e.telegram_username ? (
-                      <div className="flex flex-col items-start gap-1">
-                        <span dir="ltr" className="font-mono text-xs text-neutral-500">
-                          @{e.telegram_username}
-                        </span>
-                        <Badge variant={e.telegram ? 'completed' : 'neutral'} dot>
-                          {e.telegram ? 'مرتبط' : 'لم يبدأ'}
-                        </Badge>
-                      </div>
-                    ) : (
-                      '—'
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={e.is_active ? 'completed' : 'neutral'} dot>
-                      {e.is_active ? 'نشط' : 'موقوف'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end">
-                      <IconButton aria-label={`تعديل ${e.full_name}`} onClick={() => setEditing(e)}>
-                        <Pencil className="h-4 w-4" />
-                      </IconButton>
-                    </div>
-                  </TableCell>
-                </TableRow>
+                <EmployeeCard
+                  key={e.id}
+                  employee={e}
+                  selected={selected.has(e.id)}
+                  onSelect={() => toggleSelect(e.id)}
+                  onEdit={() => setEditing(e)}
+                />
               ))}
-            </TableBody>
-          </Table>
+            </ul>
+            <div className="hidden md:block">
+              <Table className="min-w-[620px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={allPageSelected}
+                        onCheckedChange={toggleSelectPage}
+                        aria-label="تحديد الصفحة"
+                      />
+                    </TableHead>
+                    <TableHead>الاسم</TableHead>
+                    <TableHead>اسم المستخدم</TableHead>
+                    <TableHead>المجموعة</TableHead>
+                    <TableHead>تيليجرام</TableHead>
+                    <TableHead>الحالة</TableHead>
+                    <TableHead>
+                      <span className="sr-only">إجراءات</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedEmployees.map((e) => (
+                    <TableRow key={e.id} className={selected.has(e.id) ? 'bg-primary-50/50' : ''}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selected.has(e.id)}
+                          onCheckedChange={() => toggleSelect(e.id)}
+                          aria-label={`تحديد ${e.full_name}`}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar name={e.full_name} size="sm" />
+                          <span className="font-medium text-neutral-900">{e.full_name}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span dir="ltr" className="font-mono text-xs text-neutral-500">
+                          {e.username}
+                        </span>
+                      </TableCell>
+                      <TableCell>{e.group?.name ?? '—'}</TableCell>
+                      <TableCell>
+                        {e.telegram_username ? (
+                          <div className="flex flex-col items-start gap-1">
+                            <span dir="ltr" className="font-mono text-xs text-neutral-500">
+                              @{e.telegram_username}
+                            </span>
+                            <Badge variant={e.telegram ? 'completed' : 'neutral'} dot>
+                              {e.telegram ? 'مرتبط' : 'لم يبدأ'}
+                            </Badge>
+                          </div>
+                        ) : (
+                          '—'
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={e.is_active ? 'completed' : 'neutral'} dot>
+                          {e.is_active ? 'نشط' : 'موقوف'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-end">
+                          <IconButton
+                            aria-label={`تعديل ${e.full_name}`}
+                            onClick={() => setEditing(e)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </IconButton>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
         )}
 
         {visible && visible.length > 0 && (
@@ -388,6 +408,57 @@ export default function EmployeesPage() {
         }}
       />
     </div>
+  );
+}
+
+/** Phone-width rendition of an employee row — same data and actions as the table. */
+function EmployeeCard({
+  employee,
+  selected,
+  onSelect,
+  onEdit,
+}: {
+  employee: EmployeeRow;
+  selected: boolean;
+  onSelect: () => void;
+  onEdit: () => void;
+}) {
+  return (
+    <li className={cn('flex items-start gap-3 p-4', selected && 'bg-primary-50/50')}>
+      <Checkbox
+        checked={selected}
+        onCheckedChange={onSelect}
+        aria-label={`تحديد ${employee.full_name}`}
+        className="mt-1.5"
+      />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2.5">
+          <Avatar name={employee.full_name} size="sm" />
+          <span className="min-w-0 flex-1 truncate font-medium text-neutral-900">
+            {employee.full_name}
+          </span>
+          <IconButton aria-label={`تعديل ${employee.full_name}`} onClick={onEdit}>
+            <Pencil className="h-4 w-4" />
+          </IconButton>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-500">
+          <span dir="ltr" className="font-mono">
+            {employee.username}
+          </span>
+          <span className="truncate">{employee.group?.name ?? '—'}</span>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <Badge variant={employee.is_active ? 'completed' : 'neutral'} dot>
+            {employee.is_active ? 'نشط' : 'موقوف'}
+          </Badge>
+          {employee.telegram_username && (
+            <Badge variant={employee.telegram ? 'completed' : 'neutral'} dot>
+              {employee.telegram ? 'تيليجرام مرتبط' : 'تيليجرام لم يبدأ'}
+            </Badge>
+          )}
+        </div>
+      </div>
+    </li>
   );
 }
 

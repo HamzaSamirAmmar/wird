@@ -521,91 +521,107 @@ function CampaignTable({
 
   return (
     <div>
-      <Table className="min-w-[620px]">
-        <TableHeader>
-          <TableRow>
-            <TableHead>الإشعار</TableHead>
-            <TableHead>المرسل إليهم</TableHead>
-            <TableHead>التوقيت</TableHead>
-            <TableHead>آخر إرسال</TableHead>
-            <TableHead>مفعّل</TableHead>
-            <TableHead>
-              <span className="sr-only">إجراءات</span>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {paginatedRows.map((campaign) => {
-            const shape = campaignShape(campaign.scheduleKind);
-            const isSent = campaignIsSent(campaign);
-            // Only a scheduled message that has yet to fire has anything to switch off.
-            const toggleable = shape !== 'instant' && !isSent;
-            const muted = toggleable && !campaign.isActive;
-            const ShapeIcon = SHAPE_ICONS[shape];
-            return (
-              <TableRow key={campaign.id} className={cn(muted && 'bg-neutral-50/70')}>
-                <TableCell>
-                  <CampaignCell campaign={campaign} muted={muted} />
-                </TableCell>
-                <TableCell>
-                  <AudienceCell campaign={campaign} />
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1.5 text-neutral-700">
-                    <ShapeIcon className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
-                    <span>{scheduleSummary(campaign)}</span>
-                  </div>
-                  {!isSent && campaign.nextRunAt && campaign.isActive ? (
-                    <div className="mt-0.5 text-xs text-primary-700">
-                      القادم: {compactDateTime.format(new Date(campaign.nextRunAt))}
+      {/* Phones: each campaign as a card — the six-column table does not fit. */}
+      <ul className="flex flex-col divide-y divide-neutral-100 md:hidden">
+        {paginatedRows.map((campaign) => (
+          <CampaignCard
+            key={campaign.id}
+            campaign={campaign}
+            sending={sendingNow === campaign.id}
+            onToggleActive={onToggleActive}
+            onSend={onSend}
+            onDelete={onDelete}
+          />
+        ))}
+      </ul>
+
+      <div className="hidden md:block">
+        <Table className="min-w-[620px]">
+          <TableHeader>
+            <TableRow>
+              <TableHead>الإشعار</TableHead>
+              <TableHead>المرسل إليهم</TableHead>
+              <TableHead>التوقيت</TableHead>
+              <TableHead>آخر إرسال</TableHead>
+              <TableHead>مفعّل</TableHead>
+              <TableHead>
+                <span className="sr-only">إجراءات</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {paginatedRows.map((campaign) => {
+              const shape = campaignShape(campaign.scheduleKind);
+              const isSent = campaignIsSent(campaign);
+              // Only a scheduled message that has yet to fire has anything to switch off.
+              const toggleable = shape !== 'instant' && !isSent;
+              const muted = toggleable && !campaign.isActive;
+              const ShapeIcon = SHAPE_ICONS[shape];
+              return (
+                <TableRow key={campaign.id} className={cn(muted && 'bg-neutral-50/70')}>
+                  <TableCell>
+                    <CampaignCell campaign={campaign} muted={muted} />
+                  </TableCell>
+                  <TableCell>
+                    <AudienceCell campaign={campaign} />
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1.5 text-neutral-700">
+                      <ShapeIcon className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+                      <span>{scheduleSummary(campaign)}</span>
                     </div>
-                  ) : shape === 'instant' && !campaign.lastSentAt ? (
-                    /* Created but the immediate dispatch did not land; the cron dispatcher
-                       still owns it while next_run_at is set. */
-                    <div className="mt-1">
-                      <Badge variant="in_progress" dot>
-                        بانتظار الإرسال
-                      </Badge>
-                    </div>
-                  ) : (
-                    isSent && (
+                    {!isSent && campaign.nextRunAt && campaign.isActive ? (
+                      <div className="mt-0.5 text-xs text-primary-700">
+                        القادم: {compactDateTime.format(new Date(campaign.nextRunAt))}
+                      </div>
+                    ) : shape === 'instant' && !campaign.lastSentAt ? (
+                      /* Created but the immediate dispatch did not land; the cron dispatcher
+                         still owns it while next_run_at is set. */
                       <div className="mt-1">
-                        <Badge variant="completed" dot>
-                          أُرسل
+                        <Badge variant="in_progress" dot>
+                          بانتظار الإرسال
                         </Badge>
                       </div>
-                    )
-                  )}
-                </TableCell>
-                <TableCell>
-                  <LastSendCell campaign={campaign} />
-                </TableCell>
-                <TableCell>
-                  {toggleable ? (
-                    <Checkbox
-                      checked={campaign.isActive}
-                      onCheckedChange={() => onToggleActive(campaign)}
-                      aria-label={campaign.isActive ? 'تعطيل الإشعار' : 'تفعيل الإشعار'}
+                    ) : (
+                      isSent && (
+                        <div className="mt-1">
+                          <Badge variant="completed" dot>
+                            أُرسل
+                          </Badge>
+                        </div>
+                      )
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <LastSendCell campaign={campaign} />
+                  </TableCell>
+                  <TableCell>
+                    {toggleable ? (
+                      <Checkbox
+                        checked={campaign.isActive}
+                        onCheckedChange={() => onToggleActive(campaign)}
+                        aria-label={campaign.isActive ? 'تعطيل الإشعار' : 'تفعيل الإشعار'}
+                      />
+                    ) : (
+                      <span className="text-neutral-300">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <RowActions
+                      campaign={campaign}
+                      canSend={campaignCanSendNow(campaign)}
+                      resend={shape === 'instant' && !!campaign.lastSentAt}
+                      sending={sendingNow === campaign.id}
+                      onSend={() => onSend(campaign)}
+                      onDelete={() => onDelete(campaign)}
                     />
-                  ) : (
-                    <span className="text-neutral-300">—</span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <RowActions
-                    campaign={campaign}
-                    canSend={campaignCanSendNow(campaign)}
-                    resend={shape === 'instant' && !!campaign.lastSentAt}
-                    sending={sendingNow === campaign.id}
-                    onSend={() => onSend(campaign)}
-                    onDelete={() => onDelete(campaign)}
-                  />
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
 
       {rows.length > 0 && (
         <Pagination
@@ -617,6 +633,108 @@ function CampaignTable({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Phone-width rendition of a campaign row. Same rules as the table — the toggle only
+ * exists while something is still going to fire, "send now" follows campaignCanSendNow —
+ * but stacked, with labels the hidden table headers can no longer provide.
+ */
+function CampaignCard({
+  campaign,
+  sending,
+  onToggleActive,
+  onSend,
+  onDelete,
+}: {
+  campaign: NotificationCampaign;
+  sending: boolean;
+  onToggleActive: (c: NotificationCampaign) => void;
+  onSend: (c: NotificationCampaign) => void;
+  onDelete: (c: NotificationCampaign) => void;
+}) {
+  const shape = campaignShape(campaign.scheduleKind);
+  const isSent = campaignIsSent(campaign);
+  const toggleable = shape !== 'instant' && !isSent;
+  const muted = toggleable && !campaign.isActive;
+  const ShapeIcon = SHAPE_ICONS[shape];
+
+  return (
+    <li className={cn('flex flex-col gap-2.5 p-4', muted && 'bg-neutral-50/70')}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className={cn('font-medium text-neutral-900', muted && 'text-neutral-500')}>
+            {campaign.title}
+          </div>
+          {/* Bodies run to 500 chars; two lines is enough to tell campaigns apart. */}
+          <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-neutral-500">
+            {campaign.body}
+          </p>
+        </div>
+        <RowActions
+          campaign={campaign}
+          canSend={campaignCanSendNow(campaign)}
+          resend={shape === 'instant' && !!campaign.lastSentAt}
+          sending={sending}
+          onSend={() => onSend(campaign)}
+          onDelete={() => onDelete(campaign)}
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <AudienceCell campaign={campaign} />
+        <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-neutral-700">
+          <ShapeIcon className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+          <span className="truncate">{scheduleSummary(campaign)}</span>
+        </span>
+      </div>
+
+      {!isSent && campaign.nextRunAt && campaign.isActive ? (
+        <div className="text-xs text-primary-700">
+          القادم: {compactDateTime.format(new Date(campaign.nextRunAt))}
+        </div>
+      ) : shape === 'instant' && !campaign.lastSentAt ? (
+        <Badge variant="in_progress" dot>
+          بانتظار الإرسال
+        </Badge>
+      ) : (
+        isSent && (
+          <Badge variant="completed" dot>
+            أُرسل
+          </Badge>
+        )
+      )}
+
+      {campaign.lastSentAt && (
+        <div className="text-xs leading-relaxed">
+          <span className="text-neutral-700">
+            آخر إرسال: {compactDateTime.format(new Date(campaign.lastSentAt))}
+          </span>
+          <div className="mt-0.5">
+            <ReachSummary campaign={campaign} />
+          </div>
+        </div>
+      )}
+      {campaign.lastError && (
+        <div>
+          <Badge variant="danger" dot>
+            فشل الإرسال
+          </Badge>
+        </div>
+      )}
+
+      {toggleable && (
+        <label className="flex w-fit cursor-pointer items-center gap-2 text-xs text-neutral-600">
+          <Checkbox
+            checked={campaign.isActive}
+            onCheckedChange={() => onToggleActive(campaign)}
+            aria-label={campaign.isActive ? 'تعطيل الإشعار' : 'تفعيل الإشعار'}
+          />
+          مفعّل
+        </label>
+      )}
+    </li>
   );
 }
 
@@ -986,7 +1104,7 @@ function ComposeDialog({
             )}
 
             {scheduleKind === 'weekly' && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field label="اليوم">
                   <Select
                     value={String(recurWeekday)}
@@ -1181,55 +1299,105 @@ function CoveragePanel({
 
       {open && (
         <>
-          <Table className="min-w-[560px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead>المستخدم</TableHead>
-                {showGroup && <TableHead>المجموعة</TableHead>}
-                <TableHead>إشعارات التطبيق</TableHead>
-                <TableHead>تيليجرام</TableHead>
-                <TableHead>آخر ظهور</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedSorted.map((r) => (
-                <TableRow key={r.profile_id}>
-                  <TableCell className="font-medium text-neutral-900">{r.full_name}</TableCell>
-                  {showGroup && (
-                    <TableCell className="text-neutral-600">
-                      {groupNames.get(r.group_id) ?? '—'}
-                    </TableCell>
-                  )}
-                  <TableCell>
-                    {r.device_count === 0 ? (
-                      <Badge variant="danger" dot>
-                        غير مفعّلة
-                      </Badge>
-                    ) : (
-                      <div className="flex flex-col items-start gap-0.5">
-                        <Badge variant="completed" dot>
-                          مفعّلة
-                        </Badge>
-                        <span className="text-xs text-neutral-500">
-                          {r.platforms.map((p) => PLATFORM_LABELS[p] ?? p).join('، ') ||
-                            `${r.device_count} جهاز`}
-                          {!r.installed && ' · من المتصفح'}
-                        </span>
+          {/* Phones: one card per user — the coverage table does not fit. */}
+          <ul className="flex flex-col divide-y divide-neutral-100 md:hidden">
+            {paginatedSorted.map((r) => (
+              <li key={r.profile_id} className="flex flex-col gap-2 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate font-medium text-neutral-900">{r.full_name}</div>
+                    {showGroup && (
+                      <div className="truncate text-xs text-neutral-500">
+                        {groupNames.get(r.group_id) ?? '—'}
                       </div>
                     )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={r.telegram ? 'completed' : 'danger'} dot>
-                      {r.telegram ? 'مربوط' : 'غير مربوط'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-neutral-600">
+                  </div>
+                  <span className="shrink-0 text-xs text-neutral-500">
                     {r.last_seen_at ? compactDateTime.format(new Date(r.last_seen_at)) : '—'}
-                  </TableCell>
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {r.device_count === 0 ? (
+                    <Badge variant="danger" dot>
+                      التطبيق غير مفعّلة
+                    </Badge>
+                  ) : (
+                    <Badge variant="completed" dot>
+                      التطبيق مفعّلة
+                    </Badge>
+                  )}
+                  {r.telegram ? (
+                    <Badge variant="completed" dot>
+                      تيليجرام مربوط
+                    </Badge>
+                  ) : (
+                    <Badge variant="danger" dot>
+                      تيليجرام غير مربوط
+                    </Badge>
+                  )}
+                </div>
+                {r.device_count > 0 && (
+                  <span className="text-xs text-neutral-500">
+                    {r.platforms.map((p) => PLATFORM_LABELS[p] ?? p).join('، ') ||
+                      `${r.device_count} جهاز`}
+                    {!r.installed && ' · من المتصفح'}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+
+          <div className="hidden md:block">
+            <Table className="min-w-[560px]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>المستخدم</TableHead>
+                  {showGroup && <TableHead>المجموعة</TableHead>}
+                  <TableHead>إشعارات التطبيق</TableHead>
+                  <TableHead>تيليجرام</TableHead>
+                  <TableHead>آخر ظهور</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {paginatedSorted.map((r) => (
+                  <TableRow key={r.profile_id}>
+                    <TableCell className="font-medium text-neutral-900">{r.full_name}</TableCell>
+                    {showGroup && (
+                      <TableCell className="text-neutral-600">
+                        {groupNames.get(r.group_id) ?? '—'}
+                      </TableCell>
+                    )}
+                    <TableCell>
+                      {r.device_count === 0 ? (
+                        <Badge variant="danger" dot>
+                          غير مفعّلة
+                        </Badge>
+                      ) : (
+                        <div className="flex flex-col items-start gap-0.5">
+                          <Badge variant="completed" dot>
+                            مفعّلة
+                          </Badge>
+                          <span className="text-xs text-neutral-500">
+                            {r.platforms.map((p) => PLATFORM_LABELS[p] ?? p).join('، ') ||
+                              `${r.device_count} جهاز`}
+                            {!r.installed && ' · من المتصفح'}
+                          </span>
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={r.telegram ? 'completed' : 'danger'} dot>
+                        {r.telegram ? 'مربوط' : 'غير مربوط'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-neutral-600">
+                      {r.last_seen_at ? compactDateTime.format(new Date(r.last_seen_at)) : '—'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
 
           {sorted.length > 0 && (
             <Pagination
