@@ -1,34 +1,42 @@
-// Sends FCM web-push notifications for a notification_campaigns row (and duty pings), plus
-// the same message to linked Telegram chats (telegram_chats, populated by the
-// telegram-webhook function when employees tap Start). Campaigns go out on the channel they
-// carry (notification_campaigns.channel: push | telegram | both); duty pings use both.
+// Sends FCM web-push notifications and Telegram messages (telegram_chats, populated by the
+// telegram-webhook function when employees tap Start).
 //
 // Called four ways:
 //   1. Dashboard (superadmin, or a supervisor for their own group's campaigns):
-//      Authorization = the caller's session JWT. Verified against profiles.
-//   2. pg_cron dispatcher (dispatch_due_campaigns): Authorization = the service-role key
-//      stored in Vault as 'wird_dispatch_key'.
-//   3. System pings ({ auto: { kind: 'new_duty' } }), service-role only: fired by the
-//      notify_new_duties trigger when a supervisor assigns a duty for *today*. These carry no
-//      campaign row — they are not something anyone authored, scheduled or can disable, and
-//      logging them as campaigns would bury the real ones under machine noise.
+//      Authorization = the caller's session JWT. Verified against profiles. A campaign is
+//      free text on the channel it carries (push | telegram | both) — never the wird.
+//   2. pg_cron campaign dispatcher (dispatch_due_campaigns): Authorization = the service-role
+//      key stored in Vault as 'wird_dispatch_key'.
+//   3. The wird messages ({ wird: { kind } }), service-role only, sent from SQL by
+//      dispatch_wird(): 'morning' (04:00 cron), 'evening' (20:00 cron) and 'updated' (today's
+//      wird added or changed after 04:00; flush_wird_updates()). Their wording lives in
+//      ./wird-templates.ts, rendered per employee for each channel. { dryRun: true } resolves
+//      recipients and renders without sending or logging — the safe way to test.
 //   4. Test ping ({ auto: { kind: 'test' } }): any signed-in user, to their own devices only.
 //
-// Every message carries the recipient's duties for today (push_targets() in SQL). The PWA
-// service worker writes them into its offline cache and builds the notification text from
-// them, so tapping a reminder opens onto a working checklist even with no network.
+// Every push carries the recipient's duties for today (push_targets() in SQL). The PWA
+// service worker writes them into its offline cache, so tapping a notification opens onto a
+// working checklist even with no network.
 //
 // Sends atomically "claims" the campaign (advances next_run_at) before delivering, so a
-// concurrent cron tick + dashboard click can never double-send the same campaign.
+// concurrent cron tick + dashboard click can never double-send the same campaign; the wird
+// runs claim a (kind, day) row in wird_runs the same way.
 //
 // Requires the secret: FCM_SERVICE_ACCOUNT = the Firebase service-account JSON
 // (supabase secrets set FCM_SERVICE_ACCOUNT='{...}'). Telegram sends additionally need
 // TELEGRAM_BOT_TOKEN; without it the Telegram pass is silently skipped (push-only).
 
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
+import {
+  formatRange,
+  renderWird,
+  type RenderedWird,
+  type TemplateDuty,
+  type WirdKind,
+} from './wird-templates.ts';
 
-// Inlined (rather than imported from ../_shared/cors.ts) so this function deploys as a
-// single self-contained file with no relative-import path resolution to worry about.
+// Inlined (rather than imported from ../_shared/cors.ts): the function only imports files
+// from its own directory, which the deploy bundles as-is.
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -138,6 +146,8 @@ interface PushTarget {
   t: string[] | null;
   /** Linked Telegram chat (telegram_chats.chat_id); null when the employee never tapped Start. */
   g?: number | null;
+  /** Full name, for the wird templates' {{name}}. */
+  n?: string;
   d: unknown[];
 }
 
@@ -153,8 +163,10 @@ interface Message {
   // 'campaign' | 'new_duty' | 'test'. The service worker decides from it whether the body
   // should be the day's wird rather than free text.
   kind: string;
-  // Lead with today's wird in the notification body (duty reminders), not just the text.
+  // Lead with today's wird in the notification body (the test ping), not just the text.
   showWird: boolean;
+  // Per-recipient text for both channels (the wird messages); overrides title/body.
+  render?: (target: PushTarget) => RenderedWird;
 }
 
 interface SendResult {
@@ -195,9 +207,10 @@ async function sendToTargets(
   const seen = new Set<string>();
   for (const target of targets) {
     const duties = JSON.stringify(target.d ?? []);
+    const text = message.render ? message.render(target).push : message;
     const data: Record<string, string> = {
-      title: message.title,
-      body: message.body,
+      title: text.title,
+      body: text.body,
       tag: message.tag,
       kind: message.kind,
       mid,
@@ -205,7 +218,8 @@ async function sendToTargets(
       day: today,
       link: `/?date=${today}`,
       u: target.p,
-      wird: message.showWird ? '1' : '0',
+      // Rendered messages are final text; only the test ping lets the worker append the wird.
+      wird: message.showWird && !message.render ? '1' : '0',
     };
     if (duties.length <= MAX_DUTIES_BYTES) data.duties = duties;
     for (const token of target.t ?? []) {
@@ -274,37 +288,9 @@ async function sendToTargets(
 // keeps a morning burst polite. Workplace group sizes sit far below the global limit.
 const TELEGRAM_CONCURRENCY = 3;
 
-// Edge functions cannot import workspace packages (see create-employee), so the surah
-// names and duty category labels — duplicated in packages/quran-data and packages/domain —
-// are inlined here. Keep in sync with those.
-const TELEGRAM_SURAHS = [
-  'الفاتحة', 'البقرة', 'آل عمران', 'النساء', 'المائدة', 'الأنعام', 'الأعراف', 'الأنفال',
-  'التوبة', 'يونس', 'هود', 'يوسف', 'الرعد', 'إبراهيم', 'الحجر', 'النحل', 'الإسراء',
-  'الكهف', 'مريم', 'طه', 'الأنبياء', 'الحج', 'المؤمنون', 'النور', 'الفرقان', 'الشعراء',
-  'النمل', 'القصص', 'العنكبوت', 'الروم', 'لقمان', 'السجدة', 'الأحزاب', 'سبأ', 'فاطر',
-  'يس', 'الصافات', 'ص', 'الزمر', 'غافر', 'فصلت', 'الشورى', 'الزخرف', 'الدخان',
-  'الجاثية', 'الأحقاف', 'محمد', 'الفتح', 'الحجرات', 'ق', 'الذاريات', 'الطور', 'النجم',
-  'القمر', 'الرحمن', 'الواقعة', 'الحديد', 'المجادلة', 'الحشر', 'الممتحنة', 'الصف',
-  'الجمعة', 'المنافقون', 'التغابن', 'الطلاق', 'التحريم', 'الملك', 'القلم', 'الحاقة',
-  'المعارج', 'نوح', 'الجن', 'المزمل', 'المدثر', 'القيامة', 'الإنسان', 'المرسلات',
-  'النبأ', 'النازعات', 'عبس', 'التكوير', 'الانفطار', 'المطففين', 'الانشقاق', 'البروج',
-  'الطارق', 'الأعلى', 'الغاشية', 'الفجر', 'البلد', 'الشمس', 'الليل', 'الضحى', 'الشرح',
-  'التين', 'العلق', 'القدر', 'البينة', 'الزلزلة', 'العاديات', 'القارعة', 'التكاثر',
-  'العصر', 'الهمزة', 'الفيل', 'قريش', 'الماعون', 'الكوثر', 'الكافرون', 'النصر',
-  'المسد', 'الإخلاص', 'الفلق', 'الناس',
-];
-
-// Ayah count per surah (index = surah - 1), for recognising a whole-surah range.
-const TELEGRAM_AYAH_COUNTS = [
-  7, 286, 200, 176, 120, 165, 206, 75, 129, 109, 123, 111, 43, 52, 99, 128, 111, 110, 98, 135,
-  112, 78, 118, 64, 77, 227, 93, 88, 69, 60, 34, 30, 73, 54, 45, 83, 182, 88, 75, 85, 54, 53, 89,
-  59, 37, 35, 38, 29, 18, 45, 60, 49, 62, 55, 78, 96, 29, 22, 24, 13, 14, 11, 11, 18, 12, 12, 30,
-  52, 52, 44, 28, 28, 20, 56, 40, 31, 50, 40, 46, 42, 29, 19, 36, 25, 22, 17, 19, 26, 30, 20, 15,
-  21, 11, 8, 8, 19, 5, 8, 8, 11, 11, 8, 3, 9, 5, 4, 7, 3, 6, 3, 5, 4, 5, 6,
-];
-
 const APP_URL = Deno.env.get('APP_URL') ?? 'https://wird-app.pages.dev/';
 
+// Duplicated from packages/domain (workspace packages cannot be imported here). Keep in sync.
 const TELEGRAM_CATEGORY_LABELS: Record<string, string> = {
   new_memorization: 'حفظ جديد',
   minor_review: 'مراجعة صغرى',
@@ -323,18 +309,6 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// Mirrors formatRange() in packages/quran-data — same output, inlined names.
-function formatSnapshotRange(d: SnapshotDuty): string {
-  const [surahFrom, ayahFrom, surahTo, ayahTo] = d.s;
-  const from = TELEGRAM_SURAHS[surahFrom - 1];
-  const to = TELEGRAM_SURAHS[surahTo - 1];
-  if (ayahFrom === 1 && ayahTo === TELEGRAM_AYAH_COUNTS[surahTo - 1]) {
-    return surahFrom === surahTo ? `سورة ${from} كاملة` : `من سورة ${from} إلى نهاية سورة ${to}`;
-  }
-  if (surahFrom === surahTo) return `${from} (${ayahFrom}-${ayahTo})`;
-  return `${from} (${ayahFrom}) - ${to} (${ayahTo})`;
-}
-
 // Fixed display order, so the message reads the same as the app's checklist.
 const CATEGORY_ORDER = ['new_memorization', 'minor_review', 'major_review'];
 
@@ -348,7 +322,7 @@ function telegramWirdLines(duties: SnapshotDuty[]): string | null {
   if (open.length === 0) return '✅ أتممت ورد اليوم — بارك الله فيك';
   const lines = open.map(
     (d) =>
-      `▫️ <b>${escapeHtml(TELEGRAM_CATEGORY_LABELS[d.c] ?? d.c)}:</b> ${escapeHtml(formatSnapshotRange(d))}`,
+      `▫️ <b>${escapeHtml(TELEGRAM_CATEGORY_LABELS[d.c] ?? d.c)}:</b> ${escapeHtml(formatRange(d.s))}`,
   );
   return `📖 <b>ورد اليوم</b>\n${lines.join('\n')}`;
 }
@@ -415,7 +389,9 @@ async function sendTelegram(
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: target.g,
-            text: telegramMessageText(message, target.d),
+            text: message.render
+              ? message.render(target).telegram
+              : telegramMessageText(message, target.d),
             parse_mode: 'HTML',
             link_preview_options: { is_disabled: true },
             reply_markup: {
@@ -446,10 +422,6 @@ async function sendTelegram(
 // ─── System pings ─────────────────────────────────────────────────────────────
 
 const AUTO_MESSAGES = {
-  new_duty: {
-    title: 'ورد جديد اليوم',
-    body: 'أسند إليك المشرف ورداً جديداً لليوم — بارك الله فيك',
-  },
   test: {
     title: 'إشعار تجريبي',
     body: 'الإشعارات تعمل على هذا الجهاز',
@@ -460,6 +432,12 @@ type AutoKind = keyof typeof AUTO_MESSAGES;
 
 function isAutoKind(v: unknown): v is AutoKind {
   return typeof v === 'string' && v in AUTO_MESSAGES;
+}
+
+const WIRD_KINDS: readonly WirdKind[] = ['morning', 'evening', 'updated'];
+
+function isWirdKind(v: unknown): v is WirdKind {
+  return typeof v === 'string' && (WIRD_KINDS as readonly string[]).includes(v);
 }
 
 async function pushTargets(admin: SupabaseClient, profileIds: string[]): Promise<PushTarget[]> {
@@ -518,8 +496,10 @@ Deno.serve(async (req) => {
     }
 
     const payload = await req.json();
-    const { campaignId, auto } = payload ?? {};
-    if (!campaignId && !auto) return json({ error: 'campaignId or auto is required' }, 400);
+    const { campaignId, auto, wird } = payload ?? {};
+    if (!campaignId && !auto && !wird) {
+      return json({ error: 'campaignId, auto or wird is required' }, 400);
+    }
 
     const saRaw = Deno.env.get('FCM_SERVICE_ACCOUNT');
     if (!saRaw) {
@@ -529,7 +509,95 @@ Deno.serve(async (req) => {
 
     const admin = createClient(supabaseUrl, serviceRoleKey);
 
-    // ── System ping path ──
+    // ── Wird messages (morning / evening / updated) ──
+    if (wird) {
+      // Only the database sends the wird: a dashboard session composes campaigns instead.
+      if (role !== 'service_role') return json({ error: 'Not authorized' }, 403);
+      if (!isWirdKind(wird.kind)) return json({ error: 'Unknown wird kind' }, 400);
+      const kind: WirdKind = wird.kind;
+      const dryRun = wird.dryRun === true;
+
+      // morning/evening resolve their audience in SQL; 'updated' is handed the employees whose
+      // wird changed (flush_wird_updates).
+      let profileIds: string[];
+      if (kind === 'updated') {
+        profileIds = Array.isArray(wird.profileIds) ? wird.profileIds : [];
+      } else {
+        const { data, error } = await admin.rpc('wird_recipient_ids', { p_kind: kind });
+        if (error) throw new Error(`wird_recipient_ids: ${error.message}`);
+        profileIds = (data ?? []) as string[];
+      }
+
+      const now = new Date();
+      const link = todayLink();
+      const render = (t: PushTarget) =>
+        renderWird(kind, { name: t.n ?? '', duties: t.d as TemplateDuty[], date: now, link });
+
+      if (dryRun) {
+        // Nothing is sent and nothing is logged: this is how the pipeline is tested.
+        const targets = (await pushTargets(admin, profileIds)).filter((t) => t.d.length > 0);
+        return json({
+          dryRun: true,
+          kind,
+          people: profileIds.length,
+          reachable: targets.length,
+          pushDevices: targets.reduce((n, t) => n + (t.t?.length ?? 0), 0),
+          telegramChats: targets.filter((t) => typeof t.g === 'number').length,
+          samples: targets.slice(0, 2).map(render),
+        });
+      }
+
+      // One morning and one evening per day: a retried cron tick (or two racing) gets null
+      // here once the day's run has gone out. 'updated' is logged but never deduplicated.
+      const { data: runId, error: claimError } = await admin.rpc('claim_wird_run', {
+        p_kind: kind,
+        p_target_count: profileIds.length,
+      });
+      if (claimError) throw new Error(`claim_wird_run: ${claimError.message}`);
+      if (runId === null) return json({ skipped: true, reason: 'already-sent-today' });
+
+      try {
+        const targets = (await pushTargets(admin, profileIds)).filter((t) => t.d.length > 0);
+        const message: Message = {
+          title: '',
+          body: '',
+          // Per kind: a later 'updated' replaces the previous update on the phone, while the
+          // morning and evening messages stay separate.
+          tag: `wird-${kind}`,
+          kind: `wird_${kind}`,
+          showWird: false,
+          render,
+        };
+        const result =
+          targets.length > 0
+            ? await sendToTargets(sa, await getAccessToken(sa), targets, message)
+            : { sent: 0, failed: 0, reached: new Set<string>(), invalidTokens: [] };
+        const tg = await sendTelegram(admin, targets, message);
+        if (result.invalidTokens.length > 0) {
+          await admin.from('fcm_tokens').delete().in('token', result.invalidTokens);
+        }
+        const recipients = new Set([...result.reached, ...tg.reached]).size;
+        const outcome = {
+          push_sent: result.sent,
+          push_failed: result.failed,
+          telegram_sent: tg.sent,
+          telegram_failed: tg.failed,
+          recipient_count: recipients,
+        };
+        await admin
+          .from('wird_runs')
+          .update({ ...outcome, finished_at: new Date().toISOString(), error: null })
+          .eq('id', runId);
+        return json({ kind, people: profileIds.length, ...outcome });
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        // Left unfinished with the error: the next cron tick for this kind retries the day.
+        await admin.from('wird_runs').update({ error: message }).eq('id', runId);
+        return json({ error: message }, 500);
+      }
+    }
+
+    // ── Test ping ──
     if (auto) {
       if (!isAutoKind(auto.kind)) return json({ error: 'Unknown auto kind' }, 400);
 
@@ -540,10 +608,7 @@ Deno.serve(async (req) => {
         if (!caller) return json({ error: 'Not authorized' }, 403);
         profileIds = [caller.id];
       } else {
-        // Only the database may fire duty pings. A dashboard session must go through a
-        // campaign, otherwise it would gain an unlogged, unattributable broadcast.
-        if (role !== 'service_role') return json({ error: 'Not authorized' }, 403);
-        profileIds = Array.isArray(auto.profileIds) ? auto.profileIds : [];
+        return json({ error: 'Unknown auto kind' }, 400);
       }
 
       const targets = await pushTargets(admin, profileIds);
@@ -553,15 +618,12 @@ Deno.serve(async (req) => {
       const message: Message = {
         title: text.title,
         body: text.body,
-        // One tag per kind: assigning three duties in a row should land as one standing
-        // reminder (the latest, with the full day), not three identical banners.
         tag: `auto-${auto.kind}`,
         kind: auto.kind,
         showWird: true,
       };
       const accessToken = await getAccessToken(sa);
       const result = await sendToTargets(sa, accessToken, targets, message);
-      // Duty pings are about the wird itself, so they mirror to Telegram alongside push.
       const tg = await sendTelegram(admin, targets, message);
       if (result.invalidTokens.length > 0) {
         await admin.from('fcm_tokens').delete().in('token', result.invalidTokens);
@@ -644,9 +706,8 @@ Deno.serve(async (req) => {
           telegramBody: campaign.telegram_body,
           tag: `campaign-${campaign.id}`,
           kind: 'campaign',
-          // Today's-wird audiences are about the wird itself — show it.
-          showWird:
-            campaign.audience === 'assigned_today' || campaign.audience === 'incomplete_today',
+          // A campaign is the author's text only; the wird has its own messages (wird path).
+          showWird: false,
         };
         const none: SendResult = { sent: 0, failed: 0, reached: new Set(), invalidTokens: [] };
         const result =
