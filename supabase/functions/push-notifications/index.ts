@@ -29,6 +29,7 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
   formatRange,
+  firstName,
   renderWird,
   TELEGRAM_BUTTONS,
   type RenderedWird,
@@ -171,6 +172,8 @@ interface Message {
   // Send no duty snapshot: the worker writes a snapshot into the app's offline cache, so a
   // preview built from mock duties would overwrite the employee's real checklist.
   noSnapshot?: boolean;
+  // Telegram «تحميل الورد» button; defaults to on for rendered (wird) messages.
+  showDownload?: boolean;
 }
 
 interface SendResult {
@@ -407,7 +410,7 @@ async function sendTelegram(
                 [
                   { text: TELEGRAM_BUTTONS.open, url: todayLink() },
                   // Only the wird messages carry the day's ayat, so only they offer the file.
-                  ...(message.render
+                  ...((message.showDownload ?? !!message.render)
                     ? [{ text: TELEGRAM_BUTTONS.download, url: downloadLink() }]
                     : []),
                 ],
@@ -512,9 +515,9 @@ Deno.serve(async (req) => {
     }
 
     const payload = await req.json();
-    const { campaignId, auto, wird } = payload ?? {};
-    if (!campaignId && !auto && !wird) {
-      return json({ error: 'campaignId, auto or wird is required' }, 400);
+    const { campaignId, auto, wird, direct } = payload ?? {};
+    if (!campaignId && !auto && !wird && !direct) {
+      return json({ error: 'campaignId, auto, wird or direct is required' }, 400);
     }
 
     const saRaw = Deno.env.get('FCM_SERVICE_ACCOUNT');
@@ -524,6 +527,61 @@ Deno.serve(async (req) => {
     const sa: ServiceAccount = JSON.parse(saRaw);
 
     const admin = createClient(supabaseUrl, serviceRoleKey);
+
+    // ── Direct: one-off text to an explicit list of people (service role only) ──
+    // For operator messages the dashboard cannot target (e.g. "finished today" vs "not yet").
+    // {{name}} in the texts becomes each person's first name. Nothing is logged or scheduled.
+    if (direct) {
+      if (role !== 'service_role') return json({ error: 'Not authorized' }, 403);
+      const ids = Array.isArray(direct.profileIds) ? (direct.profileIds as string[]) : [];
+      if (ids.length === 0 || !direct.title || !direct.body) {
+        return json({ error: 'direct needs profileIds, title and body' }, 400);
+      }
+      const fill = (text: string, name: string) => text.replace(/\{\{\s*name\s*\}\}/g, name);
+      const targets = await pushTargets(admin, ids);
+      const message: Message = {
+        title: '',
+        body: '',
+        tag: `direct-${crypto.randomUUID()}`,
+        kind: 'campaign',
+        showWird: false,
+        render: (t) => {
+          const name = firstName(t.n ?? '');
+          return {
+            push: { title: fill(direct.title, name), body: fill(direct.body, name) },
+            telegram: fill(direct.telegram ?? escapeHtml(direct.body), escapeHtml(name)),
+          };
+        },
+      };
+      if (direct.dryRun === true) {
+        return json({
+          dryRun: true,
+          people: ids.length,
+          reachable: targets.length,
+          pushPeople: targets.filter((t) => (t.t?.length ?? 0) > 0).length,
+          telegramPeople: targets.filter((t) => typeof t.g === 'number').length,
+          samples: targets.slice(0, 2).map((t) => message.render!(t)),
+        });
+      }
+      const result =
+        targets.some((t) => (t.t?.length ?? 0) > 0)
+          ? await sendToTargets(sa, await getAccessToken(sa), targets, message)
+          : { sent: 0, failed: 0, reached: new Set<string>(), invalidTokens: [] as string[] };
+      // Only the wird messages carry the download button; this is free text.
+      const tg = await sendTelegram(admin, targets, { ...message, showDownload: false });
+      if (result.invalidTokens.length > 0) {
+        await admin.from('fcm_tokens').delete().in('token', result.invalidTokens);
+      }
+      return json({
+        people: ids.length,
+        reachable: targets.length,
+        push_sent: result.sent,
+        push_failed: result.failed,
+        telegram_sent: tg.sent,
+        telegram_failed: tg.failed,
+        recipients: new Set([...result.reached, ...tg.reached]).size,
+      });
+    }
 
     // ── Wird messages (morning / evening / updated) ──
     if (wird) {

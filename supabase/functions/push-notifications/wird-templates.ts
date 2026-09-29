@@ -159,7 +159,7 @@ export function formatRange(s: number[]): string {
   return `${from} (${ayahFrom}) - ${to} (${ayahTo})`;
 }
 
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
@@ -191,11 +191,15 @@ function fill(template: string, values: Record<string, string>): string {
   return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (match, key: string) => values[key] ?? match);
 }
 
+/** The first name as addressed in a message; "عبد الرحمن" is one name in two words. */
+export function firstName(fullName: string): string {
+  const words = fullName.trim().split(/\s+/);
+  return words[0] === 'عبد' && words[1] ? `${words[0]} ${words[1]}` : (words[0] ?? '');
+}
+
 export function renderWird(kind: WirdKind, ctx: TemplateContext): RenderedWird {
   const template = WIRD_TEMPLATES[kind];
-  const firstName = ctx.name.trim().split(/\s+/).slice(0, 2).join(' ');
-  // "عبد الرحمن" is one name in two words; any other first name is a single word.
-  const name = firstName.startsWith('عبد ') ? firstName : firstName.split(' ')[0] ?? '';
+  const name = firstName(ctx.name);
   const open = ctx.duties.filter((d) => d.t !== 'completed');
   const date = dateFormat.format(ctx.date);
 
