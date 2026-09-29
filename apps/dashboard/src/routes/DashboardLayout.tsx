@@ -50,8 +50,8 @@ export default function DashboardLayout() {
 
       <aside
         className={cn(
-          'fixed inset-y-0 z-40 flex w-64 shrink-0 flex-col overflow-y-auto bg-linear-to-b from-primary-800 to-primary-950 text-primary-100',
-          'transition-transform duration-300 ease-(--ease-out-soft) lg:sticky lg:top-0 lg:h-screen lg:self-start lg:translate-x-0',
+          'fixed inset-y-0 start-0 z-40 flex w-64 shrink-0 flex-col overflow-y-auto bg-linear-to-b from-primary-800 to-primary-950 text-primary-100',
+          'transition-transform duration-300 ease-(--ease-out-soft) lg:sticky lg:inset-y-auto lg:top-0 lg:start-auto lg:h-screen lg:self-start lg:translate-x-0',
           // dir="rtl": the drawer lives on the right, so it hides by moving further right.
           navOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0',
         )}
@@ -135,7 +135,7 @@ export default function DashboardLayout() {
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col overflow-x-clip">
         <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-neutral-200/80 bg-surface/80 px-4 py-3 backdrop-blur-md lg:hidden">
           <IconButton aria-label="فتح القائمة" onClick={() => setNavOpen(true)}>
             <Menu className="h-5 w-5" />
@@ -146,7 +146,7 @@ export default function DashboardLayout() {
           </div>
         </header>
 
-        <main className="flex-1 px-4 py-6 sm:px-8 sm:py-8">
+        <main className="flex-1 px-3.5 py-5 sm:px-8 sm:py-8">
           <div className="mx-auto w-full max-w-6xl">
             <Outlet />
           </div>

@@ -378,8 +378,8 @@ function GroupMembersDialog({
             }}
           >
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 pb-3">
-              <TabsList>
-                <TabsTrigger value="members">
+              <TabsList className="w-full sm:w-auto">
+                <TabsTrigger value="members" className="flex-1 sm:flex-initial">
                   الأعضاء
                   {members !== null && (
                     <span className="ms-1.5 rounded-full bg-neutral-200/80 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-neutral-700">
@@ -388,7 +388,7 @@ function GroupMembersDialog({
                   )}
                 </TabsTrigger>
                 {canTransfer && (
-                  <TabsTrigger value="add-existing">
+                  <TabsTrigger value="add-existing" className="flex-1 sm:flex-initial">
                     <ArrowRightLeft className="h-3.5 w-3.5 me-1.5" />
                     ضم مستخدمين
                   </TabsTrigger>
@@ -396,7 +396,7 @@ function GroupMembersDialog({
               </TabsList>
 
               {group && (
-                <Button size="sm" onClick={() => onBulkCreate(group)}>
+                <Button size="sm" onClick={() => onBulkCreate(group)} className="w-full sm:w-auto">
                   <UserPlus className="h-3.5 w-3.5" />
                   إنشاء دفعة جديدة
                 </Button>

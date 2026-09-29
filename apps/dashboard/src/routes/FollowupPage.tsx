@@ -211,10 +211,10 @@ export default function FollowupPage() {
 
       <Card className="flex flex-col gap-4 p-4">
         <div className="flex flex-wrap items-end gap-3">
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5 w-full sm:w-auto">
             <label className="text-xs font-medium text-neutral-500">المجموعة</label>
             <Select value={groupId} onValueChange={setGroupId}>
-              <SelectTrigger className="h-9 w-48 text-sm">
+              <SelectTrigger className="h-9 w-full sm:w-48 text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -249,8 +249,8 @@ export default function FollowupPage() {
             </div>
           </div>
 
-          <div className="flex items-end gap-2">
-            <div className="flex flex-col gap-1.5">
+          <div className="flex items-end gap-2 w-full sm:w-auto">
+            <div className="flex flex-col gap-1.5 flex-1 min-w-0 sm:w-36">
               <label className="text-xs font-medium text-neutral-500">من</label>
               <Input
                 type="date"
@@ -263,7 +263,7 @@ export default function FollowupPage() {
                 className="h-9 text-sm"
               />
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1.5 flex-1 min-w-0 sm:w-36">
               <label className="text-xs font-medium text-neutral-500">إلى</label>
               <Input
                 type="date"
@@ -313,7 +313,7 @@ export default function FollowupPage() {
             }
           />
         ) : (
-          <Table>
+          <Table className="min-w-[720px]">
             <TableHeader>
               <TableRow>
                 <SortHead

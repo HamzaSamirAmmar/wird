@@ -28,7 +28,7 @@ export function TableHead({ className, ...props }: React.ThHTMLAttributes<HTMLTa
   return (
     <th
       className={cn(
-        'border-b border-neutral-200 px-4 py-3 text-start text-xs font-semibold text-neutral-500',
+        'border-b border-neutral-200 px-4 py-3 text-start text-xs font-semibold text-neutral-500 whitespace-nowrap',
         className,
       )}
       {...props}

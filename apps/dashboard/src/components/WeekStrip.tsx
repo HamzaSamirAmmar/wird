@@ -51,7 +51,7 @@ export function WeekStrip({
               onClick={() => onChange(iso)}
               aria-pressed={selected}
               className={cn(
-                'flex flex-col items-center gap-1 rounded-xl py-2.5 transition-colors duration-150',
+                'flex flex-col items-center gap-1 rounded-xl py-2 px-0.5 sm:py-2.5 sm:px-1 transition-colors duration-150',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500',
                 selected
                   ? 'bg-primary-700 text-white shadow-glow'
@@ -61,7 +61,7 @@ export function WeekStrip({
               <span
                 className={cn(
                   // The Arabic short weekday ("الخميس") is wider than a seventh of the rail.
-                  'max-w-full truncate px-0.5 text-[10px]',
+                  'max-w-full truncate px-0.5 text-[9.5px] sm:text-[10px]',
                   selected ? 'text-primary-100' : 'text-neutral-400',
                 )}
               >
