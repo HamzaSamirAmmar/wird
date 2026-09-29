@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import {
   CalendarClock,
   ChevronDown,
+  Pencil,
   Plus,
   Repeat,
   Search,
@@ -20,6 +21,7 @@ import {
   CAMPAIGN_SCHEDULE_KINDS,
   WEEKDAY_LABELS,
   campaignCanSendNow,
+  campaignIsEditable,
   campaignIsSent,
   campaignShape,
   notificationCampaignSchema,
@@ -70,7 +72,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth-context';
 
 const CAMPAIGN_COLUMNS =
-  'id, title, body, audience, target_profile_id, group_id, channel, schedule_kind, scheduled_at, recur_weekday, recur_time, is_active, next_run_at, last_sent_at, last_sent_count, last_failed_count, last_target_count, last_recipient_count, last_error, created_at';
+  'id, title, body, telegram_body, audience, target_profile_id, group_id, channel, schedule_kind, scheduled_at, recur_weekday, recur_time, is_active, next_run_at, last_sent_at, last_sent_count, last_failed_count, last_target_count, last_recipient_count, last_error, created_at';
 
 const SCHEDULE_KIND_LABELS: Record<CampaignScheduleKind, string> = {
   now: 'إرسال فوري',
@@ -109,6 +111,7 @@ function toCampaign(r: {
   id: string;
   title: string;
   body: string;
+  telegram_body: string | null;
   audience: string;
   target_profile_id: string | null;
   group_id: string | null;
@@ -132,6 +135,7 @@ function toCampaign(r: {
     createdBy: null,
     title: r.title,
     body: r.body,
+    telegramBody: r.telegram_body,
     audience: r.audience as NotificationAudience,
     targetProfileId: r.target_profile_id,
     groupId: r.group_id,
@@ -207,6 +211,7 @@ export default function NotificationsPage() {
     null,
   );
   const [composing, setComposing] = React.useState(false);
+  const [editing, setEditing] = React.useState<NotificationCampaign | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState<NotificationCampaign | null>(null);
   const [sendingNow, setSendingNow] = React.useState<string | null>(null);
   const [tab, setTab] = React.useState<StatusTab>('all');
@@ -397,6 +402,7 @@ export default function NotificationsPage() {
                     onCompose={() => setComposing(true)}
                     onToggleActive={toggleActive}
                     onSend={dispatchNow}
+                    onEdit={setEditing}
                     onDelete={setConfirmDelete}
                   />
                 </TabsContent>
@@ -406,15 +412,20 @@ export default function NotificationsPage() {
         )}
 
         <ComposeDialog
-          open={composing}
+          open={composing || !!editing}
+          editing={editing}
           supervisorId={profile?.id ?? ''}
           // A supervisor's campaigns are always their own group's; the picker is superadmin-only.
           fixedGroupId={isSupervisor ? (profile?.groupId ?? null) : null}
           audiences={audiences}
           groups={groups}
-          onClose={() => setComposing(false)}
+          onClose={() => {
+            setComposing(false);
+            setEditing(null);
+          }}
           onSaved={(kind) => {
             setComposing(false);
+            setEditing(null);
             // Follow the campaign to where it now lives, so saving never looks like nothing
             // happened.
             setTab(kind === 'now' ? 'sent' : 'upcoming');
@@ -486,6 +497,7 @@ function CampaignTable({
   onCompose,
   onToggleActive,
   onSend,
+  onEdit,
   onDelete,
 }: {
   tab: StatusTab;
@@ -495,6 +507,7 @@ function CampaignTable({
   onCompose: () => void;
   onToggleActive: (c: NotificationCampaign) => void;
   onSend: (c: NotificationCampaign) => void;
+  onEdit: (c: NotificationCampaign) => void;
   onDelete: (c: NotificationCampaign) => void;
 }) {
   const [page, setPage] = React.useState(1);
@@ -536,6 +549,7 @@ function CampaignTable({
             sending={sendingNow === campaign.id}
             onToggleActive={onToggleActive}
             onSend={onSend}
+            onEdit={onEdit}
             onDelete={onDelete}
           />
         ))}
@@ -619,6 +633,7 @@ function CampaignTable({
                       resend={shape === 'instant' && !!campaign.lastSentAt}
                       sending={sendingNow === campaign.id}
                       onSend={() => onSend(campaign)}
+                      onEdit={campaignIsEditable(campaign) ? () => onEdit(campaign) : undefined}
                       onDelete={() => onDelete(campaign)}
                     />
                   </TableCell>
@@ -652,12 +667,14 @@ function CampaignCard({
   sending,
   onToggleActive,
   onSend,
+  onEdit,
   onDelete,
 }: {
   campaign: NotificationCampaign;
   sending: boolean;
   onToggleActive: (c: NotificationCampaign) => void;
   onSend: (c: NotificationCampaign) => void;
+  onEdit: (c: NotificationCampaign) => void;
   onDelete: (c: NotificationCampaign) => void;
 }) {
   const shape = campaignShape(campaign.scheduleKind);
@@ -684,6 +701,7 @@ function CampaignCard({
           resend={shape === 'instant' && !!campaign.lastSentAt}
           sending={sending}
           onSend={() => onSend(campaign)}
+          onEdit={campaignIsEditable(campaign) ? () => onEdit(campaign) : undefined}
           onDelete={() => onDelete(campaign)}
         />
       </div>
@@ -838,6 +856,7 @@ function RowActions({
   resend,
   sending,
   onSend,
+  onEdit,
   onDelete,
 }: {
   campaign: NotificationCampaign;
@@ -845,6 +864,8 @@ function RowActions({
   resend: boolean;
   sending: boolean;
   onSend: () => void;
+  /** Absent when the campaign can no longer change (sent instant or spent one-off). */
+  onEdit?: () => void;
   onDelete: () => void;
 }) {
   const label = resend ? 'إعادة الإرسال' : 'إرسال الآن';
@@ -853,6 +874,11 @@ function RowActions({
       {canSend && (
         <IconButton aria-label={label} title={label} disabled={sending} onClick={onSend}>
           <Send className={cn('h-4 w-4', sending && 'animate-pulse')} />
+        </IconButton>
+      )}
+      {onEdit && (
+        <IconButton aria-label={`تعديل ${campaign.title}`} title="تعديل" onClick={onEdit}>
+          <Pencil className="h-4 w-4" />
         </IconButton>
       )}
       <IconButton
@@ -866,8 +892,14 @@ function RowActions({
   );
 }
 
+/** An instant as Damascus wall time `YYYY-MM-DDTHH:mm` (+03:00, no DST) for datetime-local. */
+function toDamascusLocal(iso: string): string {
+  return new Date(new Date(iso).getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 16);
+}
+
 function ComposeDialog({
   open,
+  editing,
   supervisorId,
   fixedGroupId,
   audiences,
@@ -876,6 +908,8 @@ function ComposeDialog({
   onSaved,
 }: {
   open: boolean;
+  /** Set to edit an existing campaign (recurring, or a one-off still pending); null composes. */
+  editing: NotificationCampaign | null;
   supervisorId: string;
   /** Set for a supervisor: every campaign they create belongs to this group. */
   fixedGroupId: string | null;
@@ -886,6 +920,7 @@ function ComposeDialog({
 }) {
   const [title, setTitle] = React.useState('');
   const [body, setBody] = React.useState('');
+  const [telegramBody, setTelegramBody] = React.useState('');
   const [audience, setAudience] = React.useState<NotificationAudience>(audiences[0]!);
   const [targetProfileId, setTargetProfileId] = React.useState('');
   const [groupId, setGroupId] = React.useState('');
@@ -900,19 +935,21 @@ function ComposeDialog({
 
   React.useEffect(() => {
     if (!open) return;
-    setTitle('');
-    setBody('');
-    setAudience(audiences[0]!);
-    setTargetProfileId('');
-    setGroupId('');
-    setChannel('push');
-    setScheduleKind('now');
-    setScheduledLocal('');
-    setRecurWeekday(5);
-    setRecurTime('08:00');
+    setTitle(editing?.title ?? '');
+    setBody(editing?.body ?? '');
+    setTelegramBody(editing?.telegramBody ?? '');
+    setAudience(editing?.audience ?? audiences[0]!);
+    setTargetProfileId(editing?.targetProfileId ?? '');
+    setGroupId(editing?.groupId ?? '');
+    setChannel(editing?.channel ?? 'push');
+    setScheduleKind(editing?.scheduleKind ?? 'now');
+    setScheduledLocal(editing?.scheduledAt ? toDamascusLocal(editing.scheduledAt) : '');
+    setRecurWeekday(editing?.recurWeekday ?? 5);
+    // Postgres time comes back as HH:MM:SS; the time input wants HH:MM.
+    setRecurTime(editing?.recurTime?.slice(0, 5) ?? '08:00');
     setError(null);
     // audiences is one of two module constants, so it only changes with the viewer's role.
-  }, [open, audiences]);
+  }, [open, editing, audiences]);
 
   React.useEffect(() => {
     if (!open || employees.length > 0) return;
@@ -942,6 +979,8 @@ function ComposeDialog({
     const parsed = notificationCampaignSchema.safeParse({
       title,
       body,
+      // Only 'both' has two texts; a single-channel campaign sends `body` wherever it goes.
+      telegramBody: channel === 'both' ? telegramBody : null,
       audience,
       targetProfileId: targetProfileId || null,
       groupId: effectiveGroupId,
@@ -966,22 +1005,40 @@ function ComposeDialog({
         ? new Date(`${v.scheduledLocal}:00+03:00`).toISOString()
         : null;
 
+    const fields = {
+      title: v.title,
+      body: v.body,
+      telegram_body: v.telegramBody ?? null,
+      audience: v.audience,
+      target_profile_id: v.audience === 'user' ? v.targetProfileId : null,
+      group_id: v.groupId ?? null,
+      channel: v.channel,
+      schedule_kind: v.scheduleKind,
+      scheduled_at: scheduledAt,
+      recur_weekday: v.scheduleKind === 'weekly' ? v.recurWeekday : null,
+      // Both recurring kinds need the time; only the weekly one needs a weekday.
+      recur_time: v.scheduleKind === 'weekly' || v.scheduleKind === 'daily' ? v.recurTime : null,
+    };
+
+    if (editing) {
+      // next_run_at is recomputed by the trigger only when the schedule itself changed, so a
+      // text-only edit keeps the rule's next occurrence.
+      const { error: updateError } = await supabase
+        .from('notification_campaigns')
+        .update(fields)
+        .eq('id', editing.id);
+      setSubmitting(false);
+      if (updateError) {
+        setError('تعذر حفظ التعديل');
+        return;
+      }
+      onSaved(v.scheduleKind);
+      return;
+    }
+
     const { data: inserted, error: insertError } = await supabase
       .from('notification_campaigns')
-      .insert({
-        title: v.title,
-        body: v.body,
-        audience: v.audience,
-        target_profile_id: v.audience === 'user' ? v.targetProfileId : null,
-        group_id: v.groupId ?? null,
-        channel: v.channel,
-        schedule_kind: v.scheduleKind,
-        scheduled_at: scheduledAt,
-        recur_weekday: v.scheduleKind === 'weekly' ? v.recurWeekday : null,
-        // Both recurring kinds need the time; only the weekly one needs a weekday.
-        recur_time: v.scheduleKind === 'weekly' || v.scheduleKind === 'daily' ? v.recurTime : null,
-        created_by: supervisorId,
-      })
+      .insert({ ...fields, created_by: supervisorId })
       .select('id')
       .single();
 
@@ -1007,7 +1064,7 @@ function ComposeDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>إشعار جديد</DialogTitle>
+          <DialogTitle>{editing ? 'تعديل الإشعار' : 'إشعار جديد'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <DialogBody>
@@ -1017,7 +1074,7 @@ function ComposeDialog({
               <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={100} />
             </Field>
 
-            <Field label="النص">
+            <Field label={channel === 'both' ? 'نص إشعار التطبيق' : 'النص'}>
               <Textarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
@@ -1025,6 +1082,20 @@ function ComposeDialog({
                 maxLength={500}
               />
             </Field>
+
+            {channel === 'both' && (
+              <Field
+                label="نص رسالة تيليجرام"
+                hint="اختياري — إن تُرك فارغاً تُرسل رسالة تيليجرام بنص إشعار التطبيق"
+              >
+                <Textarea
+                  value={telegramBody}
+                  onChange={(e) => setTelegramBody(e.target.value)}
+                  rows={4}
+                  maxLength={2000}
+                />
+              </Field>
+            )}
 
             <Field label="المرسل إليهم">
               <Select
@@ -1102,7 +1173,8 @@ function ComposeDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {CAMPAIGN_SCHEDULE_KINDS.map((k) => (
+                  {/* An edit keeps it scheduled: 'now' would be a send, not an edit. */}
+                  {CAMPAIGN_SCHEDULE_KINDS.filter((k) => !editing || k !== 'now').map((k) => (
                     <SelectItem key={k} value={k}>
                       {SCHEDULE_KIND_LABELS[k]}
                     </SelectItem>
@@ -1162,7 +1234,8 @@ function ComposeDialog({
 
             {scheduleKind === 'now' && (
               <p className="text-xs leading-relaxed text-neutral-500">
-                يُرسل فوراً عند الحفظ إلى التطبيق وتيليجرام معاً، ويمكن إعادة إرساله لاحقاً.
+                يُرسل فوراً عند الحفظ ({NOTIFICATION_CHANNEL_LABELS[channel]})، ويمكن إعادة إرساله
+                لاحقاً.
               </p>
             )}
 
@@ -1177,7 +1250,7 @@ function ComposeDialog({
               إلغاء
             </Button>
             <Button type="submit" disabled={submitting}>
-              {scheduleKind === 'now' ? 'إرسال' : 'حفظ'}
+              {editing ? 'حفظ التعديل' : scheduleKind === 'now' ? 'إرسال' : 'حفظ'}
             </Button>
           </DialogFooter>
         </form>

@@ -36,6 +36,18 @@ export const campaignScheduleKinds = CAMPAIGN_SCHEDULE_KINDS;
  */
 export type CampaignShape = 'instant' | 'once' | 'recurring';
 
+/**
+ * Whether a campaign can still be edited: a recurring rule always, a one-off only while it is
+ * pending. An instant message and a spent one-off are history — editing them changes nothing.
+ */
+export function campaignIsEditable(c: {
+  scheduleKind: CampaignScheduleKind;
+  nextRunAt: string | null;
+}) {
+  const shape = campaignShape(c.scheduleKind);
+  return shape === 'recurring' || (shape === 'once' && !!c.nextRunAt);
+}
+
 export const RECURRING_SCHEDULE_KINDS = ['daily', 'weekly'] as const;
 
 export function campaignShape(kind: CampaignScheduleKind): CampaignShape {
@@ -79,6 +91,8 @@ export interface NotificationCampaign {
   createdBy: string | null;
   title: string;
   body: string;
+  /** Telegram's own text when the campaign goes out on both channels; null = same as body. */
+  telegramBody: string | null;
   audience: NotificationAudience;
   targetProfileId: string | null;
   /** null = every group (superadmin only). Set = scoped to that group, for any audience. */

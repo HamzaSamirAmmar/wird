@@ -330,6 +330,7 @@ export type Database = {
           schedule_kind: string;
           scheduled_at: string | null;
           target_profile_id: string | null;
+          telegram_body: string | null;
           title: string;
         };
         Insert: {
@@ -353,6 +354,7 @@ export type Database = {
           schedule_kind?: string;
           scheduled_at?: string | null;
           target_profile_id?: string | null;
+          telegram_body?: string | null;
           title: string;
         };
         Update: {
@@ -376,6 +378,7 @@ export type Database = {
           schedule_kind?: string;
           scheduled_at?: string | null;
           target_profile_id?: string | null;
+          telegram_body?: string | null;
           title?: string;
         };
         Relationships: [

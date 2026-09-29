@@ -233,6 +233,9 @@ export default function EmployeesPage() {
               نقل
             </Button>
           </div>
+          <p className="w-full text-xs text-accent-700">
+            النقل يحذف أوراد المنقولين السابقة ويسند إليهم أوراد المجموعة الجديدة من اليوم.
+          </p>
           <Button
             variant="ghost"
             size="sm"
@@ -734,8 +737,9 @@ function EditEmployeeDialog({
             </Field>
 
             {movingGroup && (
-              <Alert variant="info">
-                الأوراد المُسندة سابقاً تبقى كما هي؛ التغيير يسري على الإسناد القادم لهذه المجموعة.
+              <Alert variant="warning">
+                ستُحذف جميع أوراد المستخدم السابقة، وتُسند إليه أوراد المجموعة الجديدة لليوم والأيام
+                القادمة.
               </Alert>
             )}
 
