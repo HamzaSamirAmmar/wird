@@ -127,7 +127,7 @@ export default function DutiesPage() {
 
       <div className="grid gap-6 lg:grid-cols-[24rem_1fr] lg:items-start">
         <div className="flex flex-col gap-4">
-          <Card className="p-4">
+          <Card className="p-3 sm:p-4">
             <WeekStrip value={selectedDate} onChange={setSelectedDate} markers={weekCounts} />
             <div className="mt-4 flex items-center gap-2 border-t border-neutral-100 pt-4">
               <Input
@@ -135,7 +135,7 @@ export default function DutiesPage() {
                 aria-label="اختيار تاريخ"
                 value={selectedDate}
                 onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
-                className="h-9 text-sm"
+                className="h-9 flex-1 text-sm"
               />
               {selectedDate !== todayISO() && (
                 <Button variant="quiet" size="sm" onClick={() => setSelectedDate(todayISO())}>
@@ -147,7 +147,7 @@ export default function DutiesPage() {
         </div>
 
         <Card className="overflow-hidden">
-          <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-5 py-4">
+          <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-4 py-3 sm:px-5 sm:py-4">
             <div className="flex items-center gap-2 text-sm font-semibold text-neutral-800">
               <CalendarDays className="h-4 w-4 text-primary-600" />
               {formatRelativeDay(selectedDate)}
@@ -176,7 +176,7 @@ export default function DutiesPage() {
           ) : (
             <div className="divide-y divide-neutral-100">
               {byGroup.map(({ group, rows }) => (
-                <div key={group.id} className="flex flex-col gap-3 p-5">
+                <div key={group.id} className="flex flex-col gap-3 p-4 sm:p-5">
                   <div className="flex items-center justify-between gap-3">
                     <div className="font-semibold text-neutral-900">{group.name}</div>
                     <Button variant="ghost" size="sm" onClick={() => openFor(group.id)}>

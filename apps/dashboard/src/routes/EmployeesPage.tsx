@@ -208,11 +208,11 @@ export default function EmployeesPage() {
       {someSelected && (
         <Card className="flex flex-wrap items-center gap-3 p-3">
           <Badge variant="brand">{selected.size} محدد</Badge>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <ArrowRightLeft className="h-4 w-4 text-neutral-500" />
             <span className="text-sm text-neutral-600">نقل إلى:</span>
             <Select value={reassignGroupId} onValueChange={setReassignGroupId}>
-              <SelectTrigger className="h-8 w-48">
+              <SelectTrigger className="h-8 w-36 sm:w-48">
                 <SelectValue placeholder="اختر مجموعة" />
               </SelectTrigger>
               <SelectContent>
@@ -250,7 +250,7 @@ export default function EmployeesPage() {
             placeholder="ابحث بالاسم أو اسم المستخدم أو المجموعة"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="h-10 max-w-sm"
+            className="h-10 w-full max-w-sm"
           />
         </div>
 
@@ -267,7 +267,7 @@ export default function EmployeesPage() {
             }
           />
         ) : (
-          <Table>
+          <Table className="min-w-[620px]">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-10">

@@ -68,8 +68,8 @@ export function BulkCredentialsDialog({
             لن تظهر كلمات المرور مرة أخرى بعد إغلاق هذه النافذة.
           </Alert>
 
-          <div className="mt-3 overflow-y-auto">
-            <table className="w-full text-sm">
+          <div className="mt-3 w-full overflow-x-auto">
+            <table className="w-full min-w-[420px] text-sm">
               <thead>
                 <tr className="border-b text-xs text-neutral-500">
                   <th className="pb-2 text-start font-medium">الاسم</th>

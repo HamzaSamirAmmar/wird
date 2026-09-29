@@ -229,7 +229,7 @@ export function BulkCreateDialog({
             </Field>
 
             <div className="mt-2 flex flex-col gap-3">
-              <div className="grid grid-cols-[1fr_1fr_1fr_2.5rem] gap-2 text-xs font-medium text-neutral-500">
+              <div className="hidden sm:grid sm:grid-cols-[1fr_1fr_1fr_2.5rem] sm:gap-2 text-xs font-medium text-neutral-500">
                 <span>الاسم الكامل</span>
                 <span>اسم المستخدم</span>
                 <span>معرف تيليجرام</span>
@@ -239,12 +239,26 @@ export function BulkCreateDialog({
               {entries.map((entry, i) => (
                 <div
                   key={entry.key}
-                  className="grid grid-cols-[1fr_1fr_1fr_2.5rem] items-center gap-2"
+                  className="flex flex-col gap-2 rounded-xl border border-neutral-200/80 bg-neutral-50/60 p-3 sm:grid sm:grid-cols-[1fr_1fr_1fr_2.5rem] sm:items-center sm:gap-2 sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0"
                 >
+                  <div className="flex items-center justify-between pb-1 sm:hidden">
+                    <span className="text-xs font-semibold text-neutral-600">
+                      المستخدم #{i + 1}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeEntry(entry.key)}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-30"
+                      disabled={entries.length <= 1}
+                      aria-label="حذف"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                   <Input
                     value={entry.fullName}
                     onChange={(e) => updateEntry(entry.key, { fullName: e.target.value })}
-                    placeholder={i === 0 ? 'أحمد علي' : ''}
+                    placeholder={i === 0 ? 'الاسم الكامل (أحمد علي)' : 'الاسم الكامل'}
                     autoFocus={i === 0}
                   />
                   <Input
@@ -256,7 +270,7 @@ export function BulkCreateDialog({
                         usernameTouched: true,
                       })
                     }
-                    placeholder="ahmed_ali"
+                    placeholder="اسم المستخدم (ahmed_ali)"
                   />
                   <Input
                     dir="ltr"
@@ -264,13 +278,13 @@ export function BulkCreateDialog({
                     onChange={(e) =>
                       updateEntry(entry.key, { telegram: formatTelegramInput(e.target.value) })
                     }
-                    placeholder="@ahmed"
+                    placeholder="تيليجرام (@ahmed)"
                     aria-label={`معرف تيليجرام للصف ${i + 1}`}
                   />
                   <button
                     type="button"
                     onClick={() => removeEntry(entry.key)}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-30"
+                    className="hidden sm:flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-30"
                     disabled={entries.length <= 1}
                     aria-label="حذف الصف"
                   >

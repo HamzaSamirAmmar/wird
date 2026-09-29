@@ -342,25 +342,31 @@ export default function NotificationsPage() {
               <div className="flex flex-wrap items-center gap-3 border-b border-neutral-100 p-4">
                 {/* What a supervisor asks is "what is still going to go out" vs "what already
                   went out" — the repeat pattern is a column, not a place to hunt in. */}
-                <TabsList>
-                  <TabsTrigger value="all">الكل ({filtered?.length ?? 0})</TabsTrigger>
-                  <TabsTrigger value="upcoming">القادمة ({upcoming.length})</TabsTrigger>
-                  <TabsTrigger value="sent">المُرسلة ({sent.length})</TabsTrigger>
+                <TabsList className="w-full sm:w-auto">
+                  <TabsTrigger value="all" className="flex-1 sm:flex-initial">
+                    الكل ({filtered?.length ?? 0})
+                  </TabsTrigger>
+                  <TabsTrigger value="upcoming" className="flex-1 sm:flex-initial">
+                    القادمة ({upcoming.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="sent" className="flex-1 sm:flex-initial">
+                    المُرسلة ({sent.length})
+                  </TabsTrigger>
                 </TabsList>
 
-                <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
+                <div className="flex flex-1 flex-wrap items-center justify-end gap-2 w-full sm:w-auto">
                   <Input
                     icon={<Search className="h-4 w-4" />}
                     placeholder="ابحث في العنوان أو النص"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    className="h-10 w-full max-w-xs"
+                    className="h-10 w-full sm:max-w-xs"
                   />
                   <Select
                     value={audienceFilter}
                     onValueChange={(v) => setAudienceFilter(v as NotificationAudience | '*')}
                   >
-                    <SelectTrigger className="h-10 w-48">
+                    <SelectTrigger className="h-10 w-full sm:w-48">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -515,7 +521,7 @@ function CampaignTable({
 
   return (
     <div>
-      <Table>
+      <Table className="min-w-[620px]">
         <TableHeader>
           <TableRow>
             <TableHead>الإشعار</TableHead>
@@ -1159,6 +1165,10 @@ function CoveragePanel({
               ? 'كل المستخدمين يستقبلون الإشعارات'
               : `${missing.length} لن تصلهم الإشعارات حتى يفعّلوها من التطبيق أو يربطوا تيليجرام`}
           </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 sm:hidden">
+            <Badge variant="brand">التطبيق: {appCount}</Badge>
+            <Badge variant="in_progress">تيليجرام: {telegramCount}</Badge>
+          </div>
         </div>
         <div className="hidden shrink-0 items-center gap-2 sm:flex">
           <Badge variant="brand">التطبيق: {appCount}</Badge>
@@ -1171,7 +1181,7 @@ function CoveragePanel({
 
       {open && (
         <>
-          <Table>
+          <Table className="min-w-[560px]">
             <TableHeader>
               <TableRow>
                 <TableHead>المستخدم</TableHead>

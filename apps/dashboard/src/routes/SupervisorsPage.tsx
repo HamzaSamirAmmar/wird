@@ -134,7 +134,7 @@ export default function SupervisorsPage() {
             description="أنشئ حساب مشرف وأسنده إلى مجموعة؛ ستظهر بيانات الدخول مرة واحدة فقط بعد الإنشاء."
           />
         ) : (
-          <Table>
+          <Table className="min-w-[540px]">
             <TableHeader>
               <TableRow>
                 <TableHead>الاسم</TableHead>

@@ -177,7 +177,7 @@ export default function BannersPage() {
         </Card>
       ) : (
         <>
-          <div className="flex items-center justify-between gap-3 text-sm text-neutral-500">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-neutral-500">
             <span>
               <span className="font-medium text-neutral-700">{visibleCount}</span> من{' '}
               <span className="tabular-nums">{banners.length}</span> ظاهرة للمستخدمين
@@ -190,7 +190,7 @@ export default function BannersPage() {
               <Card
                 key={banner.id}
                 className={cn(
-                  'group relative flex items-stretch gap-4 overflow-hidden p-4 transition-colors',
+                  'group relative flex items-stretch gap-3 sm:gap-4 overflow-hidden p-3 sm:p-4 transition-colors',
                   !banner.isActive && 'bg-neutral-50/80',
                 )}
               >
@@ -294,8 +294,8 @@ export default function BannersPage() {
           </DialogHeader>
           <DialogBody>
             <p className="text-sm text-neutral-600">
-              سيُحذف نص البطاقة نهائياً ولن يظهر للمستخدمين. لإخفائها مؤقتاً استخدم خيار «ظاهرة» بدلاً
-              من الحذف.
+              سيُحذف نص البطاقة نهائياً ولن يظهر للمستخدمين. لإخفائها مؤقتاً استخدم خيار «ظاهرة»
+              بدلاً من الحذف.
             </p>
           </DialogBody>
           <DialogFooter>
