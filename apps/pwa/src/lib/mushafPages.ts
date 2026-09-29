@@ -78,10 +78,10 @@ export const MUSHAF_CSS = `
 .mp-page.mp-print{height:${PAGE_HEIGHT}px;break-after:page;page-break-after:always}
 .mp-page.mp-bare{padding:12px}
 .mp-chrome{display:flex;align-items:center;justify-content:space-between;height:54px;color:#5e6b6c;font-size:14px}
-.mp-brand{display:flex;align-items:center;gap:9px}
+.mp-brand{display:flex;align-items:center;gap:9px;white-space:nowrap}
 .mp-brand img{width:26px;height:26px;border-radius:7px}
 .mp-brand b{font-family:'Reem Kufi',sans-serif;font-weight:500;font-size:19px;color:${TEAL}}
-.mp-chip{display:block;height:28px;line-height:28px;border-radius:999px;padding:0 15px;font-size:14px;font-weight:600;color:#fff}
+.mp-chip{display:block;white-space:nowrap;height:28px;line-height:28px;border-radius:999px;padding:0 15px;font-size:14px;font-weight:600;color:#fff}
 .mp-frame{position:relative;box-sizing:border-box;height:${FRAME_HEIGHT}px;border:3px solid ${TEAL};border-radius:5px;padding:9px;background:${PAPER}}
 .mp-frame-in{position:relative;box-sizing:border-box;height:100%;border:1.5px solid ${GOLD};border-radius:2px;padding:10px 30px 0;display:flex;flex-direction:column;background:linear-gradient(${PAPER},#fbf5e6)}
 .mp-corner{position:absolute;width:30px;height:30px}

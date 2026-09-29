@@ -1,6 +1,8 @@
 import type { QuranRange } from '@wird/quran-data';
 import { DUTY_CATEGORIES, type DutyCategory } from '@wird/domain';
+import { inlineFontCss, inlineImages, rasterize } from './rasterize';
 import {
+  HAFS_FAMILY,
   MUSHAF_CSS,
   PAGE_HEIGHT,
   PAGE_WIDTH,
@@ -14,8 +16,11 @@ import {
 
 /**
  * The day's wird as an A4 PDF of Madinah muṣḥaf pages — the same pages as the reader (both
- * come from lib/mushafPages.ts). Built on the phone, so it also works offline: each page is drawn by the browser (correct Arabic shaping, the
- * Hafs font) and rasterised into the PDF.
+ * come from lib/mushafPages.ts). Built on the phone, so it also works offline.
+ *
+ * Each page is rasterised by the browser's own renderer (lib/rasterize.ts), so the PDF is
+ * identical to the layout. html2canvas re-drew the text itself and placed it ~8px low,
+ * pushing surah names out of their cartouches and page numbers out of their diamonds.
  */
 
 export interface PdfDuty {
@@ -44,8 +49,7 @@ function dateLabel(iso: string): string {
 export async function buildWirdPdf(input: WirdPdfInput, onProgress?: PdfProgress): Promise<Blob> {
   if (input.duties.length === 0) throw new Error('No duties to print');
 
-  const [{ default: html2canvas }, { jsPDF }, data] = await Promise.all([
-    import('html2canvas'),
+  const [{ jsPDF }, data] = await Promise.all([
     import('jspdf'),
     loadMushaf(),
     hafsReady(),
@@ -75,24 +79,28 @@ export async function buildWirdPdf(input: WirdPdfInput, onProgress?: PdfProgress
 
   try {
     fitLines(host);
-    // The brand icon must have decoded before it is drawn.
-    await Promise.all(
-      [...host.querySelectorAll('img')].map((img) => img.decode().catch(() => undefined)),
-    );
-
+    await inlineImages(host);
     const pages = [...host.querySelectorAll<HTMLElement>('.mp-page')];
+    const css =
+      (await inlineFontCss([HAFS_FAMILY, 'Reem Kufi', 'IBM Plex Sans Arabic'])) + MUSHAF_CSS;
+    const draw = (page: HTMLElement) =>
+      rasterize(page, {
+        width: PAGE_WIDTH,
+        height: PAGE_HEIGHT,
+        css,
+        scale: 2,
+        background: '#fdfaf1',
+      });
+    // WebKit can paint an SVG image before its inlined fonts have decoded, so the first draw
+    // may come out in a fallback font. A throwaway draw warms them up.
+    await draw(pages[0]!);
+
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
     pdf.setProperties({ title: `ورد ${input.date}`, subject: 'الورد اليومي' });
 
     for (let i = 0; i < pages.length; i++) {
       onProgress?.(i, pages.length);
-      const canvas = await html2canvas(pages[i]!, {
-        scale: 2,
-        backgroundColor: '#fdfaf1',
-        logging: false,
-        width: PAGE_WIDTH,
-        height: PAGE_HEIGHT,
-      });
+      const canvas = await draw(pages[i]!);
       if (i > 0) pdf.addPage();
       pdf.addImage(canvas.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
       // Let the UI breathe between pages of a long wird.
