@@ -328,8 +328,8 @@ export default function NotificationsPage() {
           title="الإشعارات"
           description={
             isSupervisor
-              ? 'إشعارات فورية أو مجدولة لمجموعتك، تحمل ورد اليوم وتصل حتى مع إغلاق التطبيق'
-              : 'إشعارات فورية أو مجدولة تحمل ورد اليوم وتصل المستخدمين حتى مع إغلاق التطبيق'
+              ? 'رسائل فورية أو مجدولة لمجموعتك. ورد اليوم نفسه يُرسل تلقائياً الساعة 4 صباحاً و8 مساءً'
+              : 'رسائل فورية أو مجدولة للمستخدمين. ورد اليوم نفسه يُرسل تلقائياً الساعة 4 صباحاً و8 مساءً'
           }
           actions={
             <Button onClick={() => setComposing(true)}>
@@ -892,9 +892,6 @@ function RowActions({
   );
 }
 
-const WIRD_APPENDED_HINT =
-  'لا تكتب الورد هنا — يُضاف ورد كل مستخدم الخاص به تلقائياً تحت النص عند الإرسال.';
-
 /** An instant as Damascus wall time `YYYY-MM-DDTHH:mm` (+03:00, no DST) for datetime-local. */
 function toDamascusLocal(iso: string): string {
   return new Date(new Date(iso).getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 16);
@@ -972,9 +969,6 @@ function ComposeDialog({
       );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
-
-  // Today's-wird audiences: each person's own wird is appended under the text at send time.
-  const wirdAudience = audience === 'assigned_today' || audience === 'incomplete_today';
 
   // The group the campaign is scoped to: a supervisor's own, or the superadmin's pick for the
   // 'group' audience. Everything else a superadmin sends is global.
@@ -1080,10 +1074,7 @@ function ComposeDialog({
               <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={100} />
             </Field>
 
-            <Field
-              label={channel === 'both' ? 'نص إشعار التطبيق' : 'النص'}
-              hint={wirdAudience ? WIRD_APPENDED_HINT : undefined}
-            >
+            <Field label={channel === 'both' ? 'نص إشعار التطبيق' : 'النص'}>
               <Textarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
@@ -1095,9 +1086,7 @@ function ComposeDialog({
             {channel === 'both' && (
               <Field
                 label="نص رسالة تيليجرام"
-                hint={`اختياري — إن تُرك فارغاً تُرسل رسالة تيليجرام بنص إشعار التطبيق.${
-                  wirdAudience ? ` ${WIRD_APPENDED_HINT}` : ''
-                }`}
+                hint="اختياري — إن تُرك فارغاً تُرسل رسالة تيليجرام بنص إشعار التطبيق"
               >
                 <Textarea
                   value={telegramBody}
@@ -1250,7 +1239,7 @@ function ComposeDialog({
               </p>
             )}
 
-            <NotificationPreview title={title} body={body} withWird={wirdAudience} />
+            <NotificationPreview title={title} body={body} />
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
@@ -1267,18 +1256,10 @@ function ComposeDialog({
 }
 
 /**
- * Roughly how the push lands on a phone. For the "unfinished today" audience the app appends
- * each employee's own remaining wird under the text, so that is shown too.
+ * Roughly how the push lands on a phone. A campaign is the author's text only — the daily wird
+ * has its own messages (supabase/functions/push-notifications/wird-templates.ts).
  */
-function NotificationPreview({
-  title,
-  body,
-  withWird,
-}: {
-  title: string;
-  body: string;
-  withWird: boolean;
-}) {
+function NotificationPreview({ title, body }: { title: string; body: string }) {
   return (
     <div className="rounded-2xl bg-neutral-100 p-3">
       <div className="mb-2 text-[11px] font-medium text-neutral-500">معاينة على الهاتف</div>
@@ -1293,19 +1274,9 @@ function NotificationPreview({
           </div>
           <p className="mt-0.5 whitespace-pre-line text-xs leading-relaxed text-neutral-600">
             {body || 'نص الإشعار'}
-            {withWird && (
-              <span className="text-neutral-400">
-                {'\n'}حفظ جديد: البقرة (1-10){'\n'}مراجعة صغرى: آل عمران (1-30)
-              </span>
-            )}
           </p>
         </div>
       </div>
-      {withWird && (
-        <p className="mt-2 text-[11px] leading-relaxed text-neutral-500">
-          يُضاف ورد كل مستخدم المتبقي تلقائياً، ويُحفظ على جهازه ليفتح عليه حتى دون إنترنت.
-        </p>
-      )}
     </div>
   );
 }
