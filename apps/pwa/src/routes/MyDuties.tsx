@@ -25,7 +25,7 @@ import {
 } from '@wird/ui-web';
 import { useAuth } from '../lib/auth-context';
 import { supabase } from '../lib/supabase';
-import { getCachedDuties, pendingOutboxCount, syncNow, toggleStep } from '../lib/duties';
+import { completeStep, getCachedDuties, pendingOutboxCount, syncNow } from '../lib/duties';
 import { useOnline } from '../lib/connectivity';
 import { getLastSyncedAt, type CachedDuty, type CachedStep } from '../lib/offline';
 import { BannerRail } from '../components/BannerRail';
@@ -230,7 +230,9 @@ export default function MyDuties() {
     return <Navigate to="/supervisor" replace />;
   }
 
-  async function handleToggle(step: CachedStep) {
+  // Ticking a step is final: a completed step cannot be unticked.
+  async function handleComplete(step: CachedStep) {
+    if (step.isCompleted) return;
     setDuties((prev) =>
       prev
         ? prev.map((d) =>
@@ -238,14 +240,12 @@ export default function MyDuties() {
               ? d
               : {
                   ...d,
-                  steps: d.steps.map((s) =>
-                    s.id === step.id ? { ...s, isCompleted: !s.isCompleted } : s,
-                  ),
+                  steps: d.steps.map((s) => (s.id === step.id ? { ...s, isCompleted: true } : s)),
                 },
           )
         : prev,
     );
-    await toggleStep(step.id, !step.isCompleted);
+    await completeStep(step.id);
     await reloadFromCache();
   }
 
@@ -376,7 +376,7 @@ export default function MyDuties() {
         ) : (
           <div className="flex flex-col gap-3">
             {duties.map((duty) => (
-              <DutyCard key={duty.id} duty={duty} onToggle={handleToggle} />
+              <DutyCard key={duty.id} duty={duty} onComplete={handleComplete} />
             ))}
           </div>
         )}
@@ -397,10 +397,10 @@ export default function MyDuties() {
 
 function DutyCard({
   duty,
-  onToggle,
+  onComplete,
 }: {
   duty: DutyWithSteps;
-  onToggle: (step: CachedStep) => void;
+  onComplete: (step: CachedStep) => void;
 }) {
   const stepDefs = DUTY_CATEGORY_STEPS[duty.category];
   const done = duty.steps.filter((s) => s.isCompleted).length;
@@ -475,12 +475,17 @@ function DutyCard({
           return (
             <label
               key={step.id}
-              className="flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors active:bg-primary-50/60"
+              className={cn(
+                'flex items-start gap-3 px-4 py-3 transition-colors',
+                step.isCompleted ? 'cursor-default' : 'cursor-pointer active:bg-primary-50/60',
+              )}
             >
+              {/* A done step stays done: the checkbox locks once ticked. */}
               <Checkbox
                 checked={step.isCompleted}
-                onCheckedChange={() => onToggle(step)}
-                className="mt-0.5"
+                disabled={step.isCompleted}
+                onCheckedChange={() => onComplete(step)}
+                className="mt-0.5 disabled:cursor-default disabled:opacity-100"
               />
               <span
                 className={cn(

@@ -110,14 +110,18 @@ export async function getCachedDuties(employeeId: string) {
   }));
 }
 
-/** Optimistically toggles a step locally, queues the write, and tries to sync immediately. */
-export async function toggleStep(stepId: string, isCompleted: boolean) {
-  const completedAt = isCompleted ? new Date().toISOString() : null;
+/**
+ * Optimistically completes a step locally, queues the write, and tries to sync immediately.
+ * Completion is one-way: a step that is already done is left alone, never unticked.
+ */
+export async function completeStep(stepId: string) {
   const step = await db.steps.get(stepId);
+  if (!step || step.isCompleted) return;
+  const isCompleted = true;
+  const completedAt = new Date().toISOString();
   await db.steps.update(stepId, { isCompleted, completedAt });
 
-  // One queued write per step, latest wins: ticking and unticking five times offline should
-  // replay as one update, not five.
+  // One queued write per step, latest wins: a repeated tick offline replays as one update.
   await db.transaction('rw', db.outbox, async () => {
     await db.outbox.where('stepId').equals(stepId).delete();
     await db.outbox.add({
