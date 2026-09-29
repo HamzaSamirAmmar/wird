@@ -1,4 +1,5 @@
 import { SURAHS, type Surah } from './surahs';
+import { globalAyahIndex } from './pages';
 
 export type { Surah };
 export { SURAHS };
@@ -73,4 +74,39 @@ export function formatRange(range: QuranRange): string {
     return `${from.nameAr} (${ayahFrom}-${ayahTo})`;
   }
   return `${from.nameAr} (${ayahFrom}) - ${to.nameAr} (${ayahTo})`;
+}
+
+/** Number of ayahs a range covers, both ends included. */
+export function countAyahs(range: QuranRange): number {
+  return (
+    globalAyahIndex(range.surahTo, range.ayahTo) -
+    globalAyahIndex(range.surahFrom, range.ayahFrom) +
+    1
+  );
+}
+
+/** Range covering a whole surah, or every surah from `from` to `to`. */
+export function wholeSurahs(from: number, to: number = from): QuranRange {
+  return { surahFrom: from, ayahFrom: 1, surahTo: to, ayahTo: getSurah(to).ayahCount };
+}
+
+/** Surahs whose Arabic name or number contains `query` (Arabic diacritics/alef variants ignored). */
+export function searchSurahs(query: string): Surah[] {
+  const norm = (s: string) =>
+    s
+      .replace(/[ً-ٰٟ]/g, '')
+      .replace(/[أإآٱ]/g, 'ا')
+      .replace(/ة/g, 'ه')
+      .replace(/ى/g, 'ي')
+      .replace(/^ال/, '')
+      .trim()
+      .toLowerCase();
+  const q = norm(query);
+  if (!q) return SURAHS;
+  return SURAHS.filter(
+    (s) =>
+      String(s.number) === q ||
+      norm(s.nameAr).includes(q) ||
+      s.nameTransliterated.toLowerCase().includes(q),
+  );
 }

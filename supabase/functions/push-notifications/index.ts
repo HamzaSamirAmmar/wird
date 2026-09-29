@@ -30,6 +30,7 @@ import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
   formatRange,
   renderWird,
+  TELEGRAM_BUTTONS,
   type RenderedWird,
   type TemplateDuty,
   type WirdKind,
@@ -334,6 +335,10 @@ function todayLink(): string {
   return `${APP_URL}?date=${today}`;
 }
 
+function downloadLink(): string {
+  return `${todayLink()}&download=1`;
+}
+
 function telegramMessageText(message: Message, duties: unknown[]): string {
   const snapshot = duties as SnapshotDuty[];
   const wird = message.showWird ? telegramWirdLines(snapshot) : null;
@@ -395,7 +400,15 @@ async function sendTelegram(
             parse_mode: 'HTML',
             link_preview_options: { is_disabled: true },
             reply_markup: {
-              inline_keyboard: [[{ text: 'فتح ورد اليوم في التطبيق', url: todayLink() }]],
+              inline_keyboard: [
+                [
+                  { text: TELEGRAM_BUTTONS.open, url: todayLink() },
+                  // Only the wird messages carry the day's ayat, so only they offer the file.
+                  ...(message.render
+                    ? [{ text: TELEGRAM_BUTTONS.download, url: downloadLink() }]
+                    : []),
+                ],
+              ],
             },
           }),
         });
