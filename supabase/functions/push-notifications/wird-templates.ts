@@ -29,10 +29,11 @@ export interface WirdTemplate {
   telegram: string;
 }
 
-/** Labels of the two buttons under every Telegram wird message. */
+/** The two buttons under every Telegram wird message. */
 export const TELEGRAM_BUTTONS = {
   open: 'فتح ورد اليوم في التطبيق',
-  // Opens the app on today's checklist with the PDF download offered (`?download=1`).
+  // Opens the app on today's checklist with the PDF download offered (`?download=1`); the
+  // app builds the file itself, offline-capable.
   download: 'تحميل الورد 📥',
 };
 
@@ -48,7 +49,7 @@ export const WIRD_TEMPLATES: Record<WirdKind, WirdTemplate> = {
       'صباح الخير يا {{name}}، هذا وردك لليوم:',
       '{{wird}}',
       '',
-      '📥 لتحميل وردك بصيغة المصحف (PDF) اضغط «تحميل الورد» بالأسفل.',
+      '📥 لتحميل وردك بصفحات المصحف (PDF) اضغط «تحميل الورد» بالأسفل.',
       '',
       'أعانك الله عليه وتقبّل منك 🤍',
     ].join('\n'),
@@ -66,7 +67,7 @@ export const WIRD_TEMPLATES: Record<WirdKind, WirdTemplate> = {
       '{{remaining}}',
       '',
       'بعد الانتهاء علّم وردك مكتملاً في التطبيق.',
-      '📥 وإن أردت وردك مكتوباً بصيغة المصحف فاضغط «تحميل الورد».',
+      '📥 وإن أردت صفحات وردك من المصحف فاضغط «تحميل الورد».',
     ].join('\n'),
   },
 
@@ -81,7 +82,7 @@ export const WIRD_TEMPLATES: Record<WirdKind, WirdTemplate> = {
       'يا {{name}}، عدّل المشرف ورد اليوم، وهذا وردك الآن:',
       '{{wird}}',
       '',
-      '📥 «تحميل الورد» بالأسفل يعطيك ملف PDF بصيغة المصحف.',
+      '📥 «تحميل الورد» بالأسفل يعطيك صفحات وردك الجديد من المصحف (PDF).',
     ].join('\n'),
   },
 };
