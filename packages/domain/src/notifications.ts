@@ -1,4 +1,10 @@
-export const NOTIFICATION_AUDIENCES = ['all', 'group', 'user', 'incomplete_today'] as const;
+export const NOTIFICATION_AUDIENCES = [
+  'all',
+  'group',
+  'user',
+  'assigned_today',
+  'incomplete_today',
+] as const;
 export type NotificationAudience = (typeof NOTIFICATION_AUDIENCES)[number];
 /** camelCase alias used by z.enum in ./validation. */
 export const notificationAudiences = NOTIFICATION_AUDIENCES;
@@ -101,11 +107,17 @@ export const NOTIFICATION_AUDIENCE_LABELS: Record<NotificationAudience, string> 
   all: 'الجميع',
   group: 'مجموعة',
   user: 'مستخدم محدد',
+  assigned_today: 'من لديه واجب اليوم',
   incomplete_today: 'من لم يُتمّ واجب اليوم',
 };
 
 /** Audiences a group-scoped supervisor may use — never 'all'. */
-export const SUPERVISOR_NOTIFICATION_AUDIENCES = ['group', 'user', 'incomplete_today'] as const;
+export const SUPERVISOR_NOTIFICATION_AUDIENCES = [
+  'group',
+  'user',
+  'assigned_today',
+  'incomplete_today',
+] as const;
 
 /** 0=Sunday … 5=Friday … 6=Saturday — matches Postgres dow and JS Date.getDay. */
 export const WEEKDAY_LABELS: Record<number, string> = {
