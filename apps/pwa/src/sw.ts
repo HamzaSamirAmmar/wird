@@ -144,7 +144,8 @@ async function handlePush(raw: PushMessageData | null) {
     dir: 'rtl',
     lang: 'ar',
     icon: '/icon-192.png',
-    badge: '/favicon-32.png',
+    // White-on-transparent: Android draws the badge from alpha only (see @wird/brand writeBadge).
+    badge: '/badge-96.png',
     // Per campaign, not one shared tag: a shared tag made each notification silently replace
     // the previous one.
     tag,

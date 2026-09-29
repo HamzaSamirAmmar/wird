@@ -59,4 +59,29 @@ export async function writeIcons(sharp, outDir) {
   }
 }
 
+/**
+ * Notification badge: the small status-bar icon. Android paints it from the alpha channel
+ * alone, so it must be the white mark on a transparent background — an opaque tile (the old
+ * badge was favicon-32.png) shows as a blank blob. Stroked, with a thicker line, so the
+ * medallion and pages stay apart at 24dp.
+ */
+function badgeSvg(size) {
+  const box = size * 0.9;
+  const offset = (size - box) / 2;
+  return `
+<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+  <svg x="${offset}" y="${offset}" width="${box}" height="${box}" viewBox="${VIEW_BOX}">
+    ${markMarkup({ frame: '#FFFFFF', strokeWidth: 9 })}
+  </svg>
+</svg>`;
+}
+
+/** @param {URL} outDir directory URL (must end in a slash) */
+export async function writeBadge(sharp, outDir, size = 96) {
+  mkdirSync(outDir, { recursive: true });
+  const name = `badge-${size}.png`;
+  await sharp(Buffer.from(badgeSvg(size))).png().toFile(fileURLToPath(new URL(name, outDir)));
+  console.log('wrote', name);
+}
+
 export { iconSvg };
