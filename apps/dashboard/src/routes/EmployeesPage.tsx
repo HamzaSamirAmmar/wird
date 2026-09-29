@@ -30,6 +30,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Pagination,
 } from '@wird/ui-web';
 import { createEmployeeSchema, formatTelegramInput, updateEmployeeSchema } from '@wird/domain';
 import { supabase } from '../lib/supabase';
@@ -100,6 +101,9 @@ export default function EmployeesPage() {
     load();
   }, [load]);
 
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(10);
+
   const needle = query.trim().toLowerCase();
   const visible = needle
     ? (employees ?? []).filter(
@@ -110,8 +114,22 @@ export default function EmployeesPage() {
       )
     : employees;
 
-  const allVisibleIds = (visible ?? []).map((e) => e.id);
-  const allSelected = allVisibleIds.length > 0 && allVisibleIds.every((id) => selected.has(id));
+  const [prevQuery, setPrevQuery] = React.useState(query);
+  if (query !== prevQuery) {
+    setPrevQuery(query);
+    setPage(1);
+  }
+
+  const totalPages = Math.max(1, Math.ceil((visible?.length ?? 0) / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedEmployees = (visible ?? []).slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
+
+  const pageVisibleIds = paginatedEmployees.map((e) => e.id);
+  const allPageSelected =
+    pageVisibleIds.length > 0 && pageVisibleIds.every((id) => selected.has(id));
   const someSelected = selected.size > 0;
 
   function toggleSelect(id: string) {
@@ -123,11 +141,19 @@ export default function EmployeesPage() {
     });
   }
 
-  function toggleSelectAll() {
-    if (allSelected) {
-      setSelected(new Set());
+  function toggleSelectPage() {
+    if (allPageSelected) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const id of pageVisibleIds) next.delete(id);
+        return next;
+      });
     } else {
-      setSelected(new Set(allVisibleIds));
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const id of pageVisibleIds) next.add(id);
+        return next;
+      });
     }
   }
 
@@ -181,9 +207,7 @@ export default function EmployeesPage() {
       {/* Bulk reassign action bar */}
       {someSelected && (
         <Card className="flex flex-wrap items-center gap-3 p-3">
-          <Badge variant="brand">
-            {selected.size} محدد
-          </Badge>
+          <Badge variant="brand">{selected.size} محدد</Badge>
           <div className="flex items-center gap-2">
             <ArrowRightLeft className="h-4 w-4 text-neutral-500" />
             <span className="text-sm text-neutral-600">نقل إلى:</span>
@@ -248,9 +272,9 @@ export default function EmployeesPage() {
               <TableRow>
                 <TableHead className="w-10">
                   <Checkbox
-                    checked={allSelected}
-                    onCheckedChange={toggleSelectAll}
-                    aria-label="تحديد الكل"
+                    checked={allPageSelected}
+                    onCheckedChange={toggleSelectPage}
+                    aria-label="تحديد الصفحة"
                   />
                 </TableHead>
                 <TableHead>الاسم</TableHead>
@@ -264,7 +288,7 @@ export default function EmployeesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visible.map((e) => (
+              {paginatedEmployees.map((e) => (
                 <TableRow key={e.id} className={selected.has(e.id) ? 'bg-primary-50/50' : ''}>
                   <TableCell>
                     <Checkbox
@@ -315,6 +339,16 @@ export default function EmployeesPage() {
               ))}
             </TableBody>
           </Table>
+        )}
+
+        {visible && visible.length > 0 && (
+          <Pagination
+            page={currentPage}
+            pageSize={pageSize}
+            totalItems={visible.length}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         )}
       </Card>
 
@@ -397,7 +431,12 @@ function CreateEmployeeDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const parsed = createEmployeeSchema.safeParse({ username, fullName, groupId, telegramUsername: telegram });
+    const parsed = createEmployeeSchema.safeParse({
+      username,
+      fullName,
+      groupId,
+      telegramUsername: telegram,
+    });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'خطأ في البيانات');
       return;
@@ -438,11 +477,7 @@ function CreateEmployeeDialog({
                 required
               />
             </Field>
-            <Field
-              label="اسم المستخدم"
-              htmlFor="username"
-              hint="يُقترح تلقائياً — يمكنك تعديله"
-            >
+            <Field label="اسم المستخدم" htmlFor="username" hint="يُقترح تلقائياً — يمكنك تعديله">
               <Input
                 id="username"
                 dir="ltr"
@@ -538,7 +573,11 @@ function EditEmployeeDialog({
     e.preventDefault();
     if (!employee) return;
 
-    const parsed = updateEmployeeSchema.safeParse({ fullName, groupId, telegramUsername: telegram });
+    const parsed = updateEmployeeSchema.safeParse({
+      fullName,
+      groupId,
+      telegramUsername: telegram,
+    });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'خطأ في البيانات');
       return;
@@ -558,11 +597,7 @@ function EditEmployeeDialog({
     setSubmitting(false);
 
     if (error) {
-      setError(
-        error.code === '23505'
-          ? 'هذا المعرف مستخدم لمستخدم آخر'
-          : 'تعذر حفظ التعديلات',
-      );
+      setError(error.code === '23505' ? 'هذا المعرف مستخدم لمستخدم آخر' : 'تعذر حفظ التعديلات');
       return;
     }
     onSaved();

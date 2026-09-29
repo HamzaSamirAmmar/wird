@@ -31,6 +31,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Pagination,
 } from '@wird/ui-web';
 import { createEmployeeSchema } from '@wird/domain';
 import { useAuth } from '../lib/auth-context';
@@ -91,7 +92,17 @@ export default function SupervisorsPage() {
     load();
   }, [load]);
 
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(10);
+
   if (profile && profile.role !== 'superadmin') return <Navigate to="/unauthorized" replace />;
+
+  const totalPages = Math.max(1, Math.ceil((supervisors?.length ?? 0) / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedSupervisors = (supervisors ?? []).slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -136,7 +147,7 @@ export default function SupervisorsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {supervisors.map((s) => (
+              {paginatedSupervisors.map((s) => (
                 <TableRow key={s.id}>
                   <TableCell>
                     <div className="flex items-center gap-3">
@@ -166,6 +177,16 @@ export default function SupervisorsPage() {
               ))}
             </TableBody>
           </Table>
+        )}
+
+        {supervisors && supervisors.length > 0 && (
+          <Pagination
+            page={currentPage}
+            pageSize={pageSize}
+            totalItems={supervisors.length}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         )}
       </Card>
 

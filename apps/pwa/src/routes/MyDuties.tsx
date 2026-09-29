@@ -35,6 +35,7 @@ import { MushafReader } from '../components/MushafReader';
 import { PushNotice } from '../components/PushNotice';
 import { ensurePushRegistered } from '../lib/notifications';
 import { clampToVisibleRange, formatRelativeDay, todayISO } from '../lib/dates';
+import { APP_VERSION } from '../version';
 
 type DutyWithSteps = CachedDuty & { steps: CachedStep[] };
 
@@ -382,6 +383,13 @@ export default function MyDuties() {
 
         {/* Secondary to the checklist above, and deliberately below the fold. */}
         <GroupStandings reloadKey={syncTick} />
+
+        <div className="mt-8 text-center text-xs text-neutral-400">
+          <span>الإصدار </span>
+          <span dir="ltr" className="font-mono">
+            {APP_VERSION}
+          </span>
+        </div>
       </main>
     </div>
   );
