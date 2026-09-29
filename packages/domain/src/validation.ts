@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import { BANNER_BODY_MAX, BANNER_SOURCE_MAX } from './banners';
 import { DUTY_CATEGORIES } from './dutyCategories';
-import { notificationAudiences, campaignScheduleKinds } from './notifications';
+import {
+  notificationAudiences,
+  notificationChannels,
+  campaignScheduleKinds,
+} from './notifications';
 import { USERNAME_PATTERN } from './username';
 
 export const notificationAudiencesSchema = z.enum(notificationAudiences);
@@ -106,6 +110,7 @@ export const notificationCampaignSchema = z
     targetProfileId: z.string().uuid().nullable().optional(),
     /** Group scope. Required for the 'group' audience; a supervisor's campaigns always carry it. */
     groupId: z.string().uuid().nullable().optional(),
+    channel: z.enum(notificationChannels),
     scheduleKind: campaignScheduleKindsSchema,
     /** Local wall-clock `YYYY-MM-DDTHH:mm` in Asia/Damascus; the UI converts to an instant. */
     scheduledLocal: z.string().optional(),
