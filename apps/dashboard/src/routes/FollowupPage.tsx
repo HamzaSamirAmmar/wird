@@ -44,9 +44,11 @@ import { formatRange } from '@wird/quran-data';
 import { addDays, formatDayLabel, todayISO } from '../lib/dates';
 import { supabase } from '../lib/supabase';
 
-type Preset = '7d' | '30d' | 'month' | 'all' | 'custom';
+type Preset = 'today' | 'yesterday' | '7d' | '30d' | 'month' | 'all' | 'custom';
 
 const PRESET_LABELS: Record<Preset, string> = {
+  today: 'اليوم',
+  yesterday: 'أمس',
   '7d': 'آخر ٧ أيام',
   '30d': 'آخر ٣٠ يوماً',
   month: 'هذا الشهر',
@@ -63,6 +65,12 @@ function rangeFor(
 ): { from: string; to: string } {
   const today = todayISO();
   switch (preset) {
+    case 'today':
+      return { from: today, to: today };
+    case 'yesterday': {
+      const yesterday = addDays(today, -1);
+      return { from: yesterday, to: yesterday };
+    }
     case '7d':
       return { from: addDays(today, -6), to: today };
     case '30d':
@@ -223,7 +231,7 @@ export default function FollowupPage() {
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-neutral-500">المدى</label>
             <div className="flex flex-wrap gap-1">
-              {(['7d', '30d', 'month', 'all'] as const).map((p) => (
+              {(['today', 'yesterday', '7d', '30d', 'month', 'all'] as const).map((p) => (
                 <button
                   key={p}
                   type="button"
