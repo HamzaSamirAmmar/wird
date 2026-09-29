@@ -312,6 +312,7 @@ export type Database = {
         Row: {
           audience: string;
           body: string;
+          channel: string;
           created_at: string;
           created_by: string | null;
           group_id: string | null;
@@ -329,12 +330,12 @@ export type Database = {
           schedule_kind: string;
           scheduled_at: string | null;
           target_profile_id: string | null;
-          telegram: boolean;
           title: string;
         };
         Insert: {
           audience: string;
           body: string;
+          channel?: string;
           created_at?: string;
           created_by?: string | null;
           group_id?: string | null;
@@ -352,12 +353,12 @@ export type Database = {
           schedule_kind?: string;
           scheduled_at?: string | null;
           target_profile_id?: string | null;
-          telegram?: boolean;
           title: string;
         };
         Update: {
           audience?: string;
           body?: string;
+          channel?: string;
           created_at?: string;
           created_by?: string | null;
           group_id?: string | null;
@@ -375,7 +376,6 @@ export type Database = {
           schedule_kind?: string;
           scheduled_at?: string | null;
           target_profile_id?: string | null;
-          telegram?: boolean;
           title?: string;
         };
         Relationships: [

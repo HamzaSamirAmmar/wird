@@ -3,6 +3,17 @@ export type NotificationAudience = (typeof NOTIFICATION_AUDIENCES)[number];
 /** camelCase alias used by z.enum in ./validation. */
 export const notificationAudiences = NOTIFICATION_AUDIENCES;
 
+/** Where a campaign is delivered: the app (FCM push), the Telegram bot, or both. */
+export const NOTIFICATION_CHANNELS = ['push', 'telegram', 'both'] as const;
+export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
+export const notificationChannels = NOTIFICATION_CHANNELS;
+
+export const NOTIFICATION_CHANNEL_LABELS: Record<NotificationChannel, string> = {
+  push: 'إشعار التطبيق',
+  telegram: 'تيليجرام',
+  both: 'التطبيق وتيليجرام',
+};
+
 export const CAMPAIGN_SCHEDULE_KINDS = ['now', 'once', 'daily', 'weekly'] as const;
 export type CampaignScheduleKind = (typeof CAMPAIGN_SCHEDULE_KINDS)[number];
 export const campaignScheduleKinds = CAMPAIGN_SCHEDULE_KINDS;
@@ -37,7 +48,10 @@ export const CAMPAIGN_SHAPE_LABELS: Record<CampaignShape, string> = {
  * Finished = an instant or one-off that has nothing left to fire (the send claim nulls
  * next_run_at). A recurring rule is never finished — it is a standing rule until deleted.
  */
-export function campaignIsSent(c: { scheduleKind: CampaignScheduleKind; nextRunAt: string | null }) {
+export function campaignIsSent(c: {
+  scheduleKind: CampaignScheduleKind;
+  nextRunAt: string | null;
+}) {
   return campaignShape(c.scheduleKind) !== 'recurring' && !c.nextRunAt;
 }
 
@@ -63,6 +77,7 @@ export interface NotificationCampaign {
   targetProfileId: string | null;
   /** null = every group (superadmin only). Set = scoped to that group, for any audience. */
   groupId: string | null;
+  channel: NotificationChannel;
   scheduleKind: CampaignScheduleKind;
   scheduledAt: string | null;
   recurWeekday: number | null;

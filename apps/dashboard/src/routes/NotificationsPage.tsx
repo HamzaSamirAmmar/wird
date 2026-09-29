@@ -14,6 +14,8 @@ import {
 import {
   NOTIFICATION_AUDIENCES,
   NOTIFICATION_AUDIENCE_LABELS,
+  NOTIFICATION_CHANNELS,
+  NOTIFICATION_CHANNEL_LABELS,
   SUPERVISOR_NOTIFICATION_AUDIENCES,
   CAMPAIGN_SCHEDULE_KINDS,
   WEEKDAY_LABELS,
@@ -23,6 +25,7 @@ import {
   notificationCampaignSchema,
   type CampaignShape,
   type NotificationAudience,
+  type NotificationChannel,
   type NotificationCampaign,
   type CampaignScheduleKind,
 } from '@wird/domain';
@@ -67,7 +70,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth-context';
 
 const CAMPAIGN_COLUMNS =
-  'id, title, body, audience, target_profile_id, group_id, schedule_kind, scheduled_at, recur_weekday, recur_time, is_active, next_run_at, last_sent_at, last_sent_count, last_failed_count, last_target_count, last_recipient_count, last_error, created_at';
+  'id, title, body, audience, target_profile_id, group_id, channel, schedule_kind, scheduled_at, recur_weekday, recur_time, is_active, next_run_at, last_sent_at, last_sent_count, last_failed_count, last_target_count, last_recipient_count, last_error, created_at';
 
 const SCHEDULE_KIND_LABELS: Record<CampaignScheduleKind, string> = {
   now: 'إرسال فوري',
@@ -108,6 +111,7 @@ function toCampaign(r: {
   audience: string;
   target_profile_id: string | null;
   group_id: string | null;
+  channel: string;
   schedule_kind: string;
   scheduled_at: string | null;
   recur_weekday: number | null;
@@ -130,6 +134,7 @@ function toCampaign(r: {
     audience: r.audience as NotificationAudience,
     targetProfileId: r.target_profile_id,
     groupId: r.group_id,
+    channel: r.channel as NotificationChannel,
     scheduleKind: r.schedule_kind as CampaignScheduleKind,
     scheduledAt: r.scheduled_at,
     recurWeekday: r.recur_weekday,
@@ -761,6 +766,9 @@ function AudienceCell({ campaign }: { campaign: NotificationCampaign }) {
         {NOTIFICATION_AUDIENCE_LABELS[campaign.audience]}
       </Badge>
       {groupName && <span className="text-xs text-neutral-500">{groupName}</span>}
+      <span className="text-xs text-neutral-500">
+        {NOTIFICATION_CHANNEL_LABELS[campaign.channel]}
+      </span>
     </div>
   );
 }
@@ -880,6 +888,7 @@ function ComposeDialog({
   const [audience, setAudience] = React.useState<NotificationAudience>(audiences[0]!);
   const [targetProfileId, setTargetProfileId] = React.useState('');
   const [groupId, setGroupId] = React.useState('');
+  const [channel, setChannel] = React.useState<NotificationChannel>('push');
   const [scheduleKind, setScheduleKind] = React.useState<CampaignScheduleKind>('now');
   const [scheduledLocal, setScheduledLocal] = React.useState('');
   const [recurWeekday, setRecurWeekday] = React.useState<number>(5);
@@ -895,6 +904,7 @@ function ComposeDialog({
     setAudience(audiences[0]!);
     setTargetProfileId('');
     setGroupId('');
+    setChannel('push');
     setScheduleKind('now');
     setScheduledLocal('');
     setRecurWeekday(5);
@@ -934,6 +944,7 @@ function ComposeDialog({
       audience,
       targetProfileId: targetProfileId || null,
       groupId: effectiveGroupId,
+      channel,
       scheduleKind,
       scheduledLocal: scheduledLocal || undefined,
       recurWeekday,
@@ -962,6 +973,7 @@ function ComposeDialog({
         audience: v.audience,
         target_profile_id: v.audience === 'user' ? v.targetProfileId : null,
         group_id: v.groupId ?? null,
+        channel: v.channel,
         schedule_kind: v.scheduleKind,
         scheduled_at: scheduledAt,
         recur_weekday: v.scheduleKind === 'weekly' ? v.recurWeekday : null,
@@ -1064,6 +1076,21 @@ function ComposeDialog({
                 </Select>
               </Field>
             )}
+
+            <Field label="قناة الإرسال">
+              <Select value={channel} onValueChange={(v) => setChannel(v as NotificationChannel)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {NOTIFICATION_CHANNELS.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {NOTIFICATION_CHANNEL_LABELS[c]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
 
             <Field label="التوقيت">
               <Select

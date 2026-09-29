@@ -1,6 +1,7 @@
 // Sends FCM web-push notifications for a notification_campaigns row (and duty pings), plus
 // the same message to linked Telegram chats (telegram_chats, populated by the
-// telegram-webhook function when employees tap Start). Every send uses both channels.
+// telegram-webhook function when employees tap Start). Campaigns go out on the channel they
+// carry (notification_campaigns.channel: push | telegram | both); duty pings use both.
 //
 // Called four ways:
 //   1. Dashboard (superadmin, or a supervisor for their own group's campaigns):
@@ -607,7 +608,7 @@ Deno.serve(async (req) => {
     }
     const { data: campaign, error: claimError } = await claim
       .select(
-        'id, title, body, audience, target_profile_id, schedule_kind, recur_weekday, recur_time',
+        'id, title, body, audience, target_profile_id, schedule_kind, recur_weekday, recur_time, channel',
       )
       .single();
 
@@ -642,10 +643,12 @@ Deno.serve(async (req) => {
           // A "you haven't finished today" reminder is about the wird itself — show it.
           showWird: campaign.audience === 'incomplete_today',
         };
-        const accessToken = await getAccessToken(sa);
-        const result = await sendToTargets(sa, accessToken, targets, message);
-        // Every campaign goes out on both channels: app push and Telegram.
-        const tg = await sendTelegram(admin, targets, message);
+        const none: SendResult = { sent: 0, failed: 0, reached: new Set(), invalidTokens: [] };
+        const result =
+          campaign.channel === 'telegram'
+            ? none
+            : await sendToTargets(sa, await getAccessToken(sa), targets, message);
+        const tg = campaign.channel === 'push' ? none : await sendTelegram(admin, targets, message);
         sent = result.sent + tg.sent;
         failed = result.failed + tg.failed;
         const reached = new Set([...result.reached, ...tg.reached]);
