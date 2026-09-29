@@ -1,6 +1,13 @@
 @import 'tailwindcss';
 @import '@wird/design-tokens/theme.css';
 
+/* KFGQPC Hafs, for the Madinah muṣḥaf pages (lib/mushaf.ts). Self-hosted and precached. */
+@font-face {
+  font-family: WirdHafs;
+  src: url('/fonts/UthmanicHafs.woff2') format('woff2');
+  font-display: block;
+}
+
 /* @wird/ui-web is a separate workspace package resolved through node_modules, which Tailwind's
    automatic content detection skips by default — without this, classes used only inside its
    components never make it into the generated CSS. */

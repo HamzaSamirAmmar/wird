@@ -5,6 +5,7 @@ import ChangePassword from './routes/ChangePassword';
 import SupervisorNotice from './routes/SupervisorNotice';
 import ProtectedRoute from './routes/ProtectedRoute';
 import MyDuties from './routes/MyDuties';
+import ReadWird from './routes/ReadWird';
 import Preview from './routes/__Preview';
 
 export default function App() {
@@ -17,6 +18,7 @@ export default function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="/supervisor" element={<SupervisorNotice />} />
           <Route path="/" element={<MyDuties />} />
+          <Route path="/read/:dutyId" element={<ReadWird />} />
         </Route>
       </Routes>
     </AuthProvider>

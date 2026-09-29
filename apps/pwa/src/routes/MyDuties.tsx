@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Navigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BookOpen,
   CheckCircle2,
@@ -35,7 +35,6 @@ import { getLastSyncedAt, type CachedDuty, type CachedStep } from '../lib/offlin
 import { BannerRail } from '../components/BannerRail';
 import { DayStrip } from '../components/DayStrip';
 import { GroupStandings } from '../components/GroupStandings';
-import { MushafReader } from '../components/MushafReader';
 import { PushNotice } from '../components/PushNotice';
 import { ensurePushRegistered } from '../lib/notifications';
 import { clampToVisibleRange, formatRelativeDay, todayISO } from '../lib/dates';
@@ -82,7 +81,7 @@ function dateFromLink(link: string | null | undefined): string | null {
   }
 }
 
-/** True when a notification/Telegram link asked to open straight onto the PDF download. */
+/** True when the Telegram «تحميل الورد» link asked to open straight onto the PDF download. */
 function wantsDownload(link: string | null | undefined): boolean {
   if (!link) return false;
   try {
@@ -283,7 +282,6 @@ export default function MyDuties() {
       const { buildWirdPdf, deliverPdf } = await import('../lib/wirdPdf');
       const blob = await buildWirdPdf(
         {
-          name: profile?.fullName ?? '',
           date: selectedDate,
           duties: duties.map((d) => ({
             category: d.category,
@@ -507,7 +505,7 @@ function DutyCard({
   const done = duty.steps.filter((s) => s.isCompleted).length;
   const complete = duty.steps.length > 0 && done === duty.steps.length;
   const Icon = categoryIcon[duty.category];
-  const [readerOpen, setReaderOpen] = React.useState(false);
+  const navigate = useNavigate();
 
   const range = {
     surahFrom: duty.scopeSurahFrom,
@@ -548,7 +546,7 @@ function DutyCard({
 
           <button
             type="button"
-            onClick={() => setReaderOpen(true)}
+            onClick={() => navigate(`/read/${duty.id}`)}
             className="mt-2.5 flex w-full items-center gap-2 rounded-lg bg-primary-50 px-3 py-2 text-start text-sm font-medium text-primary-800 ring-1 ring-inset ring-primary-100 transition-colors active:bg-primary-100"
           >
             <BookOpenText className="h-4 w-4 shrink-0 text-primary-600" />
@@ -600,13 +598,6 @@ function DutyCard({
           );
         })}
       </div>
-
-      <MushafReader
-        open={readerOpen}
-        onOpenChange={setReaderOpen}
-        range={range}
-        title={DUTY_CATEGORY_LABELS[duty.category]}
-      />
     </Card>
   );
 }

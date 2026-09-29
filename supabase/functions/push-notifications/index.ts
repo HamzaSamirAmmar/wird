@@ -168,6 +168,9 @@ interface Message {
   showWird: boolean;
   // Per-recipient text for both channels (the wird messages); overrides title/body.
   render?: (target: PushTarget) => RenderedWird;
+  // Send no duty snapshot: the worker writes a snapshot into the app's offline cache, so a
+  // preview built from mock duties would overwrite the employee's real checklist.
+  noSnapshot?: boolean;
 }
 
 interface SendResult {
@@ -222,7 +225,7 @@ async function sendToTargets(
       // Rendered messages are final text; only the test ping lets the worker append the wird.
       wird: message.showWird && !message.render ? '1' : '0',
     };
-    if (duties.length <= MAX_DUTIES_BYTES) data.duties = duties;
+    if (!message.noSnapshot && duties.length <= MAX_DUTIES_BYTES) data.duties = duties;
     for (const token of target.t ?? []) {
       if (seen.has(token)) continue;
       seen.add(token);
@@ -528,6 +531,49 @@ Deno.serve(async (req) => {
       if (role !== 'service_role') return json({ error: 'Not authorized' }, 403);
       if (!isWirdKind(wird.kind)) return json({ error: 'Unknown wird kind' }, 400);
       const kind: WirdKind = wird.kind;
+
+      // Preview: the real templates rendered with mock duties, sent to ONE username only.
+      // No run is claimed or logged, so it cannot use up (or block) the day's real morning
+      // and evening sends, and nobody else can be reached.
+      if (typeof wird.previewUsername === 'string') {
+        const { data: prof } = await admin
+          .from('profiles')
+          .select('id')
+          .eq('username', wird.previewUsername)
+          .maybeSingle();
+        if (!prof) return json({ error: 'Unknown username' }, 404);
+        const mockStatus = (i: number) => (kind === 'evening' && i === 0 ? 'completed' : 'pending');
+        const mock = [
+          { c: 'new_memorization', s: [78, 1, 78, 40] },
+          { c: 'minor_review', s: [2, 255, 2, 262] },
+          { c: 'major_review', s: [112, 1, 114, 6] },
+        ].map((d, i) => ({ ...d, t: mockStatus(i) }));
+        const targets = (await pushTargets(admin, [prof.id])).map((t) => ({ ...t, d: mock }));
+        if (targets.length === 0) return json({ error: 'No delivery target for user' }, 404);
+        const link = todayLink();
+        const message: Message = {
+          title: '',
+          body: '',
+          tag: `wird-preview-${kind}`,
+          kind: `wird_${kind}`,
+          showWird: false,
+          noSnapshot: true,
+          render: (t) =>
+            renderWird(kind, { name: t.n ?? '', duties: t.d as TemplateDuty[], date: new Date(), link }),
+        };
+        const result = await sendToTargets(sa, await getAccessToken(sa), targets, message);
+        const tg = await sendTelegram(admin, targets, message);
+        return json({
+          preview: true,
+          kind,
+          pushDevices: targets[0]!.t?.length ?? 0,
+          push_sent: result.sent,
+          push_failed: result.failed,
+          telegram_chat: typeof targets[0]!.g === 'number',
+          telegram_sent: tg.sent,
+          telegram_failed: tg.failed,
+        });
+      }
       const dryRun = wird.dryRun === true;
 
       // morning/evening resolve their audience in SQL; 'updated' is handed the employees whose

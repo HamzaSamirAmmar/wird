@@ -1,15 +1,14 @@
-// Regenerates the mushaf page index and the Uthmani text asset from Tanzil.
+// Regenerates the mushaf page index from Tanzil, validating it against the Uthmani text.
+// (The muṣḥaf pages themselves come from generate-mushaf-lines.mjs.)
 //
 //   node packages/quran-data/scripts/generate-quran-data.mjs
 //
 // Writes:
 //   packages/quran-data/src/pageStarts.ts   604 page-start markers (~12 KB, bundled)
-//   apps/pwa/public/quran-uthmani.json      6236 ayah texts (~1.3 MB, fetched on demand)
 //
 // Source: Tanzil.net (https://tanzil.net) — Uthmani text, "Tanzil Quran Text" licence:
 // non-commercial redistribution permitted provided the text is unmodified and attributed.
-// The text is written out verbatim, byte for byte as delivered.
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const META = 'https://tanzil.net/res/text/metadata/quran-data.xml';
@@ -73,17 +72,6 @@ writeFileSync(
     `export const PAGE_STARTS: readonly (readonly [number, number])[] = ${JSON.stringify(pageStarts)};\n`,
 );
 
-const pwaPublic = new URL('../../../apps/pwa/public/', import.meta.url);
-mkdirSync(pwaPublic, { recursive: true });
-writeFileSync(
-  fileURLToPath(new URL('quran-uthmani.json', pwaPublic)),
-  JSON.stringify({
-    source: 'Tanzil.net — Uthmani',
-    licence: 'Tanzil Quran Text, non-commercial redistribution with attribution',
-    surahs: bySurah,
-  }),
-);
-
 console.log(
-  `wrote pageStarts.ts (${pageStarts.length} pages) and quran-uthmani.json (${count} ayahs)`,
+  `wrote pageStarts.ts (${pageStarts.length} pages); text validated (${count} ayahs)`,
 );
