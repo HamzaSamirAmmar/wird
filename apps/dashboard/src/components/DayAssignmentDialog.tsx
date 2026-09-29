@@ -1,11 +1,5 @@
 import * as React from 'react';
-import {
-  SURAHS,
-  formatRange,
-  getSurah,
-  isWholeSurahRange,
-  validateRange,
-} from '@wird/quran-data';
+import { formatRange, validateRange } from '@wird/quran-data';
 import { DUTY_CATEGORIES, DUTY_CATEGORY_LABELS, type DutyCategory } from '@wird/domain';
 import {
   Alert,
@@ -27,6 +21,7 @@ import {
   cn,
 } from '@wird/ui-web';
 import { supabase } from '../lib/supabase';
+import { ScopePicker } from './ScopePicker';
 
 export interface AssignmentRow {
   id: string;
@@ -296,106 +291,10 @@ function CategorySection({
       </label>
 
       {draft.enabled && (
-        <div className="flex flex-wrap items-center gap-2 border-t border-neutral-100 px-4 pt-3">
-          <Button
-            type="button"
-            size="sm"
-            variant={isWholeSurahRange(draft) && draft.surahFrom === draft.surahTo ? 'secondary' : 'outline'}
-            onClick={() =>
-              onChange({
-                ayahFrom: 1,
-                surahTo: draft.surahFrom,
-                ayahTo: getSurah(draft.surahFrom).ayahCount,
-              })
-            }
-          >
-            سورة {getSurah(draft.surahFrom).nameAr} كاملة
-          </Button>
-          <span className="text-xs text-neutral-400">يظهر في الإشعار: {formatRange(draft)}</span>
-        </div>
-      )}
-
-      {draft.enabled && (
-        <div className="grid gap-4 p-4 sm:grid-cols-2">
-          <Field label="من سورة">
-            <SurahSelect
-              value={draft.surahFrom}
-              onChange={(n) =>
-                onChange({
-                  surahFrom: n,
-                  ayahFrom: Math.min(draft.ayahFrom, getSurah(n).ayahCount),
-                })
-              }
-            />
-          </Field>
-          <Field label="من آية">
-            <AyahSelect
-              surah={draft.surahFrom}
-              value={draft.ayahFrom}
-              onChange={(n) => onChange({ ayahFrom: n })}
-            />
-          </Field>
-          <Field label="إلى سورة">
-            <SurahSelect
-              value={draft.surahTo}
-              onChange={(n) =>
-                onChange({ surahTo: n, ayahTo: Math.min(draft.ayahTo, getSurah(n).ayahCount) })
-              }
-            />
-          </Field>
-          <Field label="إلى آية">
-            <AyahSelect
-              surah={draft.surahTo}
-              value={draft.ayahTo}
-              onChange={(n) => onChange({ ayahTo: n })}
-            />
-          </Field>
+        <div className="border-t border-neutral-100 p-4">
+          <ScopePicker value={draft} onChange={(range) => onChange(range)} />
         </div>
       )}
     </div>
-  );
-}
-
-function SurahSelect({ value, onChange }: { value: number; onChange: (n: number) => void }) {
-  return (
-    <Select value={String(value)} onValueChange={(v) => onChange(Number(v))}>
-      <SelectTrigger>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {SURAHS.map((s) => (
-          <SelectItem key={s.number} value={String(s.number)}>
-            {s.number}. {s.nameAr}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
-
-/** Ayah picker bounded by the chosen surah's ayah count. */
-function AyahSelect({
-  surah,
-  value,
-  onChange,
-}: {
-  surah: number;
-  value: number;
-  onChange: (n: number) => void;
-}) {
-  const count = getSurah(surah).ayahCount;
-  return (
-    <Select value={String(value)} onValueChange={(v) => onChange(Number(v))}>
-      <SelectTrigger>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {Array.from({ length: count }, (_, i) => i + 1).map((n) => (
-          <SelectItem key={n} value={String(n)}>
-            {n}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
   );
 }

@@ -9,11 +9,15 @@ import {
   RotateCcw,
   Sparkles,
   BookOpenText,
+  FileDown,
+  Loader2,
 } from 'lucide-react';
 import { DUTY_CATEGORY_LABELS, DUTY_CATEGORY_STEPS, type DutyCategory } from '@wird/domain';
 import { formatPage, formatRange, pagesForRange } from '@wird/quran-data';
 import {
+  Alert,
   Badge,
+  Button,
   Card,
   Checkbox,
   EmptyState,
@@ -78,6 +82,16 @@ function dateFromLink(link: string | null | undefined): string | null {
   }
 }
 
+/** True when a notification/Telegram link asked to open straight onto the PDF download. */
+function wantsDownload(link: string | null | undefined): boolean {
+  if (!link) return false;
+  try {
+    return new URL(link, window.location.origin).searchParams.get('download') === '1';
+  } catch {
+    return false;
+  }
+}
+
 export default function MyDuties() {
   const { profile, signOut } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -85,6 +99,17 @@ export default function MyDuties() {
     () => dateFromLink(`/?${searchParams.toString()}`) ?? todayISO(),
   );
   const [duties, setDuties] = React.useState<DutyWithSteps[] | null>(null);
+  // Opened from the Telegram "تحميل الورد" button: offer the file up front. It is a prompt to
+  // tap rather than an automatic download, because phones only share/save on a user gesture.
+  const [downloadPrompt, setDownloadPrompt] = React.useState(() =>
+    wantsDownload(`/?${searchParams.toString()}`),
+  );
+  const [download, setDownload] = React.useState<{
+    busy: boolean;
+    done: number;
+    total: number;
+    error: string | null;
+  }>({ busy: false, done: 0, total: 0, error: null });
   const isOnline = useOnline();
   const [pendingSync, setPendingSync] = React.useState(0);
   const [refreshing, setRefreshing] = React.useState(false);
@@ -186,6 +211,7 @@ export default function MyDuties() {
       if (msg?.type === 'wird:open') {
         // A notification was tapped while the app was already open.
         setSelectedDate(dateFromLink(msg.link) ?? todayISO());
+        if (wantsDownload(msg.link)) setDownloadPrompt(true);
         refreshSoon();
       } else if (msg?.type === 'wird:push' || msg?.type === 'wird:synced') {
         // The worker already wrote the pushed day / flushed the outbox; show it, then confirm
@@ -247,6 +273,41 @@ export default function MyDuties() {
     );
     await completeStep(step.id);
     await reloadFromCache();
+  }
+
+  async function downloadWird() {
+    if (!duties || duties.length === 0 || download.busy) return;
+    setDownload({ busy: true, done: 0, total: 0, error: null });
+    try {
+      // Loaded on demand: the PDF engine is large and only needed here.
+      const { buildWirdPdf, deliverPdf } = await import('../lib/wirdPdf');
+      const blob = await buildWirdPdf(
+        {
+          name: profile?.fullName ?? '',
+          date: selectedDate,
+          duties: duties.map((d) => ({
+            category: d.category,
+            range: {
+              surahFrom: d.scopeSurahFrom,
+              ayahFrom: d.scopeAyahFrom,
+              surahTo: d.scopeSurahTo,
+              ayahTo: d.scopeAyahTo,
+            },
+          })),
+        },
+        (done, total) => setDownload((d) => ({ ...d, done, total })),
+      );
+      await deliverPdf(blob, selectedDate);
+      setDownloadPrompt(false);
+      setDownload({ busy: false, done: 0, total: 0, error: null });
+    } catch {
+      setDownload({
+        busy: false,
+        done: 0,
+        total: 0,
+        error: 'تعذر إنشاء ملف الورد. حاول مرة أخرى.',
+      });
+    }
   }
 
   const allSteps = duties?.flatMap((d) => d.steps) ?? [];
@@ -375,6 +436,11 @@ export default function MyDuties() {
           </Card>
         ) : (
           <div className="flex flex-col gap-3">
+            <DownloadWirdButton
+              state={download}
+              highlight={downloadPrompt}
+              onClick={downloadWird}
+            />
             {duties.map((duty) => (
               <DutyCard key={duty.id} duty={duty} onComplete={handleComplete} />
             ))}
@@ -391,6 +457,41 @@ export default function MyDuties() {
           </span>
         </div>
       </main>
+    </div>
+  );
+}
+
+/** Saves the day's wird as a muṣḥaf-style PDF (see lib/wirdPdf.ts). Works offline. */
+function DownloadWirdButton({
+  state,
+  highlight,
+  onClick,
+}: {
+  state: { busy: boolean; done: number; total: number; error: string | null };
+  highlight: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      {state.error && <Alert variant="danger">{state.error}</Alert>}
+      <Button
+        type="button"
+        variant={highlight ? 'primary' : 'secondary'}
+        disabled={state.busy}
+        onClick={onClick}
+        className={cn('w-full', highlight && 'ring-4 ring-primary-200')}
+      >
+        {state.busy ? (
+          <Loader2 className="h-4.5 w-4.5 animate-spin" />
+        ) : (
+          <FileDown className="h-4.5 w-4.5" />
+        )}
+        {state.busy
+          ? state.total > 0
+            ? `جارٍ تجهيز الملف… ${state.done.toLocaleString('ar-EG')}/${state.total.toLocaleString('ar-EG')}`
+            : 'جارٍ تجهيز الملف…'
+          : 'تحميل الورد (PDF)'}
+      </Button>
     </div>
   );
 }
