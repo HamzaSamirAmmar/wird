@@ -892,6 +892,9 @@ function RowActions({
   );
 }
 
+const WIRD_APPENDED_HINT =
+  'لا تكتب الورد هنا — يُضاف ورد كل مستخدم الخاص به تلقائياً تحت النص عند الإرسال.';
+
 /** An instant as Damascus wall time `YYYY-MM-DDTHH:mm` (+03:00, no DST) for datetime-local. */
 function toDamascusLocal(iso: string): string {
   return new Date(new Date(iso).getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 16);
@@ -969,6 +972,9 @@ function ComposeDialog({
       );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // Today's-wird audiences: each person's own wird is appended under the text at send time.
+  const wirdAudience = audience === 'assigned_today' || audience === 'incomplete_today';
 
   // The group the campaign is scoped to: a supervisor's own, or the superadmin's pick for the
   // 'group' audience. Everything else a superadmin sends is global.
@@ -1074,7 +1080,10 @@ function ComposeDialog({
               <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={100} />
             </Field>
 
-            <Field label={channel === 'both' ? 'نص إشعار التطبيق' : 'النص'}>
+            <Field
+              label={channel === 'both' ? 'نص إشعار التطبيق' : 'النص'}
+              hint={wirdAudience ? WIRD_APPENDED_HINT : undefined}
+            >
               <Textarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
@@ -1086,7 +1095,9 @@ function ComposeDialog({
             {channel === 'both' && (
               <Field
                 label="نص رسالة تيليجرام"
-                hint="اختياري — إن تُرك فارغاً تُرسل رسالة تيليجرام بنص إشعار التطبيق"
+                hint={`اختياري — إن تُرك فارغاً تُرسل رسالة تيليجرام بنص إشعار التطبيق.${
+                  wirdAudience ? ` ${WIRD_APPENDED_HINT}` : ''
+                }`}
               >
                 <Textarea
                   value={telegramBody}
@@ -1239,11 +1250,7 @@ function ComposeDialog({
               </p>
             )}
 
-            <NotificationPreview
-              title={title}
-              body={body}
-              withWird={audience === 'assigned_today' || audience === 'incomplete_today'}
-            />
+            <NotificationPreview title={title} body={body} withWird={wirdAudience} />
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
