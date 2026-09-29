@@ -624,7 +624,7 @@ Deno.serve(async (req) => {
 
     try {
       // Audience → profiles in SQL (campaign_profile_ids), including the "today in Damascus"
-      // resolution for incomplete_today and the group scope. Returned as one array, not a set,
+      // resolution for assigned_today / incomplete_today and the group scope. Returned as one array, not a set,
       // so PostgREST's max-rows cap cannot silently drop recipients.
       const { data: ids, error: idsError } = await admin.rpc('campaign_profile_ids', {
         p_campaign_id: campaign.id,
@@ -640,8 +640,9 @@ Deno.serve(async (req) => {
           body: campaign.body,
           tag: `campaign-${campaign.id}`,
           kind: 'campaign',
-          // A "you haven't finished today" reminder is about the wird itself — show it.
-          showWird: campaign.audience === 'incomplete_today',
+          // Today's-wird audiences are about the wird itself — show it.
+          showWird:
+            campaign.audience === 'assigned_today' || campaign.audience === 'incomplete_today',
         };
         const none: SendResult = { sent: 0, failed: 0, reached: new Set(), invalidTokens: [] };
         const result =

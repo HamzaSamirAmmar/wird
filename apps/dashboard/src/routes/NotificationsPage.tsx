@@ -83,6 +83,7 @@ const audienceBadge: Record<NotificationAudience, 'brand' | 'completed' | 'in_pr
   all: 'brand',
   group: 'brand',
   user: 'in_progress',
+  assigned_today: 'completed',
   incomplete_today: 'completed',
 };
 
@@ -1168,7 +1169,7 @@ function ComposeDialog({
             <NotificationPreview
               title={title}
               body={body}
-              withWird={audience === 'incomplete_today'}
+              withWird={audience === 'assigned_today' || audience === 'incomplete_today'}
             />
           </DialogBody>
           <DialogFooter>
