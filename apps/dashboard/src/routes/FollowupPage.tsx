@@ -37,6 +37,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Pagination,
   cn,
 } from '@wird/ui-web';
 import { formatRange } from '@wird/quran-data';
@@ -176,6 +177,20 @@ export default function FollowupPage() {
         : { key, dir: key === 'name' ? 'asc' : 'desc' },
     );
   }
+
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(10);
+
+  const filterKey = `${groupId}:${preset}:${customFrom}:${customTo}:${onlyGaps}:${sort.key}:${sort.dir}`;
+  const [prevFilterKey, setPrevFilterKey] = React.useState(filterKey);
+  if (filterKey !== prevFilterKey) {
+    setPrevFilterKey(filterKey);
+    setPage(1);
+  }
+
+  const totalPages = Math.max(1, Math.ceil((visible?.length ?? 0) / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedRows = (visible ?? []).slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
     <div className="flex flex-col gap-6">
@@ -327,7 +342,7 @@ export default function FollowupPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visible.map((row) => (
+              {paginatedRows.map((row) => (
                 <EmployeeRows
                   key={row.employeeId}
                   row={row}
@@ -341,6 +356,16 @@ export default function FollowupPage() {
               ))}
             </TableBody>
           </Table>
+        )}
+
+        {visible && visible.length > 0 && (
+          <Pagination
+            page={currentPage}
+            pageSize={pageSize}
+            totalItems={visible.length}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         )}
       </Card>
     </div>

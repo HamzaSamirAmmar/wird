@@ -18,3 +18,4 @@ export * from './Avatar';
 export * from './EmptyState';
 export * from './Progress';
 export * from './PageHeader';
+export * from './Pagination';

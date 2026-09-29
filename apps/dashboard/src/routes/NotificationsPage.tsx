@@ -55,6 +55,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Pagination,
   Tabs,
   TabsContent,
   TabsList,
@@ -484,6 +485,9 @@ function CampaignTable({
   onSend: (c: NotificationCampaign) => void;
   onDelete: (c: NotificationCampaign) => void;
 }) {
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(10);
+
   if (rows.length === 0) {
     const copy = EMPTY_COPY[tab];
     return (
@@ -505,92 +509,108 @@ function CampaignTable({
     );
   }
 
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedRows = rows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>الإشعار</TableHead>
-          <TableHead>المرسل إليهم</TableHead>
-          <TableHead>التوقيت</TableHead>
-          <TableHead>آخر إرسال</TableHead>
-          <TableHead>مفعّل</TableHead>
-          <TableHead>
-            <span className="sr-only">إجراءات</span>
-          </TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((campaign) => {
-          const shape = campaignShape(campaign.scheduleKind);
-          const isSent = campaignIsSent(campaign);
-          // Only a scheduled message that has yet to fire has anything to switch off.
-          const toggleable = shape !== 'instant' && !isSent;
-          const muted = toggleable && !campaign.isActive;
-          const ShapeIcon = SHAPE_ICONS[shape];
-          return (
-            <TableRow key={campaign.id} className={cn(muted && 'bg-neutral-50/70')}>
-              <TableCell>
-                <CampaignCell campaign={campaign} muted={muted} />
-              </TableCell>
-              <TableCell>
-                <AudienceCell campaign={campaign} />
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-1.5 text-neutral-700">
-                  <ShapeIcon className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
-                  <span>{scheduleSummary(campaign)}</span>
-                </div>
-                {!isSent && campaign.nextRunAt && campaign.isActive ? (
-                  <div className="mt-0.5 text-xs text-primary-700">
-                    القادم: {compactDateTime.format(new Date(campaign.nextRunAt))}
+    <div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>الإشعار</TableHead>
+            <TableHead>المرسل إليهم</TableHead>
+            <TableHead>التوقيت</TableHead>
+            <TableHead>آخر إرسال</TableHead>
+            <TableHead>مفعّل</TableHead>
+            <TableHead>
+              <span className="sr-only">إجراءات</span>
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {paginatedRows.map((campaign) => {
+            const shape = campaignShape(campaign.scheduleKind);
+            const isSent = campaignIsSent(campaign);
+            // Only a scheduled message that has yet to fire has anything to switch off.
+            const toggleable = shape !== 'instant' && !isSent;
+            const muted = toggleable && !campaign.isActive;
+            const ShapeIcon = SHAPE_ICONS[shape];
+            return (
+              <TableRow key={campaign.id} className={cn(muted && 'bg-neutral-50/70')}>
+                <TableCell>
+                  <CampaignCell campaign={campaign} muted={muted} />
+                </TableCell>
+                <TableCell>
+                  <AudienceCell campaign={campaign} />
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1.5 text-neutral-700">
+                    <ShapeIcon className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+                    <span>{scheduleSummary(campaign)}</span>
                   </div>
-                ) : shape === 'instant' && !campaign.lastSentAt ? (
-                  /* Created but the immediate dispatch did not land; the cron dispatcher
-                     still owns it while next_run_at is set. */
-                  <div className="mt-1">
-                    <Badge variant="in_progress" dot>
-                      بانتظار الإرسال
-                    </Badge>
-                  </div>
-                ) : (
-                  isSent && (
+                  {!isSent && campaign.nextRunAt && campaign.isActive ? (
+                    <div className="mt-0.5 text-xs text-primary-700">
+                      القادم: {compactDateTime.format(new Date(campaign.nextRunAt))}
+                    </div>
+                  ) : shape === 'instant' && !campaign.lastSentAt ? (
+                    /* Created but the immediate dispatch did not land; the cron dispatcher
+                       still owns it while next_run_at is set. */
                     <div className="mt-1">
-                      <Badge variant="completed" dot>
-                        أُرسل
+                      <Badge variant="in_progress" dot>
+                        بانتظار الإرسال
                       </Badge>
                     </div>
-                  )
-                )}
-              </TableCell>
-              <TableCell>
-                <LastSendCell campaign={campaign} />
-              </TableCell>
-              <TableCell>
-                {toggleable ? (
-                  <Checkbox
-                    checked={campaign.isActive}
-                    onCheckedChange={() => onToggleActive(campaign)}
-                    aria-label={campaign.isActive ? 'تعطيل الإشعار' : 'تفعيل الإشعار'}
+                  ) : (
+                    isSent && (
+                      <div className="mt-1">
+                        <Badge variant="completed" dot>
+                          أُرسل
+                        </Badge>
+                      </div>
+                    )
+                  )}
+                </TableCell>
+                <TableCell>
+                  <LastSendCell campaign={campaign} />
+                </TableCell>
+                <TableCell>
+                  {toggleable ? (
+                    <Checkbox
+                      checked={campaign.isActive}
+                      onCheckedChange={() => onToggleActive(campaign)}
+                      aria-label={campaign.isActive ? 'تعطيل الإشعار' : 'تفعيل الإشعار'}
+                    />
+                  ) : (
+                    <span className="text-neutral-300">—</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <RowActions
+                    campaign={campaign}
+                    canSend={campaignCanSendNow(campaign)}
+                    resend={shape === 'instant' && !!campaign.lastSentAt}
+                    sending={sendingNow === campaign.id}
+                    onSend={() => onSend(campaign)}
+                    onDelete={() => onDelete(campaign)}
                   />
-                ) : (
-                  <span className="text-neutral-300">—</span>
-                )}
-              </TableCell>
-              <TableCell>
-                <RowActions
-                  campaign={campaign}
-                  canSend={campaignCanSendNow(campaign)}
-                  resend={shape === 'instant' && !!campaign.lastSentAt}
-                  sending={sendingNow === campaign.id}
-                  onSend={() => onSend(campaign)}
-                  onDelete={() => onDelete(campaign)}
-                />
-              </TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+
+      {rows.length > 0 && (
+        <Pagination
+          page={currentPage}
+          pageSize={pageSize}
+          totalItems={rows.length}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
+      )}
+    </div>
   );
 }
 
@@ -1090,6 +1110,8 @@ function CoveragePanel({
 }) {
   const [rows, setRows] = React.useState<CoverageRow[] | null>(null);
   const [open, setOpen] = React.useState(false);
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(10);
 
   React.useEffect(() => {
     supabase.rpc('push_coverage', {}).then(({ data, error }) => {
@@ -1107,10 +1129,15 @@ function CoveragePanel({
   // People reachable on neither channel first — they are who the supervisor has to help.
   const sorted = [...rows].sort(
     (a, b) =>
-      Number(a.device_count > 0) + Number(a.telegram) -
+      Number(a.device_count > 0) +
+        Number(a.telegram) -
         (Number(b.device_count > 0) + Number(b.telegram)) ||
       a.full_name.localeCompare(b.full_name, 'ar'),
   );
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedSorted = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
     <Card className="overflow-hidden">
@@ -1143,55 +1170,67 @@ function CoveragePanel({
       </button>
 
       {open && (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>المستخدم</TableHead>
-              {showGroup && <TableHead>المجموعة</TableHead>}
-              <TableHead>إشعارات التطبيق</TableHead>
-              <TableHead>تيليجرام</TableHead>
-              <TableHead>آخر ظهور</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sorted.map((r) => (
-              <TableRow key={r.profile_id}>
-                <TableCell className="font-medium text-neutral-900">{r.full_name}</TableCell>
-                {showGroup && (
-                  <TableCell className="text-neutral-600">
-                    {groupNames.get(r.group_id) ?? '—'}
-                  </TableCell>
-                )}
-                <TableCell>
-                  {r.device_count === 0 ? (
-                    <Badge variant="danger" dot>
-                      غير مفعّلة
-                    </Badge>
-                  ) : (
-                    <div className="flex flex-col items-start gap-0.5">
-                      <Badge variant="completed" dot>
-                        مفعّلة
-                      </Badge>
-                      <span className="text-xs text-neutral-500">
-                        {r.platforms.map((p) => PLATFORM_LABELS[p] ?? p).join('، ') ||
-                          `${r.device_count} جهاز`}
-                        {!r.installed && ' · من المتصفح'}
-                      </span>
-                    </div>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={r.telegram ? 'completed' : 'danger'} dot>
-                    {r.telegram ? 'مربوط' : 'غير مربوط'}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-neutral-600">
-                  {r.last_seen_at ? compactDateTime.format(new Date(r.last_seen_at)) : '—'}
-                </TableCell>
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>المستخدم</TableHead>
+                {showGroup && <TableHead>المجموعة</TableHead>}
+                <TableHead>إشعارات التطبيق</TableHead>
+                <TableHead>تيليجرام</TableHead>
+                <TableHead>آخر ظهور</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {paginatedSorted.map((r) => (
+                <TableRow key={r.profile_id}>
+                  <TableCell className="font-medium text-neutral-900">{r.full_name}</TableCell>
+                  {showGroup && (
+                    <TableCell className="text-neutral-600">
+                      {groupNames.get(r.group_id) ?? '—'}
+                    </TableCell>
+                  )}
+                  <TableCell>
+                    {r.device_count === 0 ? (
+                      <Badge variant="danger" dot>
+                        غير مفعّلة
+                      </Badge>
+                    ) : (
+                      <div className="flex flex-col items-start gap-0.5">
+                        <Badge variant="completed" dot>
+                          مفعّلة
+                        </Badge>
+                        <span className="text-xs text-neutral-500">
+                          {r.platforms.map((p) => PLATFORM_LABELS[p] ?? p).join('، ') ||
+                            `${r.device_count} جهاز`}
+                          {!r.installed && ' · من المتصفح'}
+                        </span>
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={r.telegram ? 'completed' : 'danger'} dot>
+                      {r.telegram ? 'مربوط' : 'غير مربوط'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-neutral-600">
+                    {r.last_seen_at ? compactDateTime.format(new Date(r.last_seen_at)) : '—'}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          {sorted.length > 0 && (
+            <Pagination
+              page={currentPage}
+              pageSize={pageSize}
+              totalItems={sorted.length}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
+          )}
+        </>
       )}
     </Card>
   );

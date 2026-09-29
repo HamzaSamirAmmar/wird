@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { WirdMark } from '@wird/ui-web';
+import { APP_VERSION } from '../version';
 
 /**
  * Mobile auth screen: a teal brand hero that the form card overlaps from below.
@@ -39,6 +40,13 @@ export function AuthShell({
             <p className="mt-1 text-sm leading-relaxed text-neutral-500">{description}</p>
           )}
           <div className="mt-6">{children}</div>
+        </div>
+
+        <div className="mt-8 text-center text-xs text-neutral-400">
+          <span>الإصدار </span>
+          <span dir="ltr" className="font-mono">
+            {APP_VERSION}
+          </span>
         </div>
       </div>
     </div>

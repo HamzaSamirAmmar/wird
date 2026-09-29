@@ -10,6 +10,7 @@ import {
   DialogTitle,
   Alert,
   IconButton,
+  Pagination,
 } from '@wird/ui-web';
 import type { BulkCreatedCreds } from './BulkCreateDialog';
 import { buildWelcomeMessage } from '../lib/welcomeMessage';
@@ -22,6 +23,7 @@ export function BulkCredentialsDialog({
   onClose: () => void;
 }) {
   const [copiedAll, setCopiedAll] = React.useState(false);
+  const [page, setPage] = React.useState(1);
 
   React.useEffect(() => {
     if (!copiedAll) return;
@@ -32,9 +34,7 @@ export function BulkCredentialsDialog({
   if (!creds || creds.length === 0) return null;
 
   function copyAll() {
-    const text = creds!
-      .map((c) => `${c.fullName}\t${c.username}\t${c.password}`)
-      .join('\n');
+    const text = creds!.map((c) => `${c.fullName}\t${c.username}\t${c.password}`).join('\n');
     navigator.clipboard.writeText(text);
     setCopiedAll(true);
   }
@@ -52,6 +52,11 @@ export function BulkCredentialsDialog({
     URL.revokeObjectURL(url);
   }
 
+  const pageSize = 10;
+  const totalPages = Math.max(1, Math.ceil(creds.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedCreds = creds.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   return (
     <Dialog open={!!creds} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-2xl" preventClose>
@@ -63,7 +68,7 @@ export function BulkCredentialsDialog({
             لن تظهر كلمات المرور مرة أخرى بعد إغلاق هذه النافذة.
           </Alert>
 
-          <div className="mt-3 max-h-80 overflow-y-auto">
+          <div className="mt-3 overflow-y-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-xs text-neutral-500">
@@ -76,11 +81,20 @@ export function BulkCredentialsDialog({
                 </tr>
               </thead>
               <tbody>
-                {creds.map((c) => (
+                {paginatedCreds.map((c) => (
                   <CredentialTableRow key={c.username} cred={c} />
                 ))}
               </tbody>
             </table>
+
+            {creds.length > pageSize && (
+              <Pagination
+                page={currentPage}
+                pageSize={pageSize}
+                totalItems={creds.length}
+                onPageChange={setPage}
+              />
+            )}
           </div>
         </DialogBody>
         <DialogFooter>

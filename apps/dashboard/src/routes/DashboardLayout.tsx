@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { cn, WirdMark, Avatar, IconButton } from '@wird/ui-web';
 import { useAuth } from '../lib/auth-context';
+import { APP_VERSION } from '../version';
 
 const navItems = [
   { to: '/', label: 'الأوراد', icon: CalendarDays, end: true },
@@ -49,8 +50,8 @@ export default function DashboardLayout() {
 
       <aside
         className={cn(
-          'fixed inset-y-0 z-40 flex w-64 shrink-0 flex-col overflow-hidden bg-linear-to-b from-primary-800 to-primary-950 text-primary-100',
-          'transition-transform duration-300 ease-(--ease-out-soft) lg:static lg:translate-x-0',
+          'fixed inset-y-0 z-40 flex w-64 shrink-0 flex-col overflow-y-auto bg-linear-to-b from-primary-800 to-primary-950 text-primary-100',
+          'transition-transform duration-300 ease-(--ease-out-soft) lg:sticky lg:top-0 lg:h-screen lg:self-start lg:translate-x-0',
           // dir="rtl": the drawer lives on the right, so it hides by moving further right.
           navOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0',
         )}
@@ -124,6 +125,13 @@ export default function DashboardLayout() {
               <LogOut className="h-4 w-4" />
             </IconButton>
           </div>
+        </div>
+
+        <div className="relative px-4 pb-4 pt-0.5 text-center text-xs text-primary-200/50">
+          <span>الإصدار </span>
+          <span dir="ltr" className="font-mono">
+            {APP_VERSION}
+          </span>
         </div>
       </aside>
 
