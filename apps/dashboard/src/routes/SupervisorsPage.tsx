@@ -134,49 +134,62 @@ export default function SupervisorsPage() {
             description="أنشئ حساب مشرف وأسنده إلى مجموعة؛ ستظهر بيانات الدخول مرة واحدة فقط بعد الإنشاء."
           />
         ) : (
-          <Table className="min-w-[540px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead>الاسم</TableHead>
-                <TableHead>اسم المستخدم</TableHead>
-                <TableHead>المجموعة</TableHead>
-                <TableHead>الحالة</TableHead>
-                <TableHead>
-                  <span className="sr-only">إجراءات</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <>
+            {/* Phones: the roster as stacked cards — the five-column table does not fit. */}
+            <ul className="flex flex-col divide-y divide-neutral-100 md:hidden">
               {paginatedSupervisors.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <Avatar name={s.full_name} size="sm" />
-                      <span className="font-medium text-neutral-900">{s.full_name}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span dir="ltr" className="font-mono text-xs text-neutral-500">
-                      {s.username}
-                    </span>
-                  </TableCell>
-                  <TableCell>{s.group?.name ?? '—'}</TableCell>
-                  <TableCell>
-                    <Badge variant={s.is_active ? 'completed' : 'neutral'} dot>
-                      {s.is_active ? 'نشط' : 'موقوف'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end">
-                      <IconButton aria-label={`تعديل ${s.full_name}`} onClick={() => setEditing(s)}>
-                        <Pencil className="h-4 w-4" />
-                      </IconButton>
-                    </div>
-                  </TableCell>
-                </TableRow>
+                <SupervisorCard key={s.id} supervisor={s} onEdit={() => setEditing(s)} />
               ))}
-            </TableBody>
-          </Table>
+            </ul>
+            <div className="hidden md:block">
+              <Table className="min-w-[540px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>الاسم</TableHead>
+                    <TableHead>اسم المستخدم</TableHead>
+                    <TableHead>المجموعة</TableHead>
+                    <TableHead>الحالة</TableHead>
+                    <TableHead>
+                      <span className="sr-only">إجراءات</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedSupervisors.map((s) => (
+                    <TableRow key={s.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar name={s.full_name} size="sm" />
+                          <span className="font-medium text-neutral-900">{s.full_name}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span dir="ltr" className="font-mono text-xs text-neutral-500">
+                          {s.username}
+                        </span>
+                      </TableCell>
+                      <TableCell>{s.group?.name ?? '—'}</TableCell>
+                      <TableCell>
+                        <Badge variant={s.is_active ? 'completed' : 'neutral'} dot>
+                          {s.is_active ? 'نشط' : 'موقوف'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-end">
+                          <IconButton
+                            aria-label={`تعديل ${s.full_name}`}
+                            onClick={() => setEditing(s)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </IconButton>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
         )}
 
         {supervisors && supervisors.length > 0 && (
@@ -213,6 +226,36 @@ export default function SupervisorsPage() {
         }}
       />
     </div>
+  );
+}
+
+/** Phone-width rendition of a supervisor row — same data and actions as the table. */
+function SupervisorCard({ supervisor, onEdit }: { supervisor: SupervisorRow; onEdit: () => void }) {
+  return (
+    <li className="flex items-start gap-3 p-4">
+      <Avatar name={supervisor.full_name} size="sm" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="min-w-0 flex-1 truncate font-medium text-neutral-900">
+            {supervisor.full_name}
+          </span>
+          <IconButton aria-label={`تعديل ${supervisor.full_name}`} onClick={onEdit}>
+            <Pencil className="h-4 w-4" />
+          </IconButton>
+        </div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-500">
+          <span dir="ltr" className="font-mono">
+            {supervisor.username}
+          </span>
+          <span className="truncate">{supervisor.group?.name ?? '—'}</span>
+        </div>
+        <div className="mt-2">
+          <Badge variant={supervisor.is_active ? 'completed' : 'neutral'} dot>
+            {supervisor.is_active ? 'نشط' : 'موقوف'}
+          </Badge>
+        </div>
+      </div>
+    </li>
   );
 }
 

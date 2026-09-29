@@ -86,6 +86,14 @@ function rangeFor(
 
 type SortKey = 'rate' | 'remaining' | 'name' | 'streak';
 
+/** Phone sorting lives in chips — the sortable table headers are md-and-up only. */
+const SORT_CHIPS: { key: SortKey; label: string }[] = [
+  { key: 'name', label: 'الاسم' },
+  { key: 'rate', label: 'نسبة الإنجاز' },
+  { key: 'remaining', label: 'المتبقّي' },
+  { key: 'streak', label: 'التتابع' },
+];
+
 export default function FollowupPage() {
   const [groups, setGroups] = React.useState<{ id: string; name: string }[]>([]);
   const [groupId, setGroupId] = React.useState('all');
@@ -279,15 +287,43 @@ export default function FollowupPage() {
           </div>
         </div>
 
-        <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-neutral-600">
-          <input
-            type="checkbox"
-            checked={onlyGaps}
-            onChange={(e) => setOnlyGaps(e.target.checked)}
-            className="h-4 w-4 rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
-          />
-          المتعثرون فقط
-        </label>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-neutral-600">
+            <input
+              type="checkbox"
+              checked={onlyGaps}
+              onChange={(e) => setOnlyGaps(e.target.checked)}
+              className="h-4 w-4 rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
+            />
+            المتعثرون فقط
+          </label>
+
+          <div className="flex flex-wrap items-center gap-1 md:hidden">
+            <span className="me-1 text-xs font-medium text-neutral-500">الترتيب:</span>
+            {SORT_CHIPS.map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => toggleSort(key)}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors',
+                  sort.key === key
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200',
+                )}
+              >
+                {label}
+                <ChevronDown
+                  className={cn(
+                    'h-3 w-3 transition-transform',
+                    sort.key === key ? 'opacity-100' : 'opacity-30',
+                    sort.key === key && sort.dir === 'asc' && 'rotate-180',
+                  )}
+                />
+              </button>
+            ))}
+          </div>
+        </div>
       </Card>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -313,45 +349,11 @@ export default function FollowupPage() {
             }
           />
         ) : (
-          <Table className="min-w-[720px]">
-            <TableHeader>
-              <TableRow>
-                <SortHead
-                  label="الاسم"
-                  active={sort.key === 'name'}
-                  dir={sort.dir}
-                  onClick={() => toggleSort('name')}
-                />
-                <TableHead>المجموعة</TableHead>
-                <TableHead className="text-center">مُسند</TableHead>
-                <TableHead className="text-center">مكتمل</TableHead>
-                <SortHead
-                  label="متبقٍّ"
-                  className="text-center"
-                  active={sort.key === 'remaining'}
-                  dir={sort.dir}
-                  onClick={() => toggleSort('remaining')}
-                />
-                <TableHead className="text-center">أيام مكتملة</TableHead>
-                <SortHead
-                  label="نسبة الإنجاز"
-                  active={sort.key === 'rate'}
-                  dir={sort.dir}
-                  onClick={() => toggleSort('rate')}
-                />
-                <SortHead
-                  label="التتابع"
-                  className="text-center"
-                  active={sort.key === 'streak'}
-                  dir={sort.dir}
-                  onClick={() => toggleSort('streak')}
-                />
-                <TableHead className="w-8" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <>
+            {/* Phones: one expandable card per employee — the nine-column table does not fit. */}
+            <ul className="flex flex-col divide-y divide-neutral-100 md:hidden">
               {paginatedRows.map((row) => (
-                <EmployeeRows
+                <EmployeeCard
                   key={row.employeeId}
                   row={row}
                   from={from}
@@ -362,8 +364,61 @@ export default function FollowupPage() {
                   }
                 />
               ))}
-            </TableBody>
-          </Table>
+            </ul>
+            <div className="hidden md:block">
+              <Table className="min-w-[720px]">
+                <TableHeader>
+                  <TableRow>
+                    <SortHead
+                      label="الاسم"
+                      active={sort.key === 'name'}
+                      dir={sort.dir}
+                      onClick={() => toggleSort('name')}
+                    />
+                    <TableHead>المجموعة</TableHead>
+                    <TableHead className="text-center">مُسند</TableHead>
+                    <TableHead className="text-center">مكتمل</TableHead>
+                    <SortHead
+                      label="متبقٍّ"
+                      className="text-center"
+                      active={sort.key === 'remaining'}
+                      dir={sort.dir}
+                      onClick={() => toggleSort('remaining')}
+                    />
+                    <TableHead className="text-center">أيام مكتملة</TableHead>
+                    <SortHead
+                      label="نسبة الإنجاز"
+                      active={sort.key === 'rate'}
+                      dir={sort.dir}
+                      onClick={() => toggleSort('rate')}
+                    />
+                    <SortHead
+                      label="التتابع"
+                      className="text-center"
+                      active={sort.key === 'streak'}
+                      dir={sort.dir}
+                      onClick={() => toggleSort('streak')}
+                    />
+                    <TableHead className="w-8" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedRows.map((row) => (
+                    <EmployeeRows
+                      key={row.employeeId}
+                      row={row}
+                      from={from}
+                      to={to}
+                      open={expanded === row.employeeId}
+                      onToggle={() =>
+                        setExpanded((cur) => (cur === row.employeeId ? null : row.employeeId))
+                      }
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
         )}
 
         {visible && visible.length > 0 && (
@@ -452,26 +507,14 @@ const STATUS_BUCKETS = [
   },
 ];
 
-function EmployeeRows({
-  row,
-  from,
-  to,
-  open,
-  onToggle,
-}: {
-  row: DutyFollowupRow;
-  from: string;
-  to: string;
-  open: boolean;
-  onToggle: () => void;
-}) {
+/**
+ * The expanded per-employee duty breakdown. Mounted only while open, so the fetch
+ * runs on open — shared by the desktop table row and the phone card.
+ */
+function DutyDetail({ employeeId, from, to }: { employeeId: string; from: string; to: string }) {
   const [duties, setDuties] = React.useState<DutyRow[] | null>(null);
-  const pct = Math.round(row.completionRate * 100);
-  const nothing = row.assignedCount === 0;
 
   React.useEffect(() => {
-    // Refetch whenever the panel opens or the active range changes under it.
-    if (!open) return;
     let cancelled = false;
     setDuties(null);
     supabase
@@ -479,7 +522,7 @@ function EmployeeRows({
       .select(
         'id, due_date, category, status, scope_surah_from, scope_ayah_from, scope_surah_to, scope_ayah_to',
       )
-      .eq('employee_id', row.employeeId)
+      .eq('employee_id', employeeId)
       .gte('due_date', from)
       .lte('due_date', to)
       .order('due_date', { ascending: false })
@@ -503,7 +546,42 @@ function EmployeeRows({
     return () => {
       cancelled = true;
     };
-  }, [open, row.employeeId, from, to]);
+  }, [employeeId, from, to]);
+
+  if (duties === null) {
+    return <div className="py-2 text-xs text-neutral-400">جارٍ تحميل تفصيل الأوراد…</div>;
+  }
+  if (duties.length === 0) {
+    return <div className="py-2 text-xs text-neutral-400">لا توجد أوراد مُسندة في هذا المدى.</div>;
+  }
+  return (
+    <div className="grid gap-3 md:grid-cols-3">
+      {STATUS_BUCKETS.map((bucket) => (
+        <StatusBucket
+          key={bucket.status}
+          bucket={bucket}
+          duties={duties.filter((d) => d.status === bucket.status)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function EmployeeRows({
+  row,
+  from,
+  to,
+  open,
+  onToggle,
+}: {
+  row: DutyFollowupRow;
+  from: string;
+  to: string;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const pct = Math.round(row.completionRate * 100);
+  const nothing = row.assignedCount === 0;
 
   return (
     <>
@@ -564,27 +642,105 @@ function EmployeeRows({
       {open && (
         <TableRow className="hover:bg-transparent">
           <TableCell colSpan={9} className="bg-neutral-50/60 p-4">
-            {duties === null ? (
-              <div className="py-2 text-xs text-neutral-400">جارٍ تحميل تفصيل الأوراد…</div>
-            ) : duties.length === 0 ? (
-              <div className="py-2 text-xs text-neutral-400">
-                لا توجد أوراد مُسندة في هذا المدى.
-              </div>
-            ) : (
-              <div className="grid gap-3 md:grid-cols-3">
-                {STATUS_BUCKETS.map((bucket) => (
-                  <StatusBucket
-                    key={bucket.status}
-                    bucket={bucket}
-                    duties={duties.filter((d) => d.status === bucket.status)}
-                  />
-                ))}
-              </div>
-            )}
+            <DutyDetail employeeId={row.employeeId} from={from} to={to} />
           </TableCell>
         </TableRow>
       )}
     </>
+  );
+}
+
+/** Phone-width rendition of a follow-up row: tappable header, compact stats, same detail. */
+function EmployeeCard({
+  row,
+  from,
+  to,
+  open,
+  onToggle,
+}: {
+  row: DutyFollowupRow;
+  from: string;
+  to: string;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const pct = Math.round(row.completionRate * 100);
+  const nothing = row.assignedCount === 0;
+
+  return (
+    <li className="flex flex-col gap-3 p-4">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-2.5 text-start"
+      >
+        <Avatar name={row.fullName} size="sm" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium text-neutral-900">{row.fullName}</div>
+          <div className="truncate text-xs text-neutral-500">{row.groupName}</div>
+        </div>
+        {row.currentStreak > 0 && <Badge variant="brand">{row.currentStreak}</Badge>}
+        <ChevronDown
+          className={cn(
+            'h-4 w-4 shrink-0 text-neutral-400 transition-transform',
+            open && 'rotate-180',
+          )}
+        />
+      </button>
+
+      <div className="flex items-center gap-2">
+        <ProgressBar
+          value={row.completedCount}
+          max={row.assignedCount || 1}
+          tone={pct === 100 ? 'mint' : 'brand'}
+          className="min-w-0 flex-1"
+        />
+        <span
+          className={cn(
+            'shrink-0 text-xs font-semibold tabular-nums',
+            nothing ? 'text-neutral-300' : 'text-neutral-700',
+          )}
+        >
+          {nothing ? '—' : `${pct}%`}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-4 gap-2">
+        <MiniStat label="مُسند" value={row.assignedCount} />
+        <MiniStat label="مكتمل" value={row.completedCount} valueClassName="text-mint-700" />
+        <MiniStat
+          label="متبقٍّ"
+          value={row.incompleteCount}
+          valueClassName={row.incompleteCount > 0 ? 'font-semibold text-danger-600' : undefined}
+        />
+        <MiniStat
+          label="أيام مكتملة"
+          value={`${row.daysAllComplete}/${row.daysAssigned}`}
+          valueClassName="font-normal text-neutral-500"
+        />
+      </div>
+
+      {open && <DutyDetail employeeId={row.employeeId} from={from} to={to} />}
+    </li>
+  );
+}
+
+function MiniStat({
+  label,
+  value,
+  valueClassName,
+}: {
+  label: string;
+  value: React.ReactNode;
+  valueClassName?: string;
+}) {
+  return (
+    <div className="rounded-lg bg-neutral-50 px-2 py-1.5 text-center ring-1 ring-neutral-100">
+      <div className="text-[10px] text-neutral-500">{label}</div>
+      <div className={cn('text-sm font-semibold tabular-nums text-neutral-900', valueClassName)}>
+        {value}
+      </div>
+    </div>
   );
 }
 
