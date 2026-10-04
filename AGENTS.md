@@ -35,7 +35,7 @@ Env: each app needs `apps/<app>/.env.local` with `VITE_SUPABASE_URL` and `VITE_S
 ## Layout
 
 - `apps/dashboard` (@wird/dashboard) — supervisor web app: groups, users, day-by-day duty assignment, follow-up.
-- `apps/pwa` (@wird/pwa) — employee app: duty checklist, mushaf reader, leaderboard. Installable PWA with offline support. Responsive: a phone-width single column (the canonical design) that becomes a two-pane layout at `lg` — duties in the main column, reminder banner + sticky standings sidebar beside it; keep both layouts working when touching the home screen.
+- `apps/pwa` (@wird/pwa) — employee app: duty checklist, mushaf reader, leaderboard. Installable PWA with offline support. Responsive: a phone-width single column (the canonical design) that becomes a two-pane layout at `lg` — duties in the main column, reminder banner + sticky standings sidebar beside it — then two duty cards per row at `xl` and a wider canvas at `2xl`; the muṣḥaf reader shows a two-page spread from `xl`, and auth screens split into brand panel + form at `lg`. Keep the phone layout untouched when editing; verify the wide variants too.
 - `packages/domain` — shared types, zod schemas, duty category definitions, username→email logic. No framework deps.
 - `packages/quran-data` — surah metadata + 604-page mushaf page index.
 - `packages/supabase-client` — typed client factory (`createWirdClient`), username sign-in, `database.types.ts`.

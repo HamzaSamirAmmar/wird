@@ -313,7 +313,7 @@ export default function MyDuties() {
   const allDone = allSteps.length > 0 && doneSteps === allSteps.length;
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-md flex-col bg-canvas lg:max-w-6xl">
+    <div className="mx-auto flex min-h-dvh max-w-md flex-col bg-canvas lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[1440px]">
       <header className="relative overflow-hidden bg-linear-to-br from-primary-700 via-primary-800 to-primary-950 px-4 pb-4 pt-safe lg:px-8">
         <div className="mihrab-pattern absolute inset-0 opacity-70" />
 
@@ -359,7 +359,7 @@ export default function MyDuties() {
 
         {/* ≥lg: the reminder moves into a side column, aligned with the standings sidebar
             below; on a phone the stack stays greeting → reminder → progress → days. */}
-        <div className="relative mt-3 lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-8">
+        <div className="relative mt-3 lg:grid lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-8">
           <div className="relative lg:col-start-2 lg:row-start-1">
             <BannerRail />
           </div>
@@ -413,7 +413,7 @@ export default function MyDuties() {
       <main className="flex-1 px-4 py-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))] lg:px-8">
         {/* ≥lg: checklist in the main column, standings in a sticky sidebar beside it;
             on a phone the single column keeps standings below the fold, after the duties. */}
-        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-8">
+        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-8">
           <div className="min-w-0">
             <PushNotice />
 
@@ -451,9 +451,12 @@ export default function MyDuties() {
                   highlight={downloadPrompt}
                   onClick={downloadWird}
                 />
-                {duties.map((duty) => (
-                  <DutyCard key={duty.id} duty={duty} onComplete={handleComplete} />
-                ))}
+                {/* xl: two duty cards per row — each card's checklist still reads top-down. */}
+                <div className="flex flex-col gap-3 xl:grid xl:grid-cols-2 xl:items-start">
+                  {duties.map((duty) => (
+                    <DutyCard key={duty.id} duty={duty} onComplete={handleComplete} />
+                  ))}
+                </div>
               </div>
             )}
           </div>

@@ -23,10 +23,10 @@ import {
 const BARE_PAGE_HEIGHT = 1059;
 
 /**
- * A duty's range as Madinah muṣḥaf pages, one per screen, turned right-to-left like a printed
- * muṣḥaf. Whole pages, with the ayat outside the duty faded — you open the page, not a
- * fragment. Everything it reads is cached (the duty in Dexie, the layout and font precached),
- * so it opens offline.
+ * A duty's range as Madinah muṣḥaf pages, turned right-to-left like a printed muṣḥaf: one
+ * page per screen on a phone, a two-page spread from `xl` (an open book). Whole pages, with
+ * the ayat outside the duty faded — you open the page, not a fragment. Everything it reads is
+ * cached (the duty in Dexie, the layout and font precached), so it opens offline.
  */
 export default function ReadWird() {
   const { dutyId } = useParams();
@@ -48,10 +48,13 @@ export function ReaderView({
   onBack,
 }: {
   /** undefined while loading, null when it is not on this device */
-  duty: Pick<
-    CachedDuty,
-    'category' | 'scopeSurahFrom' | 'scopeAyahFrom' | 'scopeSurahTo' | 'scopeAyahTo'
-  > | null | undefined;
+  duty:
+    | Pick<
+        CachedDuty,
+        'category' | 'scopeSurahFrom' | 'scopeAyahFrom' | 'scopeSurahTo' | 'scopeAyahTo'
+      >
+    | null
+    | undefined;
   onBack: () => void;
 }) {
   const [data, setData] = React.useState<MushafData | null>(null);
@@ -63,15 +66,23 @@ export function ReaderView({
   React.useEffect(() => {
     Promise.all([loadMushaf(), hafsReady()])
       .then(([d]) => setData(d))
-      .catch(() => setError('تعذر تحميل صفحات المصحف. افتح التطبيق مرة واحدة وأنت متصل بالإنترنت.'));
+      .catch(() =>
+        setError('تعذر تحميل صفحات المصحف. افتح التطبيق مرة واحدة وأنت متصل بالإنترنت.'),
+      );
   }, []);
 
-  const scope = React.useMemo(() => (duty ? scopeOf({
-    surahFrom: duty.scopeSurahFrom,
-    ayahFrom: duty.scopeAyahFrom,
-    surahTo: duty.scopeSurahTo,
-    ayahTo: duty.scopeAyahTo,
-  }) : null), [duty]);
+  const scope = React.useMemo(
+    () =>
+      duty
+        ? scopeOf({
+            surahFrom: duty.scopeSurahFrom,
+            ayahFrom: duty.scopeAyahFrom,
+            surahTo: duty.scopeSurahTo,
+            ayahTo: duty.scopeAyahTo,
+          })
+        : null,
+    [duty],
+  );
 
   const pages = React.useMemo(
     () => (data && scope ? pagesForScope(data, scope) : []),
@@ -84,11 +95,16 @@ export function ReaderView({
   );
 
   // Fit the page to the screen: whole page visible, as large as the viewport allows.
+  // Measured against a slide, not the pager: ≥xl a slide is half the pager (two-page
+  // spread, like an open muṣḥaf), and the page must fit the slide.
   React.useLayoutEffect(() => {
     const el = pagerRef.current;
     if (!el) return;
-    const measure = () =>
-      setScale(Math.min(el.clientWidth / PAGE_WIDTH, el.clientHeight / BARE_PAGE_HEIGHT));
+    const measure = () => {
+      const slide = el.firstElementChild as HTMLElement | null;
+      const avail = slide?.offsetWidth || el.clientWidth;
+      setScale(Math.min(avail / PAGE_WIDTH, el.clientHeight / BARE_PAGE_HEIGHT));
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
@@ -105,10 +121,13 @@ export function ReaderView({
   }, []);
 
   // Which page is on screen, from the scroll position (works in RTL, where scrollLeft is ≤ 0).
+  // The divisor is a slide's width: ≥xl a slide is half the pager (two-page spread).
   function onScroll() {
     const el = pagerRef.current;
     if (!el || el.clientWidth === 0) return;
-    setIndex(Math.round(Math.abs(el.scrollLeft) / el.clientWidth));
+    const slide = el.firstElementChild as HTMLElement | null;
+    const slideWidth = slide?.offsetWidth || el.clientWidth;
+    setIndex(Math.round(Math.abs(el.scrollLeft) / slideWidth));
   }
 
   React.useEffect(() => {
@@ -182,7 +201,7 @@ export function ReaderView({
           {html.map((pageHtml, i) => (
             <div
               key={pages[i]}
-              className="flex h-full w-full flex-none snap-start snap-always items-center justify-center py-2"
+              className="flex h-full w-full flex-none snap-start snap-always items-center justify-center py-2 xl:w-1/2"
             >
               <div
                 className="relative overflow-hidden rounded-md shadow-[0_10px_30px_-12px_rgba(60,40,10,.45)]"
