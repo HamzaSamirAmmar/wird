@@ -2,7 +2,10 @@ import * as React from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BookOpen,
+  CalendarCheck,
+  Check,
   CheckCircle2,
+  ChevronLeft,
   CloudOff,
   LogOut,
   RefreshCw,
@@ -11,13 +14,19 @@ import {
   BookOpenText,
   FileDown,
   Loader2,
+  Users,
 } from 'lucide-react';
-import { DUTY_CATEGORY_LABELS, DUTY_CATEGORY_STEPS, type DutyCategory } from '@wird/domain';
+import {
+  DUTY_CATEGORIES,
+  DUTY_CATEGORY_LABELS,
+  DUTY_CATEGORY_STEPS,
+  type DutyCategory,
+} from '@wird/domain';
 import { formatPage, formatRange, pagesForRange } from '@wird/quran-data';
 import {
   Alert,
+  Avatar,
   Badge,
-  Button,
   Card,
   Checkbox,
   EmptyState,
@@ -25,6 +34,7 @@ import {
   ProgressBar,
   ProgressRing,
   Skeleton,
+  WirdMark,
   cn,
 } from '@wird/ui-web';
 import { useAuth } from '../lib/auth-context';
@@ -37,6 +47,8 @@ import { DayStrip } from '../components/DayStrip';
 import { GroupStandings } from '../components/GroupStandings';
 import { PushNotice } from '../components/PushNotice';
 import { ensurePushRegistered } from '../lib/notifications';
+import { useGroupName } from '../lib/groups';
+import { celebrate, haptic } from '../lib/celebrate';
 import { clampToVisibleRange, formatRelativeDay, todayISO } from '../lib/dates';
 import { APP_VERSION } from '../version';
 
@@ -99,7 +111,7 @@ export default function MyDuties() {
   );
   const [duties, setDuties] = React.useState<DutyWithSteps[] | null>(null);
   // Opened from the Telegram "تحميل الورد" button: offer the file up front. It is a prompt to
-  // tap rather than an automatic download, because phones only share/save on a user gesture.
+  // tap rather than an automatic download, because phones only save files on a user gesture.
   const [downloadPrompt, setDownloadPrompt] = React.useState(() =>
     wantsDownload(`/?${searchParams.toString()}`),
   );
@@ -120,6 +132,7 @@ export default function MyDuties() {
   const [lastSynced, setLastSynced] = React.useState<number | null>(null);
 
   const employeeId = profile?.id ?? '';
+  const groupName = useGroupName(profile?.groupId);
 
   // The notification's ?date= has done its job once read; drop it so a reload opens on today.
   React.useEffect(() => {
@@ -258,6 +271,14 @@ export default function MyDuties() {
   // Ticking a step is final: a completed step cannot be unticked.
   async function handleComplete(step: CachedStep) {
     if (step.isCompleted) return;
+    haptic();
+    // The tick that finishes the whole day gets a small celebration — only on a real tick,
+    // never on load, so reopening a finished day stays calm.
+    const remaining = (duties ?? []).flatMap((d) => d.steps).filter((s) => !s.isCompleted);
+    if (remaining.length === 1 && remaining[0]!.id === step.id) {
+      celebrate();
+      haptic([18, 60, 18]);
+    }
     setDuties((prev) =>
       prev
         ? prev.map((d) =>
@@ -295,7 +316,7 @@ export default function MyDuties() {
         },
         (done, total) => setDownload((d) => ({ ...d, done, total })),
       );
-      await deliverPdf(blob, selectedDate);
+      deliverPdf(blob, selectedDate);
       setDownloadPrompt(false);
       setDownload({ busy: false, done: 0, total: 0, error: null });
     } catch {
@@ -310,138 +331,152 @@ export default function MyDuties() {
 
   const allSteps = duties?.flatMap((d) => d.steps) ?? [];
   const doneSteps = allSteps.filter((s) => s.isCompleted).length;
-  const allDone = allSteps.length > 0 && doneSteps === allSteps.length;
+  const isToday = selectedDate === todayISO();
+  const orderedDuties = duties
+    ? DUTY_CATEGORIES.flatMap((c) => duties.filter((d) => d.category === c))
+    : null;
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-md flex-col bg-canvas lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[1440px]">
-      <header className="relative overflow-hidden bg-linear-to-br from-primary-700 via-primary-800 to-primary-950 px-4 pb-4 pt-safe lg:px-8">
+    <div className="flex min-h-dvh flex-col bg-canvas">
+      {/* Full-bleed header: the teal band spans the whole window on wide screens, while its
+          content keeps to the same column as the page below it. */}
+      <header className="relative overflow-hidden bg-linear-to-br from-primary-700 via-primary-800 to-primary-950 pt-safe">
         <div className="mihrab-pattern absolute inset-0 opacity-70" />
+        <WirdMark className="pointer-events-none absolute -top-12 -end-12 hidden h-56 w-56 text-white/6 lg:block" />
 
-        <div className="relative flex items-center justify-between gap-3 pt-3">
-          <div className="min-w-0">
-            <div className="text-[11px] text-primary-100/70">السلام عليكم</div>
-            <div className="truncate font-medium text-white">{profile?.fullName}</div>
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            {!isOnline && (
-              <span className="flex items-center gap-1 rounded-full bg-white/12 px-2.5 py-1 text-[11px] text-primary-50">
-                <CloudOff className="h-3.5 w-3.5" />
-                {/* Naming the age of the data matters more than saying "offline": the
-                    checklist still works, the question is whether it is current. */}
-                {formatSyncAge(lastSynced)}
-              </span>
-            )}
-            {pendingSync > 0 ? (
-              <span className="rounded-full bg-accent-400/20 px-2.5 py-1 text-[11px] font-medium text-accent-100 ring-1 ring-accent-300/30">
-                {pendingSync.toLocaleString('ar-EG')} بانتظار المزامنة
-              </span>
-            ) : (
-              justSynced && (
-                <span className="flex animate-fade-in items-center gap-1 rounded-full bg-mint-300/20 px-2.5 py-1 text-[11px] font-medium text-mint-100 ring-1 ring-mint-300/30">
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  تمت المزامنة
-                </span>
-              )
-            )}
-            <IconButton
-              aria-label="تسجيل الخروج"
-              onClick={async () => {
-                // Give queued ticks one last chance to reach the server before the session goes.
-                if (pendingSync > 0) await refresh();
-                signOut();
-              }}
-              className="text-primary-100 active:bg-white/10"
-            >
-              <LogOut className="h-4.5 w-4.5" />
-            </IconButton>
-          </div>
-        </div>
-
-        {/* ≥lg: the reminder moves into a side column, aligned with the standings sidebar
-            below; on a phone the stack stays greeting → reminder → progress → days. */}
-        <div className="relative mt-3 lg:grid lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-8">
-          <div className="relative lg:col-start-2 lg:row-start-1">
-            <BannerRail />
-          </div>
-
-          <div className="relative mt-3 lg:col-start-1 lg:row-start-1 lg:mt-0">
-            <div className="relative flex items-center gap-4 rounded-2xl bg-white/10 p-4 ring-1 ring-white/12">
-              <ProgressRing
-                value={doneSteps}
-                max={allSteps.length}
-                size={56}
-                strokeWidth={5}
-                className={allDone ? 'text-mint-300' : 'text-white'}
-              >
-                <span className="text-white">
-                  {allSteps.length === 0
-                    ? '—'
-                    : `${Math.round((doneSteps / allSteps.length) * 100)}%`}
-                </span>
-              </ProgressRing>
-              <div className="min-w-0 flex-1">
-                <div className="font-medium text-white">{formatRelativeDay(selectedDate)}</div>
-                <div className="mt-0.5 text-xs text-primary-100/75">
-                  {duties === null
-                    ? 'جارٍ التحميل…'
-                    : allSteps.length === 0
-                      ? 'لا توجد خطوات لهذا اليوم'
-                      : allDone
-                        ? 'أتممت ورد اليوم — بارك الله فيك'
-                        : `${doneSteps} من ${allSteps.length} خطوة مكتملة`}
+        <div className={cn(SHELL, 'relative px-4 pb-4 lg:px-8 lg:pb-6')}>
+          <div className="flex items-center justify-between gap-3 pt-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <Avatar
+                name={profile?.fullName ?? '؟'}
+                className="hidden bg-white/15 text-white ring-1 ring-white/20 min-[380px]:inline-flex"
+              />
+              <div className="min-w-0">
+                <div className="text-[11px] text-primary-100/70">السلام عليكم</div>
+                <div className="truncate font-medium text-white lg:text-lg">
+                  {profile?.fullName}
                 </div>
+                {groupName && (
+                  <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] text-primary-100/80">
+                    <Users className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{groupName}</span>
+                  </div>
+                )}
               </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              {!isOnline && (
+                <span className="flex items-center gap-1 rounded-full bg-white/12 px-2.5 py-1 text-[11px] text-primary-50">
+                  <CloudOff className="h-3.5 w-3.5" />
+                  {/* Naming the age of the data matters more than saying "offline": the
+                      checklist still works, the question is whether it is current. */}
+                  {formatSyncAge(lastSynced)}
+                </span>
+              )}
+              {pendingSync > 0 ? (
+                <span className="rounded-full bg-accent-400/20 px-2.5 py-1 text-[11px] font-medium text-accent-100 ring-1 ring-accent-300/30">
+                  {pendingSync.toLocaleString('ar-EG')} بانتظار المزامنة
+                </span>
+              ) : (
+                justSynced && (
+                  <span className="flex animate-fade-in items-center gap-1 rounded-full bg-mint-300/20 px-2.5 py-1 text-[11px] font-medium text-mint-100 ring-1 ring-mint-300/30">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    تمت المزامنة
+                  </span>
+                )
+              )}
               <IconButton
-                aria-label="تحديث"
-                onClick={refresh}
-                className="text-primary-100 active:bg-white/10"
+                aria-label="تسجيل الخروج"
+                title="تسجيل الخروج"
+                onClick={async () => {
+                  // Give queued ticks one last chance to reach the server before the session goes.
+                  if (pendingSync > 0) await refresh();
+                  signOut();
+                }}
+                className="text-primary-100 hover:bg-white/10 hover:text-white active:bg-white/10"
               >
-                <RefreshCw className={cn('h-4.5 w-4.5', refreshing && 'animate-spin')} />
+                <LogOut className="h-4.5 w-4.5" />
               </IconButton>
             </div>
+          </div>
 
-            <div className="relative mt-3">
-              <DayStrip
-                value={selectedDate}
-                onChange={(iso) => setSelectedDate(clampToVisibleRange(iso))}
+          {/* ≥lg: the reminder moves into a side column, aligned with the standings sidebar
+              below; on a phone the stack stays greeting → reminder → progress → days. */}
+          <div className="relative mt-3 lg:mt-5 lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-8 xl:grid-cols-[minmax(0,1fr)_380px]">
+            <div className="relative lg:col-start-2 lg:row-start-1">
+              <BannerRail />
+            </div>
+
+            <div className="relative mt-3 lg:col-start-1 lg:row-start-1 lg:mt-0">
+              <DaySummary
+                label={formatRelativeDay(selectedDate)}
+                duties={orderedDuties}
+                done={doneSteps}
+                total={allSteps.length}
+                refreshing={refreshing}
+                onRefresh={refresh}
               />
+
+              <div className="relative mt-3">
+                <DayStrip
+                  value={selectedDate}
+                  onChange={(iso) => setSelectedDate(clampToVisibleRange(iso))}
+                />
+              </div>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 px-4 py-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))] lg:px-8">
+      <main
+        className={cn(
+          SHELL,
+          'flex-1 px-4 py-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))] lg:px-8 lg:py-6',
+        )}
+      >
         {/* ≥lg: checklist in the main column, standings in a sticky sidebar beside it;
             on a phone the single column keeps standings below the fold, after the duties. */}
-        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-8">
+        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-8 xl:grid-cols-[minmax(0,1fr)_380px]">
           <div className="min-w-0">
             <PushNotice />
 
-            {selectedDate !== todayISO() && (
+            {!isToday && (
               <button
+                type="button"
                 onClick={() => setSelectedDate(todayISO())}
-                className="mb-3 text-xs font-medium text-primary-700"
+                className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 ring-1 ring-inset ring-primary-100 transition-colors hover:bg-primary-100"
               >
-                العودة لليوم
+                <CalendarCheck className="h-3.5 w-3.5" />
+                العودة إلى اليوم
               </button>
             )}
 
-            {duties === null ? (
-              <div className="flex flex-col gap-3">
+            {orderedDuties === null ? (
+              <div className="flex flex-col gap-3 xl:grid xl:grid-cols-2">
                 {Array.from({ length: 2 }, (_, i) => (
                   <Card key={i} className="flex flex-col gap-3 p-4">
-                    <Skeleton className="h-4 w-1/3" />
-                    <Skeleton className="h-3 w-1/2" />
+                    <div className="flex items-center gap-3">
+                      <Skeleton className="h-10 w-10 rounded-xl" />
+                      <div className="flex flex-1 flex-col gap-2">
+                        <Skeleton className="h-4 w-1/3" />
+                        <Skeleton className="h-3 w-1/2" />
+                      </div>
+                    </div>
+                    <Skeleton className="h-9 w-full rounded-lg" />
                     <Skeleton className="h-1.5 w-full" />
                   </Card>
                 ))}
               </div>
-            ) : duties.length === 0 ? (
-              <Card>
+            ) : orderedDuties.length === 0 ? (
+              <Card className="py-4">
                 <EmptyState
                   icon={BookOpen}
-                  title="لا توجد واجبات في هذا اليوم"
-                  description="راجع أياماً أخرى من الشريط أعلاه، أو انتظر إسناد المشرف."
+                  title={isToday ? 'لم يُسند ورد اليوم بعد' : 'لا توجد واجبات في هذا اليوم'}
+                  description={
+                    isToday
+                      ? 'سيظهر ورد اليوم هنا فور إسناده من المشرف، وستصلك رسالة بذلك.'
+                      : 'راجع أياماً أخرى من الشريط أعلاه.'
+                  }
                 />
               </Card>
             ) : (
@@ -453,7 +488,7 @@ export default function MyDuties() {
                 />
                 {/* xl: two duty cards per row — each card's checklist still reads top-down. */}
                 <div className="flex flex-col gap-3 xl:grid xl:grid-cols-2 xl:items-start">
-                  {duties.map((duty) => (
+                  {orderedDuties.map((duty) => (
                     <DutyCard key={duty.id} duty={duty} onComplete={handleComplete} />
                   ))}
                 </div>
@@ -463,17 +498,141 @@ export default function MyDuties() {
 
           {/* Secondary to the checklist above, and deliberately out of the way. */}
           <aside className="lg:sticky lg:top-6 lg:self-start">
-            <GroupStandings reloadKey={syncTick} />
+            <GroupStandings reloadKey={syncTick} groupName={groupName} />
           </aside>
         </div>
 
-        <div className="mt-8 text-center text-xs text-neutral-400">
-          <span>الإصدار </span>
-          <span dir="ltr" className="font-mono">
-            {APP_VERSION}
+        <div className="mt-10 flex items-center justify-center gap-2 text-xs text-neutral-400">
+          <WirdMark className="h-3.5 w-3.5 text-neutral-300" />
+          <span>
+            ورد · الإصدار{' '}
+            <span dir="ltr" className="font-mono">
+              {APP_VERSION}
+            </span>
           </span>
         </div>
       </main>
+    </div>
+  );
+}
+
+/** One column width for header and body, so the two edges line up at every breakpoint. */
+const SHELL =
+  'mx-auto w-full max-w-md md:max-w-2xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[1440px] min-[1920px]:max-w-[1680px]';
+
+const categoryTone: Record<DutyCategory, { tile: string; bar: string; dot: string }> = {
+  new_memorization: {
+    tile: 'bg-primary-50 text-primary-700',
+    bar: 'bg-primary-600',
+    dot: 'bg-primary-300',
+  },
+  minor_review: {
+    tile: 'bg-accent-50 text-accent-700',
+    bar: 'bg-accent-500',
+    dot: 'bg-accent-300',
+  },
+  major_review: { tile: 'bg-mint-50 text-mint-700', bar: 'bg-mint-500', dot: 'bg-mint-300' },
+};
+
+function summaryLine(duties: DutyWithSteps[] | null, done: number, total: number): string {
+  if (duties === null) return 'جارٍ التحميل…';
+  if (total === 0) return 'لا توجد خطوات لهذا اليوم';
+  if (done === total) return 'أتممت ورد اليوم — بارك الله فيك';
+  const left = total - done;
+  if (done === 0) return `${total.toLocaleString('ar-EG')} خطوات بانتظارك — بسم الله`;
+  if (left === 1) return 'بقيت خطوة واحدة — أتمِمها!';
+  return `${done.toLocaleString('ar-EG')} من ${total.toLocaleString('ar-EG')} خطوة مكتملة`;
+}
+
+/** The day at a glance: overall ring, a word of encouragement, and one chip per category. */
+function DaySummary({
+  label,
+  duties,
+  done,
+  total,
+  refreshing,
+  onRefresh,
+}: {
+  label: string;
+  duties: DutyWithSteps[] | null;
+  done: number;
+  total: number;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
+  const allDone = total > 0 && done === total;
+  return (
+    <div
+      className={cn(
+        'relative overflow-hidden rounded-2xl p-4 ring-1 transition-colors duration-500',
+        allDone ? 'bg-mint-300/15 ring-mint-200/30' : 'bg-white/10 ring-white/12',
+      )}
+    >
+      <div className="relative flex items-center gap-4">
+        <ProgressRing
+          value={done}
+          max={total}
+          size={56}
+          strokeWidth={5}
+          className={allDone ? 'text-mint-300' : 'text-white'}
+        >
+          <span className="text-white">
+            {total === 0 ? (
+              '—'
+            ) : allDone ? (
+              <Check className="h-5 w-5" strokeWidth={3} />
+            ) : (
+              `${Math.round((done / total) * 100)}%`
+            )}
+          </span>
+        </ProgressRing>
+        <div className="min-w-0 flex-1">
+          <div className="font-medium text-white lg:text-lg">{label}</div>
+          <div className="mt-0.5 text-xs text-primary-100/80">
+            {summaryLine(duties, done, total)}
+          </div>
+        </div>
+        <IconButton
+          aria-label="تحديث"
+          title="تحديث"
+          onClick={onRefresh}
+          className="text-primary-100 hover:bg-white/10 hover:text-white active:bg-white/10"
+        >
+          <RefreshCw className={cn('h-4.5 w-4.5', refreshing && 'animate-spin')} />
+        </IconButton>
+      </div>
+
+      {duties && duties.length > 0 && (
+        <div className="relative mt-3 flex flex-wrap gap-1.5">
+          {duties.map((d) => {
+            const complete = d.steps.length > 0 && d.steps.every((s) => s.isCompleted);
+            const stepsDone = d.steps.filter((s) => s.isCompleted).length;
+            return (
+              <span
+                key={d.id}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1',
+                  complete
+                    ? 'bg-mint-300/20 text-mint-50 ring-mint-200/30'
+                    : 'bg-white/8 text-primary-50 ring-white/12',
+                )}
+              >
+                {complete ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-mint-200" />
+                ) : (
+                  <span className={cn('h-1.5 w-1.5 rounded-full', categoryTone[d.category].dot)} />
+                )}
+                {DUTY_CATEGORY_LABELS[d.category]}
+                {!complete && (
+                  <span className="tabular-nums text-primary-100/60">
+                    {stepsDone.toLocaleString('ar-EG')}/{d.steps.length.toLocaleString('ar-EG')}
+                  </span>
+                )}
+              </span>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -488,27 +647,62 @@ function DownloadWirdButton({
   highlight: boolean;
   onClick: () => void;
 }) {
+  const pct = state.total > 0 ? Math.round((state.done / state.total) * 100) : 0;
   return (
     <div className="flex flex-col gap-2">
       {state.error && <Alert variant="danger">{state.error}</Alert>}
-      <Button
+      <button
         type="button"
-        variant={highlight ? 'primary' : 'secondary'}
         disabled={state.busy}
         onClick={onClick}
-        className={cn('w-full', highlight && 'ring-4 ring-primary-200')}
-      >
-        {state.busy ? (
-          <Loader2 className="h-4.5 w-4.5 animate-spin" />
-        ) : (
-          <FileDown className="h-4.5 w-4.5" />
+        className={cn(
+          'group relative flex w-full items-center gap-3 overflow-hidden rounded-xl px-3.5 py-3 text-start transition-[background-color,box-shadow] duration-150',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/60',
+          highlight
+            ? 'bg-primary-700 text-white shadow-glow ring-4 ring-primary-200 hover:bg-primary-800'
+            : 'bg-surface text-neutral-800 shadow-xs ring-1 ring-neutral-200/80 hover:shadow-md',
+          state.busy && 'cursor-progress',
         )}
-        {state.busy
-          ? state.total > 0
-            ? `جارٍ تجهيز الملف… ${state.done.toLocaleString('ar-EG')}/${state.total.toLocaleString('ar-EG')}`
-            : 'جارٍ تجهيز الملف…'
-          : 'تحميل الورد (PDF)'}
-      </Button>
+      >
+        {state.busy && state.total > 0 && (
+          <span
+            className={cn(
+              'absolute inset-y-0 start-0 transition-[width] duration-300',
+              highlight ? 'bg-white/10' : 'bg-primary-50',
+            )}
+            style={{ width: `${pct}%` }}
+          />
+        )}
+        <span
+          className={cn(
+            'relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
+            highlight ? 'bg-white/15' : 'bg-primary-50 text-primary-700',
+          )}
+        >
+          {state.busy ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <FileDown className="h-5 w-5" />
+          )}
+        </span>
+        <span className="relative min-w-0 flex-1">
+          <span className="block text-sm font-semibold">
+            {state.busy
+              ? state.total > 0
+                ? `جارٍ تجهيز الملف… ${state.done.toLocaleString('ar-EG')}/${state.total.toLocaleString('ar-EG')}`
+                : 'جارٍ تجهيز الملف…'
+              : 'تحميل الورد (PDF)'}
+          </span>
+          <span
+            className={cn(
+              'mt-0.5 block truncate text-[11px]',
+              highlight ? 'text-primary-100' : 'text-neutral-500',
+            )}
+          >
+            صفحات المصحف مع خطوات كل قسم · يعمل دون اتصال
+          </span>
+        </span>
+      </button>
     </div>
   );
 }
@@ -524,6 +718,7 @@ function DutyCard({
   const done = duty.steps.filter((s) => s.isCompleted).length;
   const complete = duty.steps.length > 0 && done === duty.steps.length;
   const Icon = categoryIcon[duty.category];
+  const tone = categoryTone[duty.category];
   const navigate = useNavigate();
 
   const range = {
@@ -539,12 +734,22 @@ function DutyCard({
       : `صفحات ${pages[0]!.toLocaleString('ar-EG')}–${pages[pages.length - 1]!.toLocaleString('ar-EG')}`;
 
   return (
-    <Card className={cn('overflow-hidden', complete && 'ring-mint-200')}>
+    <Card
+      className={cn(
+        'relative overflow-hidden transition-shadow duration-300',
+        complete && 'ring-mint-200',
+      )}
+    >
+      {/* Category colour on the leading edge, so the three kinds read apart at a glance. */}
+      <span
+        aria-hidden
+        className={cn('absolute inset-y-0 start-0 w-1', complete ? 'bg-mint-400' : tone.bar)}
+      />
       <div className="flex items-start gap-3 p-4">
         <span
           className={cn(
-            'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
-            complete ? 'bg-mint-50 text-mint-600' : 'bg-primary-50 text-primary-600',
+            'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors',
+            complete ? 'bg-mint-50 text-mint-600' : tone.tile,
           )}
         >
           {complete ? <CheckCircle2 className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
@@ -563,14 +768,28 @@ function DutyCard({
             </Badge>
           </div>
 
+          {duty.scopeNote && (
+            <p className="mt-2 rounded-lg bg-accent-50 px-3 py-2 text-xs leading-relaxed text-accent-800 ring-1 ring-inset ring-accent-100">
+              {duty.scopeNote}
+            </p>
+          )}
+
           <button
             type="button"
             onClick={() => navigate(`/read/${duty.id}`)}
-            className="mt-2.5 flex w-full items-center gap-2 rounded-lg bg-primary-50 px-3 py-2 text-start text-sm font-medium text-primary-800 ring-1 ring-inset ring-primary-100 transition-colors active:bg-primary-100"
+            className="group mt-2.5 flex w-full items-center gap-2 rounded-lg bg-primary-50 px-3 py-2.5 text-start text-sm font-medium text-primary-800 ring-1 ring-inset ring-primary-100 transition-colors hover:bg-primary-100 active:bg-primary-100"
           >
             <BookOpenText className="h-4 w-4 shrink-0 text-primary-600" />
-            <span className="flex-1">قراءة الورد</span>
+            <span className="flex-1">
+              قراءة الورد
+              {stepDefs.some((d) => (d.repeat ?? 0) > 1) && (
+                <span className="ms-1.5 text-[11px] font-normal text-primary-600/80">
+                  مع العدّاد
+                </span>
+              )}
+            </span>
             <span className="text-[11px] font-normal text-primary-600">{pageLabel}</span>
+            <ChevronLeft className="h-4 w-4 shrink-0 text-primary-400 transition-transform group-hover:-translate-x-0.5" />
           </button>
 
           <div className="mt-3 flex items-center gap-2">
@@ -581,21 +800,24 @@ function DutyCard({
               className="flex-1"
             />
             <span className="shrink-0 text-[11px] tabular-nums text-neutral-500">
-              {done}/{duty.steps.length}
+              {done.toLocaleString('ar-EG')}/{duty.steps.length.toLocaleString('ar-EG')}
             </span>
           </div>
         </div>
       </div>
 
       <div className="flex flex-col divide-y divide-neutral-100 border-t border-neutral-100">
-        {duty.steps.map((step) => {
+        {duty.steps.map((step, i) => {
           const def = stepDefs.find((s) => s.order === step.stepOrder);
+          const repeat = def?.repeat ?? 0;
           return (
             <label
               key={step.id}
               className={cn(
                 'flex items-start gap-3 px-4 py-3 transition-colors',
-                step.isCompleted ? 'cursor-default' : 'cursor-pointer active:bg-primary-50/60',
+                step.isCompleted
+                  ? 'cursor-default bg-neutral-50/50'
+                  : 'cursor-pointer hover:bg-primary-50/40 active:bg-primary-50/60',
               )}
             >
               {/* A done step stays done: the checkbox locks once ticked. */}
@@ -605,14 +827,33 @@ function DutyCard({
                 onCheckedChange={() => onComplete(step)}
                 className="mt-0.5 disabled:cursor-default disabled:opacity-100"
               />
-              <span
-                className={cn(
-                  'text-sm leading-relaxed',
-                  step.isCompleted ? 'text-neutral-400 line-through' : 'text-neutral-700',
+              <span className="min-w-0 flex-1">
+                {duty.steps.length > 1 && (
+                  <span className="mb-0.5 block text-[10px] font-medium text-neutral-400">
+                    الخطوة {(i + 1).toLocaleString('ar-EG')}
+                  </span>
                 )}
-              >
-                {def?.label ?? step.stepKey}
+                <span
+                  className={cn(
+                    'block text-sm leading-relaxed',
+                    step.isCompleted ? 'text-neutral-400 line-through' : 'text-neutral-700',
+                  )}
+                >
+                  {def?.label ?? step.stepKey}
+                </span>
               </span>
+              {repeat > 1 && (
+                <span
+                  className={cn(
+                    'mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums',
+                    step.isCompleted
+                      ? 'bg-neutral-100 text-neutral-400'
+                      : 'bg-accent-50 text-accent-700 ring-1 ring-inset ring-accent-100',
+                  )}
+                >
+                  ×{repeat.toLocaleString('ar-EG')}
+                </span>
+              )}
             </label>
           );
         })}
