@@ -50,3 +50,20 @@
 @utility pb-safe {
   padding-bottom: max(env(safe-area-inset-bottom), 0px);
 }
+
+/* Reader counter: a ring that swells out from the button on every counted reading. */
+@keyframes counter-ripple {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-\[counter-ripple_\.5s_ease-out_forwards\] {
+    animation: none;
+  }
+}
