@@ -264,7 +264,7 @@ const PAGE_NUMBER = `<svg viewBox="0 0 46 34"><path d="M23 1L45 17L23 33L1 17Z" 
 
 // ─── Rendering ───────────────────────────────────────────────────────────────
 
-const ar = (n: number) => n.toLocaleString('ar-EG');
+const ar = (n: number) => n.toLocaleString('ar-u-nu-latn');
 
 function esc(s: string): string {
   return s
@@ -329,7 +329,7 @@ function surahOpenedAt(lines: MushafLine[], i: number, fallback: number): number
 }
 
 export interface PageChrome {
-  /** e.g. "الثلاثاء ٢٩ سبتمبر ٢٠٢٦" */
+  /** e.g. "الثلاثاء 29 سبتمبر 2026" */
   date: string;
   category: WirdCategory;
   iconUrl: string;
@@ -404,9 +404,9 @@ const TITLE_FRAME = `<svg viewBox="0 0 560 118" preserveAspectRatio="none" aria-
 
 export interface CategoryPageOptions {
   category: WirdCategory;
-  /** e.g. "الثلاثاء ٢٩ سبتمبر ٢٠٢٦" */
+  /** e.g. "الثلاثاء 29 سبتمبر 2026" */
   date: string;
-  /** Human range, e.g. "البقرة ١ – البقرة ٢٠" */
+  /** Human range, e.g. "البقرة 1 – البقرة 20" */
   range: string;
   pages: number[];
   steps: { label: string; repeat?: number }[];

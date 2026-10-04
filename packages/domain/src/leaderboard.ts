@@ -8,8 +8,8 @@ export const LEADERBOARD_WINDOWS: readonly LeaderboardWindow[] = ['1d', '7d', '3
 
 export const LEADERBOARD_WINDOW_LABELS: Record<LeaderboardWindow, string> = {
   '1d': 'اليوم',
-  '7d': 'آخر ٧ أيام',
-  '30d': 'آخر ٣٠ يوماً',
+  '7d': 'آخر 7 أيام',
+  '30d': 'آخر 30 يوماً',
 };
 
 /** Number of trailing days each window spans, including today. */

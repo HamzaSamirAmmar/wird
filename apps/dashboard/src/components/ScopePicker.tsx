@@ -147,7 +147,7 @@ export function ScopePicker({
                 className="text-primary-700 hover:underline"
                 onClick={() => onChange({ ...value, ayahTo: toMax })}
               >
-                إلى النهاية ({toMax.toLocaleString('ar-EG')})
+                إلى النهاية ({toMax.toLocaleString('ar-u-nu-latn')})
               </button>
             }
           />
@@ -171,10 +171,10 @@ function Summary({ range }: { range: QuranRange }) {
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-primary-50 px-3.5 py-2.5 text-sm ring-1 ring-inset ring-primary-100">
       <span className="font-medium text-primary-900">{formatRange(range)}</span>
       <span className="text-xs text-primary-700">
-        {ayahs.toLocaleString('ar-EG')} آية ·{' '}
+        {ayahs.toLocaleString('ar-u-nu-latn')} آية ·{' '}
         {pages.length === 1
           ? formatPage(pages[0]!)
-          : `${pages.length.toLocaleString('ar-EG')} صفحات (${pages[0]!.toLocaleString('ar-EG')}–${pages[pages.length - 1]!.toLocaleString('ar-EG')})`}
+          : `${pages.length.toLocaleString('ar-u-nu-latn')} صفحات (${pages[0]!.toLocaleString('ar-u-nu-latn')}–${pages[pages.length - 1]!.toLocaleString('ar-u-nu-latn')})`}
       </span>
     </div>
   );
@@ -325,7 +325,7 @@ function Stepper({
           <Minus className="h-4 w-4" />
         </button>
       </div>
-      <span className="text-[11px] text-neutral-400">من {min.toLocaleString('ar-EG')} إلى {max.toLocaleString('ar-EG')}</span>
+      <span className="text-[11px] text-neutral-400">من {min.toLocaleString('ar-u-nu-latn')} إلى {max.toLocaleString('ar-u-nu-latn')}</span>
     </div>
   );
 }

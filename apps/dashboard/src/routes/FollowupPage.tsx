@@ -49,8 +49,8 @@ type Preset = 'today' | 'yesterday' | '7d' | '30d' | 'month' | 'all' | 'custom';
 const PRESET_LABELS: Record<Preset, string> = {
   today: 'اليوم',
   yesterday: 'أمس',
-  '7d': 'آخر ٧ أيام',
-  '30d': 'آخر ٣٠ يوماً',
+  '7d': 'آخر 7 أيام',
+  '30d': 'آخر 30 يوماً',
   month: 'هذا الشهر',
   all: 'كل السجل',
   custom: 'مخصص',

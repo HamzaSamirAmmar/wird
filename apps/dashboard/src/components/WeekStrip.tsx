@@ -2,8 +2,8 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn, IconButton } from '@wird/ui-web';
 import { addDays, isoWeekStart, todayISO } from '../lib/dates';
 
-const dayFormat = new Intl.DateTimeFormat('ar', { weekday: 'short' });
-const monthFormat = new Intl.DateTimeFormat('ar', { month: 'long', year: 'numeric' });
+const dayFormat = new Intl.DateTimeFormat('ar-u-nu-latn', { weekday: 'short' });
+const monthFormat = new Intl.DateTimeFormat('ar-u-nu-latn', { month: 'long', year: 'numeric' });
 
 /**
  * A one-week date rail. Stepping moves by a whole week; picking a day selects it.

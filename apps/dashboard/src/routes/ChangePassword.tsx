@@ -45,7 +45,7 @@ export default function ChangePassword() {
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {error && <Alert variant="danger">{error}</Alert>}
 
-        <Field label="كلمة المرور الجديدة" htmlFor="new-password" hint="٨ أحرف على الأقل">
+        <Field label="كلمة المرور الجديدة" htmlFor="new-password" hint="8 أحرف على الأقل">
           <Input
             id="new-password"
             type="password"
