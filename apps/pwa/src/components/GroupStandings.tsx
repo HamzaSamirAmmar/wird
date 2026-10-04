@@ -56,8 +56,8 @@ function motivation(
   rank: number,
   above: LeaderboardEntry | undefined,
 ): string {
-  if (me.assignedCount === 0) return 'أكمل ورد اليوم لتدخل السباق.';
-  if (me.completedCount === 0) return 'لم تُكمل أي ورد بعد — ابدأ الآن وستصعد سريعًا.';
+  if (me.daysAssigned === 0) return 'أكمل ورد اليوم لتدخل السباق.';
+  if (me.daysCompleted === 0) return 'لم تُكمل أي ورد بعد — ابدأ الآن وستصعد سريعًا.';
   if (rank === 1) return 'أنت في الصدارة — واصِل التقدّم.';
   if (me.completionRate >= 1) return 'أتممت كل أورادك — ثبِّت مركزك بالمواظبة.';
   if (above) {
@@ -119,7 +119,9 @@ export function GroupStandings({ reloadKey }: { reloadKey: number }) {
 
   React.useEffect(() => {
     let cancelled = false;
-    const cacheKey = `leaderboard:${win}`;
+    // v2: day-based entries (daysAssigned/daysCompleted) — older cached boards used
+    // per-duty counts with different field names, so they must not be read back.
+    const cacheKey = `leaderboard:v2:${win}`;
 
     (async () => {
       // Cache first, so the standings are there offline and don't flash a skeleton online.
@@ -148,8 +150,8 @@ export function GroupStandings({ reloadKey }: { reloadKey: number }) {
       const fresh = (data ?? []).map((r) => ({
         employeeId: r.employee_id,
         fullName: r.full_name,
-        assignedCount: r.assigned_count,
-        completedCount: r.completed_count,
+        daysAssigned: r.assigned_count,
+        daysCompleted: r.completed_count,
         completionRate: Number(r.completion_rate),
         currentStreak: r.current_streak,
         isMe: r.is_me,
@@ -169,7 +171,7 @@ export function GroupStandings({ reloadKey }: { reloadKey: number }) {
 
   const myIndex = entries?.findIndex((e) => e.isMe) ?? -1;
   const myEntry = myIndex >= 0 && entries ? entries[myIndex]! : null;
-  const anyProgress = entries?.some((e) => e.completedCount > 0) ?? false;
+  const anyProgress = entries?.some((e) => e.daysCompleted > 0) ?? false;
 
   return (
     <section className="mt-8 border-t border-neutral-200 pt-6">
@@ -256,7 +258,7 @@ function StandingStrip({
 }) {
   const pct = Math.round(entry.completionRate * 100);
   const shownPct = Math.round(useCountUp(pct));
-  const leading = rank === 1 && entry.completedCount > 0;
+  const leading = rank === 1 && entry.daysCompleted > 0;
   const milestone = streakMilestone(entry.currentStreak);
 
   return (
@@ -286,8 +288,8 @@ function StandingStrip({
           <div className="flex items-center gap-2">
             <span className="text-lg font-bold tabular-nums">{shownPct}%</span>
             <span className="text-[11px] text-white/70">
-              {entry.completedCount.toLocaleString('ar-EG')}/
-              {entry.assignedCount.toLocaleString('ar-EG')}
+              {entry.daysCompleted.toLocaleString('ar-EG')}/
+              {entry.daysAssigned.toLocaleString('ar-EG')}
             </span>
             {entry.currentStreak > 0 && (
               <span className="ms-auto flex items-center gap-1 rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-medium">
@@ -347,7 +349,7 @@ function PodiumSpot({ entry, place }: { entry: LeaderboardEntry; place: number }
   const pct = Math.round(entry.completionRate * 100);
   // Someone can land on the podium with nothing done (small group, everyone else at 0 too):
   // don't dress a 0 up with a medal.
-  const nothing = entry.completedCount === 0;
+  const nothing = entry.daysCompleted === 0;
 
   return (
     <div className={cn('flex w-1/3 flex-col items-center', s.lift)}>
@@ -402,7 +404,7 @@ function RankTable({ entries }: { entries: LeaderboardEntry[] }) {
           <TableRow>
             <TableHead className="w-8 px-2 text-center">#</TableHead>
             <TableHead className="px-2">الاسم</TableHead>
-            <TableHead className="px-2 text-center">مكتمل</TableHead>
+            <TableHead className="px-2 text-center">الأيام</TableHead>
             <TableHead className="px-2 text-center">الإنجاز</TableHead>
             <TableHead className="px-2 text-center">
               <Flame className="mx-auto h-3.5 w-3.5" />
@@ -413,7 +415,7 @@ function RankTable({ entries }: { entries: LeaderboardEntry[] }) {
           {entries.map((entry, i) => {
             const rank = i + 1;
             const pct = Math.round(entry.completionRate * 100);
-            const nothing = entry.completedCount === 0;
+            const nothing = entry.daysCompleted === 0;
             return (
               <TableRow key={entry.employeeId} className={cn(entry.isMe && 'bg-primary-50')}>
                 <TableCell
@@ -436,7 +438,7 @@ function RankTable({ entries }: { entries: LeaderboardEntry[] }) {
                   </div>
                 </TableCell>
                 <TableCell className="px-2 text-center text-xs tabular-nums text-neutral-500">
-                  {nothing ? '—' : `${entry.completedCount}/${entry.assignedCount}`}
+                  {nothing ? '—' : `${entry.daysCompleted}/${entry.daysAssigned}`}
                 </TableCell>
                 <TableCell
                   className={cn(

@@ -22,11 +22,16 @@ export const LEADERBOARD_WINDOW_DAYS: Record<LeaderboardWindow, number> = {
 export interface LeaderboardEntry {
   employeeId: string;
   fullName: string;
-  assignedCount: number;
-  completedCount: number;
-  /** 0..1; 0 when nothing was assigned in the window. */
+  /** Days in the window with at least one duty assigned. */
+  daysAssigned: number;
+  /**
+   * Days in the window where EVERY duty due that day (all categories) was completed —
+   * all-or-nothing per day; a partially-done day doesn't count.
+   */
+  daysCompleted: number;
+  /** daysCompleted / daysAssigned, 0..1; 0 when nothing was assigned in the window. */
   completionRate: number;
-  /** Consecutive most-recent days with every duty completed (as of today, window-independent). */
+  /** Consecutive most-recent days with every duty completed (as of the window's end). */
   currentStreak: number;
   isMe: boolean;
 }
