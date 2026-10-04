@@ -136,8 +136,6 @@ export function RepeatCounter({
   }
 
   const ratio = target ? Math.min(1, count / target) : 0;
-  const R = 22;
-  const C = 2 * Math.PI * R;
 
   return (
     <div className="relative flex-none border-t border-[#b08a3e]/40 bg-[#f7efd9] text-[#0b4f55]">
@@ -194,13 +192,13 @@ export function RepeatCounter({
         </>
       )}
 
-      <div className="mx-auto flex max-w-3xl items-center gap-2 px-3 py-2 sm:gap-3">
+      <div className="mx-auto flex max-w-2xl items-center gap-3 px-3 py-2.5 sm:px-5">
         {/* Which step is being counted — tap to switch. */}
         <button
           type="button"
           onClick={() => setMenuOpen((v) => !v)}
           aria-expanded={menuOpen}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-1.5 py-1 text-start transition-colors hover:bg-[#0b4f55]/5"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-1.5 text-start transition-colors hover:bg-[#0b4f55]/5"
         >
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1 text-[11px] font-semibold text-[#9c7025]">
@@ -216,113 +214,156 @@ export function RepeatCounter({
                 className={cn('h-3.5 w-3.5 transition-transform', !menuOpen && 'rotate-180')}
               />
             </span>
-            <span className="mt-0.5 line-clamp-1 text-xs leading-snug text-[#0b4f55]/80 sm:text-[13px]">
+            <span className="mt-0.5 line-clamp-2 text-xs leading-snug text-[#0b4f55]/85 sm:text-[13px]">
               {active.label}
             </span>
-            {/* Dots that fill toward the target — seven is easy to see at a glance. */}
-            {target !== null && target > 1 && target <= 12 && (
-              <span className="mt-1.5 flex gap-1" aria-hidden>
-                {Array.from({ length: target }, (_, i) => (
-                  <span
-                    key={i}
-                    className={cn(
-                      'h-1.5 flex-1 rounded-full transition-colors duration-300 sm:max-w-7',
-                      i < count ? (reached ? 'bg-mint-500' : 'bg-[#b08a3e]') : 'bg-[#0b4f55]/12',
-                    )}
-                  />
-                ))}
-              </span>
-            )}
+            <span className="mt-1 block text-[11px] font-medium tabular-nums text-[#0b4f55]/60">
+              {target === null
+                ? `${ar(count)} ${count === 1 ? 'مرة' : 'مرات'}`
+                : reached
+                  ? `أتممت ${ar(target)} ${target === 1 ? 'قراءة' : 'قراءات'}`
+                  : `بقي ${ar(target - count)} من ${ar(target)}`}
+            </span>
           </span>
         </button>
 
-        {reached && !stepDone && onCompleteStep ? (
+        {reached && !stepDone && onCompleteStep && (
           <button
             type="button"
             disabled={marking}
             onClick={markDone}
-            className="flex h-11 shrink-0 animate-fade-in items-center gap-1.5 rounded-full bg-mint-600 px-3.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-mint-700 disabled:opacity-60"
+            className="flex h-10 shrink-0 animate-fade-in items-center gap-1.5 rounded-full bg-mint-600 px-3.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-mint-700 disabled:opacity-60"
           >
             <Check className="h-4 w-4" strokeWidth={3} />
-            <span className="hidden min-[380px]:inline">علّم الخطوة مكتملة</span>
-            <span className="min-[380px]:hidden">تمت</span>
+            <span className="hidden min-[400px]:inline">علّم الخطوة مكتملة</span>
+            <span className="min-[400px]:hidden">تمت</span>
           </button>
-        ) : (
-          <div className="flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              onClick={() => change(-1)}
-              disabled={count === 0}
-              aria-label="إنقاص قراءة"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-[#0b4f55]/70 transition-colors hover:bg-[#0b4f55]/8 disabled:opacity-30"
-            >
-              <Minus className="h-4 w-4" />
-            </button>
-            {count > 0 && (
-              <button
-                type="button"
-                onClick={() => setCounts((prev) => ({ ...prev, [active.step.stepKey]: 0 }))}
-                aria-label="تصفير العدّاد"
-                className="hidden h-9 w-9 items-center justify-center rounded-full text-[#0b4f55]/70 transition-colors hover:bg-[#0b4f55]/8 sm:flex"
-              >
-                <RotateCcw className="h-4 w-4" />
-              </button>
-            )}
-          </div>
         )}
 
-        {/* The one big target: tap after every reading. */}
-        <button
-          type="button"
-          onClick={() => change(1)}
-          aria-label={`عدّ قراءة — ${target ? `${count} من ${target}` : count}`}
-          className={cn(
-            'relative flex h-14 w-14 shrink-0 select-none items-center justify-center rounded-full text-white shadow-md transition-[background-color,transform] duration-150 active:scale-95',
-            reached ? 'bg-mint-600' : 'bg-[#0b4f55]',
-          )}
-        >
-          <svg className="absolute inset-0 -rotate-90" viewBox="0 0 56 56" aria-hidden>
-            <circle
-              cx="28"
-              cy="28"
-              r={R}
-              fill="none"
-              stroke="currentColor"
-              strokeOpacity=".18"
-              strokeWidth="3.5"
-            />
-            {target !== null && (
-              <circle
-                cx="28"
-                cy="28"
-                r={R}
-                fill="none"
-                stroke={reached ? '#d3f0e1' : '#e0bc66'}
-                strokeWidth="3.5"
-                strokeLinecap="round"
-                strokeDasharray={C}
-                strokeDashoffset={C * (1 - ratio)}
-                className="transition-[stroke-dashoffset] duration-300"
+        {/* Tasbīḥ-style control: undo · the big bead ring · reset. */}
+        <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-white/70 p-1 shadow-[inset_0_1px_2px_rgba(60,40,10,.12)] ring-1 ring-[#b08a3e]/30">
+          <button
+            type="button"
+            onClick={() => change(-1)}
+            disabled={count === 0}
+            aria-label="إنقاص قراءة"
+            title="إنقاص قراءة"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-[#0b4f55] transition-colors hover:bg-[#0b4f55]/8 active:bg-[#0b4f55]/12 disabled:opacity-25"
+          >
+            <Minus className="h-4 w-4" strokeWidth={2.5} />
+          </button>
+
+          {/* The one big target: tap after every reading. */}
+          <button
+            type="button"
+            onClick={() => change(1)}
+            aria-label={`عدّ قراءة — ${target ? `${count} من ${target}` : count}`}
+            className={cn(
+              'relative flex h-16 w-16 shrink-0 select-none items-center justify-center rounded-full text-white transition-[background-color,transform,box-shadow] duration-150 active:scale-[.94]',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e0bc66] focus-visible:ring-offset-2 focus-visible:ring-offset-[#f7efd9]',
+              reached
+                ? 'bg-linear-to-b from-mint-500 to-mint-700 shadow-[0_6px_16px_-6px_rgba(30,116,84,.7)]'
+                : 'bg-linear-to-b from-[#0e5d64] to-[#083f44] shadow-[0_6px_16px_-6px_rgba(11,79,85,.8)]',
+            )}
+          >
+            <BeadRing count={count} target={target} reached={reached} ratio={ratio} />
+            {/* A ripple per tap, so every reading is felt as counted. */}
+            {bump > 0 && (
+              <span
+                key={bump}
+                aria-hidden
+                className="pointer-events-none absolute inset-0 animate-[counter-ripple_.5s_ease-out_forwards] rounded-full ring-2 ring-[#e0bc66]"
               />
             )}
-          </svg>
-          <span
-            key={bump}
-            className="relative flex animate-fade-in flex-col items-center leading-none"
+            <span
+              key={`n${bump}`}
+              className="relative flex animate-fade-in flex-col items-center leading-none"
+            >
+              {reached ? (
+                <Check className="h-6 w-6" strokeWidth={3} />
+              ) : count === 0 ? (
+                <Plus className="h-6 w-6" strokeWidth={2.5} />
+              ) : (
+                <span className="font-display text-2xl font-bold tabular-nums">{ar(count)}</span>
+              )}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setCounts((prev) => ({ ...prev, [active.step.stepKey]: 0 }))}
+            disabled={count === 0}
+            aria-label="تصفير العدّاد"
+            title="تصفير العدّاد"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-[#0b4f55] transition-colors hover:bg-[#0b4f55]/8 active:bg-[#0b4f55]/12 disabled:opacity-25"
           >
-            {count === 0 ? (
-              <Plus className="h-5 w-5" strokeWidth={2.5} />
-            ) : (
-              <>
-                <span className="text-lg font-bold tabular-nums">{ar(count)}</span>
-                {target !== null && (
-                  <span className="mt-0.5 text-[9px] tabular-nums opacity-75">من {ar(target)}</span>
-                )}
-              </>
-            )}
-          </span>
-        </button>
+            <RotateCcw className="h-4 w-4" strokeWidth={2.25} />
+          </button>
+        </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The ring around the counter: one bead-like segment per required reading (up to 12), lit gold
+ * as they are counted — or a plain progress arc for larger targets, a soft track when
+ * open-ended.
+ */
+function BeadRing({
+  count,
+  target,
+  reached,
+  ratio,
+}: {
+  count: number;
+  target: number | null;
+  reached: boolean;
+  ratio: number;
+}) {
+  const R = 27;
+  const C = 2 * Math.PI * R;
+  const lit = reached ? '#d3f0e1' : '#e0bc66';
+  return (
+    <svg className="absolute inset-0 -rotate-90" viewBox="0 0 64 64" aria-hidden>
+      {target !== null && target > 1 && target <= 12 ? (
+        Array.from({ length: target }, (_, i) => {
+          const gap = 0.16;
+          const seg = (2 * Math.PI) / target;
+          const a0 = i * seg + gap / 2;
+          const a1 = (i + 1) * seg - gap / 2;
+          const p = (a: number) => `${32 + R * Math.cos(a)} ${32 + R * Math.sin(a)}`;
+          return (
+            <path
+              key={i}
+              d={`M ${p(a0)} A ${R} ${R} 0 0 1 ${p(a1)}`}
+              fill="none"
+              stroke={i < count ? lit : 'rgba(255,255,255,.2)'}
+              strokeWidth="4"
+              strokeLinecap="round"
+              className="transition-[stroke] duration-300"
+            />
+          );
+        })
+      ) : (
+        <>
+          <circle cx="32" cy="32" r={R} fill="none" stroke="rgba(255,255,255,.2)" strokeWidth="4" />
+          {target !== null && (
+            <circle
+              cx="32"
+              cy="32"
+              r={R}
+              fill="none"
+              stroke={lit}
+              strokeWidth="4"
+              strokeLinecap="round"
+              strokeDasharray={C}
+              strokeDashoffset={C * (1 - ratio)}
+              className="transition-[stroke-dashoffset] duration-300"
+            />
+          )}
+        </>
+      )}
+    </svg>
   );
 }
