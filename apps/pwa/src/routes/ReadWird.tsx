@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowRight, ChevronLeft, ChevronRight, Minus, Plus } from 'lucide-react';
 import { DUTY_CATEGORY_LABELS } from '@wird/domain';
 import { formatRange } from '@wird/quran-data';
 import { Alert, Spinner, cn } from '@wird/ui-web';
@@ -22,6 +22,10 @@ import {
 
 /** Height of a bare (no wird strip) page: 12 + 1035 frame + 12 (mushaf.ts, .mp-bare). */
 const BARE_PAGE_HEIGHT = 1059;
+
+/** Zoom is relative to the fitted page: 1 shows it whole, MAX_ZOOM is 4× that. */
+const MAX_ZOOM = 4;
+const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(1, z));
 
 /**
  * A duty's range as Madinah muṣḥaf pages, turned right-to-left like a printed muṣḥaf: one
@@ -82,6 +86,8 @@ export function ReaderView({
   const [error, setError] = React.useState<string | null>(null);
   const [index, setIndex] = React.useState(0);
   const [box, setBox] = React.useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  const [zoom, setZoom] = React.useState(1);
+  const zoomed = zoom > 1.001;
   const mainRef = React.useRef<HTMLElement>(null);
   const pagerRef = React.useRef<HTMLDivElement>(null);
   const hasSteps = !!duty?.steps && duty.steps.length > 0;
@@ -166,14 +172,128 @@ export function ReaderView({
           ),
         );
 
+  const s = scale * zoom;
+
   React.useEffect(() => {
     if (pagerRef.current && html.size > 0) fitLines(pagerRef.current);
   }, [html]);
 
+  // Each slide pans inside its own scroller; the page (or book) sits in it.
+  const scrollerAt = (i: number) =>
+    (pagerRef.current?.children[i]?.firstElementChild as HTMLElement | null | undefined) ?? null;
+
   const goTo = React.useCallback((i: number, behavior: ScrollBehavior = 'smooth') => {
     const slide = pagerRef.current?.children[i] as HTMLElement | undefined;
+    // A zoomed page opens at its top right, where its first line starts.
+    const sc = slide?.firstElementChild as HTMLElement | null | undefined;
+    if (sc) {
+      sc.scrollTop = 0;
+      sc.scrollLeft = sc.scrollWidth;
+    }
     slide?.scrollIntoView({ behavior, inline: 'start', block: 'nearest' });
   }, []);
+
+  // Zoom keeps the point under the fingers / cursor where it is: remember it as a fraction
+  // of the page, then scroll it back under the same screen point once the page has grown.
+  const indexRef = React.useRef(0);
+  indexRef.current = index;
+  const zoomRef = React.useRef(1);
+  zoomRef.current = zoom;
+  const drag = React.useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  const anchor = React.useRef<{ fx: number; fy: number; cx: number; cy: number } | null>(null);
+
+  const zoomAt = React.useCallback((next: number, cx?: number, cy?: number) => {
+    const z = clampZoom(next);
+    const sc = scrollerAt(indexRef.current);
+    const content = sc?.firstElementChild as HTMLElement | null | undefined;
+    if (sc && content) {
+      const sr = sc.getBoundingClientRect();
+      const r = content.getBoundingClientRect();
+      const x = cx ?? sr.left + sr.width / 2;
+      const y = cy ?? sr.top + sr.height / 2;
+      anchor.current = {
+        fx: (x - r.left) / Math.max(r.width, 1),
+        fy: (y - r.top) / Math.max(r.height, 1),
+        cx: x - sr.left,
+        cy: y - sr.top,
+      };
+    }
+    // Several wheel/pinch events can land before React renders; each builds on the last.
+    zoomRef.current = z;
+    setZoom(z);
+  }, []);
+
+  React.useLayoutEffect(() => {
+    const a = anchor.current;
+    anchor.current = null;
+    const sc = scrollerAt(indexRef.current);
+    const content = sc?.firstElementChild as HTMLElement | null | undefined;
+    if (!a || !sc || !content) return;
+    sc.scrollLeft = content.offsetLeft + a.fx * content.offsetWidth - a.cx;
+    sc.scrollTop = content.offsetTop + a.fy * content.offsetHeight - a.cy;
+  }, [zoom]);
+
+  // Pinch on a touch screen, pinch on a laptop trackpad (Chromium/Firefox report it as a
+  // ctrl+wheel, Safari as gesture events) and ctrl+wheel all zoom the page itself. Left to
+  // the browser they either zoomed the whole app shell or did nothing, since the page
+  // refits to the reading area.
+  React.useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    let pinch: { dist: number; zoom: number } | null = null;
+    let gestureZoom = 1;
+    const dist = (t: TouchList) =>
+      Math.hypot(t[0]!.clientX - t[1]!.clientX, t[0]!.clientY - t[1]!.clientY);
+    const mid = (t: TouchList) =>
+      [(t[0]!.clientX + t[1]!.clientX) / 2, (t[0]!.clientY + t[1]!.clientY) / 2] as const;
+
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const d = Math.max(-50, Math.min(50, e.deltaY));
+      zoomAt(zoomRef.current * Math.exp(-d * 0.01), e.clientX, e.clientY);
+    };
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) pinch = { dist: dist(e.touches), zoom: zoomRef.current };
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (!pinch || e.touches.length !== 2) return;
+      e.preventDefault();
+      const [x, y] = mid(e.touches);
+      zoomAt((pinch.zoom * dist(e.touches)) / Math.max(pinch.dist, 1), x, y);
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) pinch = null;
+    };
+    type GestureEvent = UIEvent & { scale: number; clientX: number; clientY: number };
+    const onGestureStart = (e: Event) => {
+      e.preventDefault();
+      gestureZoom = zoomRef.current;
+    };
+    const onGestureChange = (e: Event) => {
+      e.preventDefault();
+      if (pinch) return; // iOS reports a touch pinch both ways; the touch path handles it
+      const g = e as GestureEvent;
+      zoomAt(gestureZoom * g.scale, g.clientX, g.clientY);
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd);
+    el.addEventListener('touchcancel', onTouchEnd);
+    el.addEventListener('gesturestart', onGestureStart);
+    el.addEventListener('gesturechange', onGestureChange);
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+      el.removeEventListener('gesturestart', onGestureStart);
+      el.removeEventListener('gesturechange', onGestureChange);
+    };
+  }, [zoomAt]);
 
   // Switching between one page and the open book keeps the page you were on in view.
   const currentPage = React.useRef<number | null>(null);
@@ -198,13 +318,21 @@ export function ReaderView({
 
   React.useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Ctrl/⌘ +, −, 0 (and the bare keys) zoom the page rather than the whole app.
+      if (e.key === '+' || e.key === '=' || e.key === '-' || e.key === '0') {
+        e.preventDefault();
+        if (e.key === '0') zoomAt(1);
+        else zoomAt(zoomRef.current * (e.key === '-' ? 1 / 1.25 : 1.25));
+        return;
+      }
+      if (e.key === 'Escape' && zoomRef.current > 1) zoomAt(1);
       // Muṣḥaf order: the next page lies to the left.
       if (e.key === 'ArrowLeft') goTo(Math.min(index + 1, slides.length - 1));
       if (e.key === 'ArrowRight') goTo(Math.max(index - 1, 0));
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [goTo, index, slides.length]);
+  }, [goTo, zoomAt, index, slides.length]);
 
   const shown = slides[index] ?? [];
   const inRange = (p: number) => pages.includes(p);
@@ -213,11 +341,11 @@ export function ReaderView({
     <div
       key={page}
       className="relative overflow-hidden bg-[#fdfaf1]"
-      style={{ width: PAGE_WIDTH * scale, height: BARE_PAGE_HEIGHT * scale }}
+      style={{ width: PAGE_WIDTH * s, height: BARE_PAGE_HEIGHT * s }}
     >
       <div
         className="absolute left-0 top-0 origin-top-left"
-        style={{ width: PAGE_WIDTH, transform: `scale(${scale})` }}
+        style={{ width: PAGE_WIDTH, transform: `scale(${s})` }}
         dangerouslySetInnerHTML={{ __html: html.get(page) ?? '' }}
       />
       {/* The curve of the paper into the spine. */}
@@ -274,7 +402,25 @@ export function ReaderView({
 
       <main
         ref={mainRef}
-        className="relative min-h-0 flex-1 bg-[radial-gradient(ellipse_at_center,#f5eedc_0%,#e9dec3_70%,#ddd0b0_100%)]"
+        onDoubleClick={(e) => zoomAt(zoomed ? 1 : 2, e.clientX, e.clientY)}
+        onPointerDown={(e) => {
+          // With a mouse, a zoomed page is dragged around like a sheet of paper.
+          if (!zoomed || e.pointerType !== 'mouse' || e.button !== 0) return;
+          const sc = scrollerAt(index);
+          if (!sc || !sc.contains(e.target as Node)) return;
+          drag.current = { x: e.clientX, y: e.clientY, left: sc.scrollLeft, top: sc.scrollTop };
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          const d = drag.current;
+          const sc = scrollerAt(index);
+          if (!d || !sc) return;
+          sc.scrollLeft = d.left - (e.clientX - d.x);
+          sc.scrollTop = d.top - (e.clientY - d.y);
+        }}
+        onPointerUp={() => (drag.current = null)}
+        onPointerCancel={() => (drag.current = null)}
+        className="relative min-h-0 flex-1 select-none bg-[radial-gradient(ellipse_at_center,#f5eedc_0%,#e9dec3_70%,#ddd0b0_100%)]"
       >
         {error ? (
           <div className="p-4">
@@ -295,54 +441,106 @@ export function ReaderView({
           onScroll={onScroll}
           dir="rtl"
           className={cn(
-            'absolute inset-0 flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+            'absolute inset-0 flex snap-x snap-mandatory overflow-y-hidden overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+            // Zoomed, a swipe pans the page; the arrows and keys still turn it.
+            zoomed ? 'overflow-x-hidden' : 'overflow-x-auto',
             (html.size === 0 || scale === 0) && 'invisible',
           )}
         >
           {slides.map((slide) => (
             <div
               key={slide.join('-')}
-              className="flex h-full w-full flex-none snap-start snap-always items-center justify-center"
+              className="relative h-full w-full flex-none snap-start snap-always"
             >
-              {twoUp ? (
-                // An open muṣḥaf: leather cover, gilt edge, the two facing pages meeting at
-                // a shaded spine.
-                <div
-                  className="relative rounded-[10px] bg-linear-to-b from-[#0e5a61] via-[#0b4f55] to-[#083e43] shadow-[0_30px_60px_-20px_rgba(40,25,5,.55),0_8px_18px_-8px_rgba(40,25,5,.35)]"
-                  style={{ padding: COVER }}
-                >
-                  <div
-                    aria-hidden
-                    className="pointer-events-none absolute inset-[5px] rounded-[7px] border border-[#e0bc66]/45"
-                  />
-                  <div className="relative flex" dir="rtl">
-                    {/* Page-block edges peeking out under each page. */}
+              <div
+                dir="ltr"
+                className={cn(
+                  'absolute inset-0 flex overscroll-contain',
+                  zoomed ? 'cursor-grab overflow-auto active:cursor-grabbing' : 'overflow-hidden',
+                )}
+              >
+                <div className="m-auto flex-none" style={{ padding: PAD }}>
+                  {twoUp ? (
+                    // An open muṣḥaf: leather cover, gilt edge, the two facing pages meeting at
+                    // a shaded spine.
                     <div
-                      aria-hidden
-                      className="absolute -bottom-[3px] inset-x-[2px] h-[3px] rounded-b-sm bg-[repeating-linear-gradient(90deg,#efe5cb_0_2px,#d9caa4_2px_3px)]"
-                    />
-                    {slide.length === 2 ? (
-                      <>
-                        {pageBox(slide[0]!, 'right')}
-                        {pageBox(slide[1]!, 'left')}
-                      </>
-                    ) : (
-                      pageBox(slide[0]!, slide[0]! % 2 === 1 ? 'right' : 'left')
-                    )}
-                    <div
-                      aria-hidden
-                      className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[rgba(70,45,10,.35)]"
-                    />
-                  </div>
+                      className="relative rounded-[10px] bg-linear-to-b from-[#0e5a61] via-[#0b4f55] to-[#083e43] shadow-[0_30px_60px_-20px_rgba(40,25,5,.55),0_8px_18px_-8px_rgba(40,25,5,.35)]"
+                      style={{ padding: COVER }}
+                    >
+                      <div
+                        aria-hidden
+                        className="pointer-events-none absolute inset-[5px] rounded-[7px] border border-[#e0bc66]/45"
+                      />
+                      <div className="relative flex" dir="rtl">
+                        {/* Page-block edges peeking out under each page. */}
+                        <div
+                          aria-hidden
+                          className="absolute -bottom-[3px] inset-x-[2px] h-[3px] rounded-b-sm bg-[repeating-linear-gradient(90deg,#efe5cb_0_2px,#d9caa4_2px_3px)]"
+                        />
+                        {slide.length === 2 ? (
+                          <>
+                            {pageBox(slide[0]!, 'right')}
+                            {pageBox(slide[1]!, 'left')}
+                          </>
+                        ) : (
+                          pageBox(slide[0]!, slide[0]! % 2 === 1 ? 'right' : 'left')
+                        )}
+                        <div
+                          aria-hidden
+                          className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[rgba(70,45,10,.35)]"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="relative rounded-md shadow-[0_14px_34px_-14px_rgba(60,40,10,.5),0_2px_6px_-2px_rgba(60,40,10,.2)] ring-1 ring-[#d6c7a2]">
+                      {pageBox(slide[0]!, 'single')}
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="relative rounded-md shadow-[0_14px_34px_-14px_rgba(60,40,10,.5),0_2px_6px_-2px_rgba(60,40,10,.2)] ring-1 ring-[#d6c7a2]">
-                  {pageBox(slide[0]!, 'single')}
-                </div>
-              )}
+              </div>
             </div>
           ))}
         </div>
+
+        {html.size > 0 && scale > 0 && (
+          // Zoom controls: always there with a mouse or trackpad; on a touch screen (where
+          // pinching does it) only the way back to the whole page, once zoomed.
+          <div
+            className={cn(
+              'absolute bottom-3 left-3 z-10 items-center gap-0.5 rounded-full bg-[#0b4f55]/90 p-1 text-white shadow-lg backdrop-blur-sm',
+              zoomed ? 'flex' : 'hidden pointer-fine:flex',
+            )}
+            onDoubleClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => zoomAt(zoom / 1.25)}
+              disabled={!zoomed}
+              aria-label="تصغير"
+              className="hidden h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-white/10 disabled:opacity-30 pointer-fine:flex"
+            >
+              <Minus className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => zoomAt(1)}
+              aria-label="عرض الصفحة كاملة"
+              title="عرض الصفحة كاملة"
+              className="h-8 min-w-12 rounded-full px-2 text-xs tabular-nums transition-colors hover:bg-white/10"
+            >
+              {`${Math.round(zoom * 100).toLocaleString('ar-EG')}٪`}
+            </button>
+            <button
+              type="button"
+              onClick={() => zoomAt(zoom * 1.25)}
+              disabled={zoom >= MAX_ZOOM}
+              aria-label="تكبير"
+              className="hidden h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-white/10 disabled:opacity-30 pointer-fine:flex"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </main>
 
       {hasSteps && duty && (
