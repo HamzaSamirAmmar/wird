@@ -544,7 +544,7 @@ function summaryLine(duties: DutyWithSteps[] | null, done: number, total: number
   return `${done.toLocaleString('ar-EG')} من ${total.toLocaleString('ar-EG')} خطوة مكتملة`;
 }
 
-/** The day at a glance: overall ring, a word of encouragement, and one chip per category. */
+/** The day at a glance: overall ring and a word of encouragement. */
 function DaySummary({
   label,
   duties,
@@ -601,38 +601,6 @@ function DaySummary({
           <RefreshCw className={cn('h-4.5 w-4.5', refreshing && 'animate-spin')} />
         </IconButton>
       </div>
-
-      {duties && duties.length > 0 && (
-        <div className="relative mt-3 flex flex-wrap gap-1.5">
-          {duties.map((d) => {
-            const complete = d.steps.length > 0 && d.steps.every((s) => s.isCompleted);
-            const stepsDone = d.steps.filter((s) => s.isCompleted).length;
-            return (
-              <span
-                key={d.id}
-                className={cn(
-                  'flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1',
-                  complete
-                    ? 'bg-mint-300/20 text-mint-50 ring-mint-200/30'
-                    : 'bg-white/8 text-primary-50 ring-white/12',
-                )}
-              >
-                {complete ? (
-                  <CheckCircle2 className="h-3.5 w-3.5 text-mint-200" />
-                ) : (
-                  <span className={cn('h-1.5 w-1.5 rounded-full', categoryTone[d.category].dot)} />
-                )}
-                {DUTY_CATEGORY_LABELS[d.category]}
-                {!complete && (
-                  <span className="tabular-nums text-primary-100/60">
-                    {stepsDone.toLocaleString('ar-EG')}/{d.steps.length.toLocaleString('ar-EG')}
-                  </span>
-                )}
-              </span>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
@@ -692,14 +660,6 @@ function DownloadWirdButton({
                 ? `جارٍ تجهيز الملف… ${state.done.toLocaleString('ar-EG')}/${state.total.toLocaleString('ar-EG')}`
                 : 'جارٍ تجهيز الملف…'
               : 'تحميل الورد (PDF)'}
-          </span>
-          <span
-            className={cn(
-              'mt-0.5 block truncate text-[11px]',
-              highlight ? 'text-primary-100' : 'text-neutral-500',
-            )}
-          >
-            صفحات المصحف مع خطوات كل قسم · يعمل دون اتصال
           </span>
         </span>
       </button>

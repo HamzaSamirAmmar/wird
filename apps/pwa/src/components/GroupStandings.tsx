@@ -1,17 +1,7 @@
 import * as React from 'react';
-import {
-  ArrowDown,
-  ArrowUp,
-  CalendarClock,
-  ChevronDown,
-  Flame,
-  Medal,
-  Trophy,
-  Users,
-} from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, Flame, Medal, Trophy, Users } from 'lucide-react';
 import {
   LEADERBOARD_WINDOWS,
-  LEADERBOARD_WINDOW_DAYS,
   LEADERBOARD_WINDOW_LABELS,
   leaderboardWindowRange,
   type LeaderboardEntry,
@@ -47,14 +37,6 @@ const SHORT_WINDOW_LABELS: Record<LeaderboardWindow, string> = {
 
 const ar = (n: number) => n.toLocaleString('ar-EG');
 
-/** Arabic day count with the right number agreement. */
-function daysLabel(n: number): string {
-  if (n === 1) return 'يوم واحد';
-  if (n === 2) return 'يومان';
-  if (n >= 3 && n <= 10) return `${ar(n)} أيام`;
-  return `${ar(n)} يوماً`;
-}
-
 function readSavedWindow(): LeaderboardWindow {
   try {
     const saved = localStorage.getItem(WINDOW_KEY);
@@ -63,38 +45,6 @@ function readSavedWindow(): LeaderboardWindow {
     /* private mode / disabled storage — fall through to the default */
   }
   return '7d';
-}
-
-/** A short milestone label once a streak crosses a meaningful threshold, else null. */
-function streakMilestone(n: number): string | null {
-  if (n >= 30) return 'شهر كامل من الإتمام — ما شاء الله';
-  if (n >= 14) return 'أسبوعان متتاليان — ثبّتك الله';
-  if (n >= 7) return 'أسبوع كامل متتالٍ — واصِل';
-  return null;
-}
-
-/** Encouraging one-liner tuned to where the viewer sits. */
-function motivation(
-  me: LeaderboardEntry,
-  rank: number,
-  above: LeaderboardEntry | undefined,
-  win: LeaderboardWindow,
-): string {
-  if (me.daysAssigned === 0)
-    return win === '1d' ? 'أكمل ورد اليوم لتدخل السباق.' : 'أتمّ أول يوم لتدخل الترتيب.';
-  if (me.daysCompleted === 0) return 'لم تُتمّ أي يوم بعد — ابدأ الآن وستصعد سريعًا.';
-  if (rank === 1) return 'أنت في الصدارة — حافظ عليها بالمواظبة.';
-  if (me.completionRate >= 1)
-    return above
-      ? `أتممت كل أيامك — أنهِ يومك أبكر لتسبق ${firstName(above.fullName)}.`
-      : 'أتممت كل أيامك — بارك الله فيك.';
-  if (above) {
-    const gap = Math.round((above.completionRate - me.completionRate) * 100);
-    if (gap <= 0) return `أنت على بُعد خطوة من ${firstName(above.fullName)}.`;
-    if (gap <= 20) return `يفصلك ${ar(gap)}% فقط عن ${firstName(above.fullName)}.`;
-  }
-  if (rank <= 3) return 'أنت على المنصة — لا تفلتها.';
-  return 'كل يوم تُتمّه يقرّبك من المنصة.';
 }
 
 function firstName(full: string): string {
@@ -201,9 +151,7 @@ async function loadBoard(
  * for the top three). The full table stays folded away; the checklist is still what you open the app
  * for, this is the reason to keep coming back.
  *
- * Edge cases it is careful about: a young group whose history is shorter than the chosen
- * window (the window says how many days it actually covers), nobody having any duty in the
- * window (an empty state instead of a podium of zeros), and nobody having finished yet
+ * Edge cases it is careful about: nobody having any duty in the window (an empty state instead of a podium of zeros), and nobody having finished yet
  * (empty podium places invite you to take them, rather than handing medals to 0%).
  *
  * `reloadKey` is bumped by the parent whenever duties sync, so the board follows the same
@@ -257,8 +205,6 @@ export function GroupStandings({
 
   const anyAssigned = entries?.some((e) => e.daysAssigned > 0) ?? false;
   const anyProgress = entries?.some((e) => e.daysCompleted > 0) ?? false;
-  const trackedDays = entries ? Math.max(0, ...entries.map((e) => e.daysAssigned)) : 0;
-  const windowDays = LEADERBOARD_WINDOW_DAYS[win];
   // Only finishers stand on the podium; empty places stay open.
   const podium = (entries ?? []).filter((e) => e.daysCompleted > 0).slice(0, 3);
 
@@ -306,14 +252,6 @@ export function GroupStandings({
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {/* A young group has less history than the window: say what the board covers. */}
-          {win !== '1d' && anyAssigned && trackedDays < windowDays && (
-            <p className="flex items-center gap-1.5 text-[11px] text-neutral-500">
-              <CalendarClock className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
-              يشمل الترتيب {daysLabel(trackedDays)} حتى الآن — يكتمل مع الأيام.
-            </p>
-          )}
-
           {today && <TodayPulse entries={today} />}
 
           {myEntry && (
@@ -321,9 +259,7 @@ export function GroupStandings({
               entry={myEntry}
               rank={myIndex + 1}
               total={entries.length}
-              above={myIndex > 0 ? entries[myIndex - 1] : undefined}
               movement={movement}
-              win={win}
             />
           )}
 
@@ -440,22 +376,17 @@ function StandingStrip({
   entry,
   rank,
   total,
-  above,
   movement,
-  win,
 }: {
   entry: LeaderboardEntry;
   rank: number;
   total: number;
-  above: LeaderboardEntry | undefined;
   movement: number;
-  win: LeaderboardWindow;
 }) {
   const pct = Math.round(entry.completionRate * 100);
   const shownPct = Math.round(useCountUp(pct));
   const ranked = entry.daysAssigned > 0;
   const leading = rank === 1 && entry.daysCompleted > 0;
-  const milestone = streakMilestone(entry.currentStreak);
 
   return (
     <div
@@ -506,9 +437,6 @@ function StandingStrip({
               </span>
             )}
           </div>
-          <p className="mt-1 truncate text-[11px] text-white/85">
-            {milestone ?? motivation(entry, rank, above, win)}
-          </p>
         </div>
       </div>
     </div>
