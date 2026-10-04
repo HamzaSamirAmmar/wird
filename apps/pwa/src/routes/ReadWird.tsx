@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowRight, ChevronLeft, ChevronRight, Hash } from 'lucide-react';
+import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { DUTY_CATEGORY_LABELS } from '@wird/domain';
 import { formatRange } from '@wird/quran-data';
 import { Alert, Spinner, cn } from '@wird/ui-web';
@@ -82,20 +82,6 @@ export function ReaderView({
   const [index, setIndex] = React.useState(0);
   const [scale, setScale] = React.useState(0);
   const pagerRef = React.useRef<HTMLDivElement>(null);
-  const [showCounter, setShowCounter] = React.useState(() => {
-    try {
-      return localStorage.getItem('wird.reader.counter') !== 'off';
-    } catch {
-      return true;
-    }
-  });
-  React.useEffect(() => {
-    try {
-      localStorage.setItem('wird.reader.counter', showCounter ? 'on' : 'off');
-    } catch {
-      /* ignore */
-    }
-  }, [showCounter]);
   const hasSteps = !!duty?.steps && duty.steps.length > 0;
 
   React.useEffect(() => {
@@ -204,22 +190,6 @@ export function ReaderView({
               </div>
             )}
           </div>
-          {hasSteps && (
-            <button
-              type="button"
-              onClick={() => setShowCounter((v) => !v)}
-              aria-pressed={showCounter}
-              className={cn(
-                'flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-xs font-medium ring-1 transition-colors',
-                showCounter
-                  ? 'bg-[#e0bc66] text-[#0b4f55] ring-[#e0bc66]'
-                  : 'text-white/85 ring-white/25 hover:bg-white/10',
-              )}
-            >
-              <Hash className="h-3.5 w-3.5" />
-              العدّاد
-            </button>
-          )}
         </div>
         {/* Gold rule — the muṣḥaf's frame colour, echoing the pages below. */}
         <div className="absolute inset-x-0 bottom-0 h-[3px] bg-linear-to-l from-[#b08a3e] via-[#e0bc66] to-[#b08a3e]" />
@@ -269,7 +239,7 @@ export function ReaderView({
         </div>
       </main>
 
-      {hasSteps && showCounter && duty && (
+      {hasSteps && duty && (
         <RepeatCounter
           dutyId={duty.id}
           category={duty.category}

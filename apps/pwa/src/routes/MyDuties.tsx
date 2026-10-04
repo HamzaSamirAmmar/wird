@@ -740,14 +740,7 @@ function DutyCard({
             className="group mt-2.5 flex w-full items-center gap-2 rounded-lg bg-primary-50 px-3 py-2.5 text-start text-sm font-medium text-primary-800 ring-1 ring-inset ring-primary-100 transition-colors hover:bg-primary-100 active:bg-primary-100"
           >
             <BookOpenText className="h-4 w-4 shrink-0 text-primary-600" />
-            <span className="flex-1">
-              قراءة الورد
-              {stepDefs.some((d) => (d.repeat ?? 0) > 1) && (
-                <span className="ms-1.5 text-[11px] font-normal text-primary-600/80">
-                  مع العدّاد
-                </span>
-              )}
-            </span>
+            <span className="flex-1">قراءة الورد</span>
             <span className="text-[11px] font-normal text-primary-600">{pageLabel}</span>
             <ChevronLeft className="h-4 w-4 shrink-0 text-primary-400 transition-transform group-hover:-translate-x-0.5" />
           </button>
