@@ -30,6 +30,8 @@ import {
   type NotificationChannel,
   type NotificationCampaign,
   type CampaignScheduleKind,
+  canUseDashboard,
+  isGroupAdmin,
 } from '@wird/domain';
 import {
   Alert,
@@ -70,6 +72,7 @@ import {
 } from '@wird/ui-web';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth-context';
+import { managedGroups } from '../lib/groups';
 
 const CAMPAIGN_COLUMNS =
   'id, title, body, telegram_body, audience, target_profile_id, group_id, channel, schedule_kind, scheduled_at, recur_weekday, recur_time, is_active, next_run_at, last_sent_at, last_sent_count, last_failed_count, last_target_count, last_recipient_count, last_error, created_at';
@@ -221,7 +224,7 @@ export default function NotificationsPage() {
   const [audienceFilter, setAudienceFilter] = React.useState<NotificationAudience | '*'>('*');
   const [groups, setGroups] = React.useState<{ id: string; name: string }[]>([]);
 
-  const isSupervisor = profile?.role === 'supervisor';
+  const isSupervisor = !!profile && isGroupAdmin(profile);
   const audiences: readonly NotificationAudience[] = isSupervisor
     ? SUPERVISOR_NOTIFICATION_AUDIENCES
     : NOTIFICATION_AUDIENCES;
@@ -229,12 +232,8 @@ export default function NotificationsPage() {
 
   // RLS already scopes this: a supervisor gets their one group, a superadmin all of them.
   React.useEffect(() => {
-    supabase
-      .from('groups')
-      .select('id, name')
-      .order('name')
-      .then(({ data }) => setGroups(data ?? []));
-  }, []);
+    managedGroups(profile).then(({ data }) => setGroups(data ?? []));
+  }, [profile]);
 
   const load = React.useCallback(async () => {
     const { data, error } = await supabase
@@ -317,7 +316,7 @@ export default function NotificationsPage() {
   // wants a create button, the first wants you to widen the search.
   const filtersActive = !!needle || audienceFilter !== '*';
 
-  if (profile && profile.role !== 'superadmin' && profile.role !== 'supervisor') {
+  if (profile && !canUseDashboard(profile)) {
     return <Navigate to="/unauthorized" replace />;
   }
 
@@ -416,7 +415,7 @@ export default function NotificationsPage() {
           editing={editing}
           supervisorId={profile?.id ?? ''}
           // A supervisor's campaigns are always their own group's; the picker is superadmin-only.
-          fixedGroupId={isSupervisor ? (profile?.groupId ?? null) : null}
+          fixedGroupId={isSupervisor ? (profile?.adminGroupId ?? null) : null}
           audiences={audiences}
           groups={groups}
           onClose={() => {

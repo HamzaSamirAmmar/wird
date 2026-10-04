@@ -492,6 +492,7 @@ Deno.serve(async (req) => {
 
     // Cron path: platform already verified the JWT signature; service_role short-circuits.
     const role = decodeJwtRole(authHeader);
+    // groupId = the group the caller manages (null for a non-admin or a superadmin)
     let caller: { id: string; role: string; groupId: string | null } | null = null;
 
     if (role !== 'service_role') {
@@ -507,11 +508,11 @@ Deno.serve(async (req) => {
 
       const { data: profile } = await callerClient
         .from('profiles')
-        .select('role, group_id')
+        .select('role, admin_group_id')
         .eq('id', user.id)
         .single();
       if (!profile) return json({ error: 'Invalid session' }, 401);
-      caller = { id: user.id, role: profile.role, groupId: profile.group_id };
+      caller = { id: user.id, role: profile.role, groupId: profile.admin_group_id };
     }
 
     const payload = await req.json();
@@ -756,7 +757,7 @@ Deno.serve(async (req) => {
     // Dashboard sends: superadmin anything, a supervisor only their own group's campaigns.
     let manualKind: string | null = null;
     if (caller) {
-      if (caller.role !== 'superadmin' && caller.role !== 'supervisor') {
+      if (caller.role !== 'superadmin' && !caller.groupId) {
         return json({ error: 'Not authorized' }, 403);
       }
       const { data: owned } = await admin
@@ -765,7 +766,7 @@ Deno.serve(async (req) => {
         .eq('id', campaignId)
         .single();
       if (!owned) return json({ error: 'Not found' }, 404);
-      if (caller.role === 'supervisor' && (!caller.groupId || owned.group_id !== caller.groupId)) {
+      if (caller.role !== 'superadmin' && owned.group_id !== caller.groupId) {
         return json({ error: 'Not authorized' }, 403);
       }
       manualKind = owned.schedule_kind;

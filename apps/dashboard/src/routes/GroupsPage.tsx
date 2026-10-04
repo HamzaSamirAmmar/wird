@@ -58,11 +58,16 @@ export default function GroupsPage() {
   const [bulkCreds, setBulkCreds] = React.useState<BulkCreatedCreds[] | null>(null);
 
   const load = React.useCallback(async () => {
-    const { data, error } = await supabase
+    let query = supabase
       .from('groups')
       .select('id, name, created_at, profiles!profiles_group_id_fkey(count)')
       .eq('profiles.role', 'employee')
       .order('created_at', { ascending: false });
+    // A group admin sees only the group they manage (RLS also exposes their own employee group).
+    if (profile && profile.role !== 'superadmin' && profile.adminGroupId) {
+      query = query.eq('id', profile.adminGroupId);
+    }
+    const { data, error } = await query;
 
     if (error) {
       setError('تعذر تحميل المجموعات');
@@ -78,7 +83,7 @@ export default function GroupsPage() {
         employee_count: (g.profiles as unknown as { count: number }[])?.[0]?.count ?? 0,
       })),
     );
-  }, []);
+  }, [profile]);
 
   React.useEffect(() => {
     load();

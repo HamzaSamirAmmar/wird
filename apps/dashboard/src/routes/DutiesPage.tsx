@@ -21,6 +21,7 @@ import { WeekStrip } from '../components/WeekStrip';
 import { addDays, formatRelativeDay, isoWeekStart, todayISO } from '../lib/dates';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth-context';
+import { managedGroups } from '../lib/groups';
 
 const categoryBadge: Record<DutyCategory, 'brand' | 'in_progress' | 'completed'> = {
   new_memorization: 'brand',
@@ -75,12 +76,8 @@ export default function DutiesPage() {
   }, [loadWeek]);
 
   React.useEffect(() => {
-    supabase
-      .from('groups')
-      .select('id, name')
-      .order('name')
-      .then(({ data }) => setGroups(data ?? []));
-  }, []);
+    managedGroups(profile).then(({ data }) => setGroups(data ?? []));
+  }, [profile]);
 
   const dayRows = assignments?.filter((a) => a.due_date === selectedDate) ?? null;
 

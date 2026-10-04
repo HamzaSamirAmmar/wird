@@ -1,4 +1,5 @@
 import { Navigate, Outlet } from 'react-router-dom';
+import { canUseDashboard } from '@wird/domain';
 import { WirdMark } from '@wird/ui-web';
 import { useAuth } from '../lib/auth-context';
 
@@ -18,7 +19,7 @@ export default function ProtectedRoute() {
   if (loading) return <AuthSplash />;
 
   if (!session || !profile) return <Navigate to="/login" replace />;
-  if (profile.role !== 'supervisor' && profile.role !== 'superadmin') {
+  if (!canUseDashboard(profile)) {
     return <Navigate to="/unauthorized" replace />;
   }
   if (profile.mustChangePassword) return <Navigate to="/change-password" replace />;

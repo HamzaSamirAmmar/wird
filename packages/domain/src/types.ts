@@ -16,6 +16,8 @@ export interface Profile {
   fullName: string;
   role: UserRole;
   groupId: string | null;
+  /** The group this person manages (null = not an admin). Independent of `groupId`, the group they belong to as an employee. */
+  adminGroupId: string | null;
   mustChangePassword: boolean;
   isActive: boolean;
   createdAt: string;
@@ -34,7 +36,7 @@ export interface DutyGroupAssignment extends QuranScope {
   groupId: string;
   category: DutyCategory;
   dueDate: string;
-  assignedBy: string;
+  assignedBy: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -42,7 +44,7 @@ export interface DutyGroupAssignment extends QuranScope {
 export interface Duty extends QuranScope {
   id: string;
   employeeId: string;
-  assignedBy: string;
+  assignedBy: string | null;
   groupAssignmentId: string | null;
   category: DutyCategory;
   dueDate: string;
@@ -64,3 +66,11 @@ export interface DutyStepProgress {
 export interface DutyWithSteps extends Duty {
   steps: DutyStepProgress[];
 }
+
+/** Manages a group (a supervisor-only account, or an employee who was also made an admin). */
+export const isGroupAdmin = (p: Pick<Profile, 'role' | 'adminGroupId'>) =>
+  p.role !== 'superadmin' && p.adminGroupId !== null;
+
+/** May use the dashboard at all: superadmin, or a group admin. */
+export const canUseDashboard = (p: Pick<Profile, 'role' | 'adminGroupId'>) =>
+  p.role === 'superadmin' || isGroupAdmin(p);

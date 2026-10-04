@@ -35,6 +35,9 @@ import {
 } from '@wird/ui-web';
 import { createEmployeeSchema, formatTelegramInput, updateEmployeeSchema } from '@wird/domain';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../lib/auth-context';
+import { managedGroups } from '../lib/groups';
+import { DeleteUserSection } from '../components/DeleteUserSection';
 import { suggestUsername } from '../lib/suggest-username';
 import { BulkCreateDialog, type BulkCreatedCreds } from '../components/BulkCreateDialog';
 import { BulkCredentialsDialog } from '../components/BulkCredentialsDialog';
@@ -57,6 +60,7 @@ interface GroupOption {
 }
 
 export default function EmployeesPage() {
+  const { profile } = useAuth();
   const [employees, setEmployees] = React.useState<EmployeeRow[] | null>(null);
   const [groups, setGroups] = React.useState<GroupOption[]>([]);
   const [error, setError] = React.useState<string | null>(null);
@@ -85,7 +89,7 @@ export default function EmployeesPage() {
         )
         .eq('role', 'employee')
         .order('created_at', { ascending: false }),
-      supabase.from('groups').select('id, name').order('name'),
+      managedGroups(profile),
     ]);
 
     if (employeesRes.error) {
@@ -96,7 +100,7 @@ export default function EmployeesPage() {
       setEmployees(employeesRes.data as unknown as EmployeeRow[]);
     }
     if (!groupsRes.error) setGroups(groupsRes.data ?? []);
-  }, []);
+  }, [profile]);
 
   React.useEffect(() => {
     load();
@@ -403,6 +407,7 @@ export default function EmployeesPage() {
 
       <EditEmployeeDialog
         employee={editing}
+        currentUserId={profile?.id}
         groups={groups}
         onClose={() => setEditing(null)}
         onSaved={() => {
@@ -618,11 +623,13 @@ function CreateEmployeeDialog({
  */
 function EditEmployeeDialog({
   employee,
+  currentUserId,
   groups,
   onClose,
   onSaved,
 }: {
   employee: EmployeeRow | null;
+  currentUserId: string | undefined;
   groups: GroupOption[];
   onClose: () => void;
   onSaved: () => void;
@@ -747,6 +754,14 @@ function EditEmployeeDialog({
               <Checkbox checked={isActive} onCheckedChange={(v) => setIsActive(v === true)} />
               الحساب نشط
             </label>
+
+            {employee && employee.id !== currentUserId && (
+              <DeleteUserSection
+                userId={employee.id}
+                name={employee.full_name}
+                onDeleted={onSaved}
+              />
+            )}
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
