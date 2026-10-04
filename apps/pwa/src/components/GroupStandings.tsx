@@ -174,7 +174,9 @@ export function GroupStandings({ reloadKey }: { reloadKey: number }) {
   const anyProgress = entries?.some((e) => e.daysCompleted > 0) ?? false;
 
   return (
-    <section className="mt-8 border-t border-neutral-200 pt-6">
+    // Phone: a section under the duties, separated by a rule. ≥lg: lives in the home
+    // screen's sidebar column, so the divider and the top spacing step aside.
+    <section className="mt-8 border-t border-neutral-200 pt-6 lg:mt-0 lg:border-t-0 lg:pt-0">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Trophy className="h-4 w-4 text-accent-500" />

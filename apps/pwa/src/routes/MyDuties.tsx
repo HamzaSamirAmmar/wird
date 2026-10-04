@@ -313,8 +313,8 @@ export default function MyDuties() {
   const allDone = allSteps.length > 0 && doneSteps === allSteps.length;
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-md flex-col bg-canvas">
-      <header className="relative overflow-hidden bg-linear-to-br from-primary-700 via-primary-800 to-primary-950 px-4 pb-4 pt-safe">
+    <div className="mx-auto flex min-h-dvh max-w-md flex-col bg-canvas lg:max-w-6xl">
+      <header className="relative overflow-hidden bg-linear-to-br from-primary-700 via-primary-800 to-primary-950 px-4 pb-4 pt-safe lg:px-8">
         <div className="mihrab-pattern absolute inset-0 opacity-70" />
 
         <div className="relative flex items-center justify-between gap-3 pt-3">
@@ -357,96 +357,112 @@ export default function MyDuties() {
           </div>
         </div>
 
-        <div className="relative">
-          <BannerRail />
-        </div>
+        {/* ≥lg: the reminder moves into a side column, aligned with the standings sidebar
+            below; on a phone the stack stays greeting → reminder → progress → days. */}
+        <div className="relative mt-3 lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-8">
+          <div className="relative lg:col-start-2 lg:row-start-1">
+            <BannerRail />
+          </div>
 
-        <div className="relative mt-3 flex items-center gap-4 rounded-2xl bg-white/10 p-4 ring-1 ring-white/12">
-          <ProgressRing
-            value={doneSteps}
-            max={allSteps.length}
-            size={56}
-            strokeWidth={5}
-            className={allDone ? 'text-mint-300' : 'text-white'}
-          >
-            <span className="text-white">
-              {allSteps.length === 0 ? '—' : `${Math.round((doneSteps / allSteps.length) * 100)}%`}
-            </span>
-          </ProgressRing>
-          <div className="min-w-0 flex-1">
-            <div className="font-medium text-white">{formatRelativeDay(selectedDate)}</div>
-            <div className="mt-0.5 text-xs text-primary-100/75">
-              {duties === null
-                ? 'جارٍ التحميل…'
-                : allSteps.length === 0
-                  ? 'لا توجد خطوات لهذا اليوم'
-                  : allDone
-                    ? 'أتممت ورد اليوم — بارك الله فيك'
-                    : `${doneSteps} من ${allSteps.length} خطوة مكتملة`}
+          <div className="relative mt-3 lg:col-start-1 lg:row-start-1 lg:mt-0">
+            <div className="relative flex items-center gap-4 rounded-2xl bg-white/10 p-4 ring-1 ring-white/12">
+              <ProgressRing
+                value={doneSteps}
+                max={allSteps.length}
+                size={56}
+                strokeWidth={5}
+                className={allDone ? 'text-mint-300' : 'text-white'}
+              >
+                <span className="text-white">
+                  {allSteps.length === 0
+                    ? '—'
+                    : `${Math.round((doneSteps / allSteps.length) * 100)}%`}
+                </span>
+              </ProgressRing>
+              <div className="min-w-0 flex-1">
+                <div className="font-medium text-white">{formatRelativeDay(selectedDate)}</div>
+                <div className="mt-0.5 text-xs text-primary-100/75">
+                  {duties === null
+                    ? 'جارٍ التحميل…'
+                    : allSteps.length === 0
+                      ? 'لا توجد خطوات لهذا اليوم'
+                      : allDone
+                        ? 'أتممت ورد اليوم — بارك الله فيك'
+                        : `${doneSteps} من ${allSteps.length} خطوة مكتملة`}
+                </div>
+              </div>
+              <IconButton
+                aria-label="تحديث"
+                onClick={refresh}
+                className="text-primary-100 active:bg-white/10"
+              >
+                <RefreshCw className={cn('h-4.5 w-4.5', refreshing && 'animate-spin')} />
+              </IconButton>
+            </div>
+
+            <div className="relative mt-3">
+              <DayStrip
+                value={selectedDate}
+                onChange={(iso) => setSelectedDate(clampToVisibleRange(iso))}
+              />
             </div>
           </div>
-          <IconButton
-            aria-label="تحديث"
-            onClick={refresh}
-            className="text-primary-100 active:bg-white/10"
-          >
-            <RefreshCw className={cn('h-4.5 w-4.5', refreshing && 'animate-spin')} />
-          </IconButton>
-        </div>
-
-        <div className="relative mt-3">
-          <DayStrip
-            value={selectedDate}
-            onChange={(iso) => setSelectedDate(clampToVisibleRange(iso))}
-          />
         </div>
       </header>
 
-      <main className="flex-1 px-4 py-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
-        <PushNotice />
+      <main className="flex-1 px-4 py-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))] lg:px-8">
+        {/* ≥lg: checklist in the main column, standings in a sticky sidebar beside it;
+            on a phone the single column keeps standings below the fold, after the duties. */}
+        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-8">
+          <div className="min-w-0">
+            <PushNotice />
 
-        {selectedDate !== todayISO() && (
-          <button
-            onClick={() => setSelectedDate(todayISO())}
-            className="mb-3 text-xs font-medium text-primary-700"
-          >
-            العودة لليوم
-          </button>
-        )}
+            {selectedDate !== todayISO() && (
+              <button
+                onClick={() => setSelectedDate(todayISO())}
+                className="mb-3 text-xs font-medium text-primary-700"
+              >
+                العودة لليوم
+              </button>
+            )}
 
-        {duties === null ? (
-          <div className="flex flex-col gap-3">
-            {Array.from({ length: 2 }, (_, i) => (
-              <Card key={i} className="flex flex-col gap-3 p-4">
-                <Skeleton className="h-4 w-1/3" />
-                <Skeleton className="h-3 w-1/2" />
-                <Skeleton className="h-1.5 w-full" />
+            {duties === null ? (
+              <div className="flex flex-col gap-3">
+                {Array.from({ length: 2 }, (_, i) => (
+                  <Card key={i} className="flex flex-col gap-3 p-4">
+                    <Skeleton className="h-4 w-1/3" />
+                    <Skeleton className="h-3 w-1/2" />
+                    <Skeleton className="h-1.5 w-full" />
+                  </Card>
+                ))}
+              </div>
+            ) : duties.length === 0 ? (
+              <Card>
+                <EmptyState
+                  icon={BookOpen}
+                  title="لا توجد واجبات في هذا اليوم"
+                  description="راجع أياماً أخرى من الشريط أعلاه، أو انتظر إسناد المشرف."
+                />
               </Card>
-            ))}
+            ) : (
+              <div className="flex flex-col gap-3">
+                <DownloadWirdButton
+                  state={download}
+                  highlight={downloadPrompt}
+                  onClick={downloadWird}
+                />
+                {duties.map((duty) => (
+                  <DutyCard key={duty.id} duty={duty} onComplete={handleComplete} />
+                ))}
+              </div>
+            )}
           </div>
-        ) : duties.length === 0 ? (
-          <Card>
-            <EmptyState
-              icon={BookOpen}
-              title="لا توجد واجبات في هذا اليوم"
-              description="راجع أياماً أخرى من الشريط أعلاه، أو انتظر إسناد المشرف."
-            />
-          </Card>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <DownloadWirdButton
-              state={download}
-              highlight={downloadPrompt}
-              onClick={downloadWird}
-            />
-            {duties.map((duty) => (
-              <DutyCard key={duty.id} duty={duty} onComplete={handleComplete} />
-            ))}
-          </div>
-        )}
 
-        {/* Secondary to the checklist above, and deliberately below the fold. */}
-        <GroupStandings reloadKey={syncTick} />
+          {/* Secondary to the checklist above, and deliberately out of the way. */}
+          <aside className="lg:sticky lg:top-6 lg:self-start">
+            <GroupStandings reloadKey={syncTick} />
+          </aside>
+        </div>
 
         <div className="mt-8 text-center text-xs text-neutral-400">
           <span>الإصدار </span>
