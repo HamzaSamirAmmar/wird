@@ -241,16 +241,16 @@ export function RepeatCounter({
         )}
 
         {/* Tasbīḥ-style control: undo · the big bead ring · reset. */}
-        <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-white/70 p-1 shadow-[inset_0_1px_2px_rgba(60,40,10,.12)] ring-1 ring-[#b08a3e]/30">
+        <div className="flex shrink-0 items-center gap-0.5 rounded-full bg-white/70 p-0.5 shadow-[inset_0_1px_2px_rgba(60,40,10,.12)] ring-1 ring-[#b08a3e]/30">
           <button
             type="button"
             onClick={() => change(-1)}
             disabled={count === 0}
             aria-label="إنقاص قراءة"
             title="إنقاص قراءة"
-            className="flex h-9 w-9 items-center justify-center rounded-full text-[#0b4f55] transition-colors hover:bg-[#0b4f55]/8 active:bg-[#0b4f55]/12 disabled:opacity-25"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-[#0b4f55] transition-colors hover:bg-[#0b4f55]/8 active:bg-[#0b4f55]/12 disabled:opacity-25"
           >
-            <Minus className="h-4 w-4" strokeWidth={2.5} />
+            <Minus className="h-3.5 w-3.5" strokeWidth={2.5} />
           </button>
 
           {/* The one big target: tap after every reading. */}
@@ -259,11 +259,11 @@ export function RepeatCounter({
             onClick={() => change(1)}
             aria-label={`عدّ قراءة — ${target ? `${count} من ${target}` : count}`}
             className={cn(
-              'relative flex h-16 w-16 shrink-0 select-none items-center justify-center rounded-full text-white transition-[background-color,transform,box-shadow] duration-150 active:scale-[.94]',
+              'relative flex h-12 w-12 shrink-0 select-none items-center justify-center rounded-full text-white transition-[background-color,transform,box-shadow] duration-150 active:scale-[.94]',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e0bc66] focus-visible:ring-offset-2 focus-visible:ring-offset-[#f7efd9]',
               reached
-                ? 'bg-linear-to-b from-mint-500 to-mint-700 shadow-[0_6px_16px_-6px_rgba(30,116,84,.7)]'
-                : 'bg-linear-to-b from-[#0e5d64] to-[#083f44] shadow-[0_6px_16px_-6px_rgba(11,79,85,.8)]',
+                ? 'bg-linear-to-b from-mint-500 to-mint-700 shadow-[0_4px_10px_-4px_rgba(30,116,84,.6)]'
+                : 'bg-linear-to-b from-[#0e5d64] to-[#083f44] shadow-[0_4px_10px_-4px_rgba(11,79,85,.7)]',
             )}
           >
             <BeadRing count={count} target={target} reached={reached} ratio={ratio} />
@@ -280,11 +280,11 @@ export function RepeatCounter({
               className="relative flex animate-fade-in flex-col items-center leading-none"
             >
               {reached ? (
-                <Check className="h-6 w-6" strokeWidth={3} />
+                <Check className="h-5 w-5" strokeWidth={3} />
               ) : count === 0 ? (
-                <Plus className="h-6 w-6" strokeWidth={2.5} />
+                <Plus className="h-5 w-5" strokeWidth={2.5} />
               ) : (
-                <span className="font-display text-2xl font-bold tabular-nums">{ar(count)}</span>
+                <span className="font-display text-lg font-bold tabular-nums">{ar(count)}</span>
               )}
             </span>
           </button>
@@ -295,9 +295,9 @@ export function RepeatCounter({
             disabled={count === 0}
             aria-label="تصفير العدّاد"
             title="تصفير العدّاد"
-            className="flex h-9 w-9 items-center justify-center rounded-full text-[#0b4f55] transition-colors hover:bg-[#0b4f55]/8 active:bg-[#0b4f55]/12 disabled:opacity-25"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-[#0b4f55] transition-colors hover:bg-[#0b4f55]/8 active:bg-[#0b4f55]/12 disabled:opacity-25"
           >
-            <RotateCcw className="h-4 w-4" strokeWidth={2.25} />
+            <RotateCcw className="h-3.5 w-3.5" strokeWidth={2.25} />
           </button>
         </div>
       </div>
@@ -321,7 +321,7 @@ function BeadRing({
   reached: boolean;
   ratio: number;
 }) {
-  const R = 27;
+  const R = 28;
   const C = 2 * Math.PI * R;
   const lit = reached ? '#d3f0e1' : '#e0bc66';
   return (
@@ -339,7 +339,7 @@ function BeadRing({
               d={`M ${p(a0)} A ${R} ${R} 0 0 1 ${p(a1)}`}
               fill="none"
               stroke={i < count ? lit : 'rgba(255,255,255,.2)'}
-              strokeWidth="4"
+              strokeWidth="3.5"
               strokeLinecap="round"
               className="transition-[stroke] duration-300"
             />
@@ -347,7 +347,7 @@ function BeadRing({
         })
       ) : (
         <>
-          <circle cx="32" cy="32" r={R} fill="none" stroke="rgba(255,255,255,.2)" strokeWidth="4" />
+          <circle cx="32" cy="32" r={R} fill="none" stroke="rgba(255,255,255,.2)" strokeWidth="3.5" />
           {target !== null && (
             <circle
               cx="32"
@@ -355,7 +355,7 @@ function BeadRing({
               r={R}
               fill="none"
               stroke={lit}
-              strokeWidth="4"
+              strokeWidth="3.5"
               strokeLinecap="round"
               strokeDasharray={C}
               strokeDashoffset={C * (1 - ratio)}
