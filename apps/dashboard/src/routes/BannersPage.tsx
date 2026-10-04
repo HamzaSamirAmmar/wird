@@ -443,7 +443,7 @@ function BannerDialog({
                 id="banner-source"
                 value={source}
                 onChange={(e) => setSource(e.target.value)}
-                placeholder="البقرة: ٢٥٥"
+                placeholder="البقرة: 255"
                 maxLength={BANNER_SOURCE_MAX}
               />
             </Field>

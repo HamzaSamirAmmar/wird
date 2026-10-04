@@ -134,7 +134,7 @@ function IosInstallSteps() {
           </span>
           <span className="pt-1.5 text-sm leading-relaxed text-neutral-700">
             <span className="font-semibold text-primary-800">
-              {(i + 1).toLocaleString('ar-EG')}.{' '}
+              {(i + 1).toLocaleString('ar-u-nu-latn')}.{' '}
             </span>
             {step.text}
           </span>

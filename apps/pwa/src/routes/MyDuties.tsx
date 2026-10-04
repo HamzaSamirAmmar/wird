@@ -375,7 +375,7 @@ export default function MyDuties() {
               )}
               {pendingSync > 0 ? (
                 <span className="rounded-full bg-accent-400/20 px-2.5 py-1 text-[11px] font-medium text-accent-100 ring-1 ring-accent-300/30">
-                  {pendingSync.toLocaleString('ar-EG')} بانتظار المزامنة
+                  {pendingSync.toLocaleString('ar-u-nu-latn')} بانتظار المزامنة
                 </span>
               ) : (
                 justSynced && (
@@ -539,9 +539,9 @@ function summaryLine(duties: DutyWithSteps[] | null, done: number, total: number
   if (total === 0) return 'لا توجد خطوات لهذا اليوم';
   if (done === total) return 'أتممت ورد اليوم — بارك الله فيك';
   const left = total - done;
-  if (done === 0) return `${total.toLocaleString('ar-EG')} خطوات بانتظارك — بسم الله`;
+  if (done === 0) return `${total.toLocaleString('ar-u-nu-latn')} خطوات بانتظارك — بسم الله`;
   if (left === 1) return 'بقيت خطوة واحدة — أتمِمها!';
-  return `${done.toLocaleString('ar-EG')} من ${total.toLocaleString('ar-EG')} خطوة مكتملة`;
+  return `${done.toLocaleString('ar-u-nu-latn')} من ${total.toLocaleString('ar-u-nu-latn')} خطوة مكتملة`;
 }
 
 /** The day at a glance: overall ring and a word of encouragement. */
@@ -657,7 +657,7 @@ function DownloadWirdButton({
           <span className="block text-sm font-semibold">
             {state.busy
               ? state.total > 0
-                ? `جارٍ تجهيز الملف… ${state.done.toLocaleString('ar-EG')}/${state.total.toLocaleString('ar-EG')}`
+                ? `جارٍ تجهيز الملف… ${state.done.toLocaleString('ar-u-nu-latn')}/${state.total.toLocaleString('ar-u-nu-latn')}`
                 : 'جارٍ تجهيز الملف…'
               : 'تحميل الورد (PDF)'}
           </span>
@@ -691,7 +691,7 @@ function DutyCard({
   const pageLabel =
     pages.length === 1
       ? formatPage(pages[0]!)
-      : `صفحات ${pages[0]!.toLocaleString('ar-EG')}–${pages[pages.length - 1]!.toLocaleString('ar-EG')}`;
+      : `صفحات ${pages[0]!.toLocaleString('ar-u-nu-latn')}–${pages[pages.length - 1]!.toLocaleString('ar-u-nu-latn')}`;
 
   return (
     <Card
@@ -753,7 +753,8 @@ function DutyCard({
               className="flex-1"
             />
             <span className="shrink-0 text-[11px] tabular-nums text-neutral-500">
-              {done.toLocaleString('ar-EG')}/{duty.steps.length.toLocaleString('ar-EG')}
+              {done.toLocaleString('ar-u-nu-latn')}/
+              {duty.steps.length.toLocaleString('ar-u-nu-latn')}
             </span>
           </div>
         </div>
@@ -783,7 +784,7 @@ function DutyCard({
               <span className="min-w-0 flex-1">
                 {duty.steps.length > 1 && (
                   <span className="mb-0.5 block text-[10px] font-medium text-neutral-400">
-                    الخطوة {(i + 1).toLocaleString('ar-EG')}
+                    الخطوة {(i + 1).toLocaleString('ar-u-nu-latn')}
                   </span>
                 )}
                 <span
@@ -804,7 +805,7 @@ function DutyCard({
                       : 'bg-accent-50 text-accent-700 ring-1 ring-inset ring-accent-100',
                   )}
                 >
-                  ×{repeat.toLocaleString('ar-EG')}
+                  ×{repeat.toLocaleString('ar-u-nu-latn')}
                 </span>
               )}
             </label>

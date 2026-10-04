@@ -528,7 +528,7 @@ export function ReaderView({
               title="عرض الصفحة كاملة"
               className="h-8 min-w-12 rounded-full px-2 text-xs tabular-nums transition-colors hover:bg-white/10"
             >
-              {`${Math.round(zoom * 100).toLocaleString('ar-EG')}٪`}
+              {`${Math.round(zoom * 100).toLocaleString('ar-u-nu-latn')}%`}
             </button>
             <button
               type="button"
@@ -567,12 +567,13 @@ export function ReaderView({
           <div className="flex flex-col items-center gap-1.5 py-2">
             <div className="text-sm">
               {shown.length === 2
-                ? `الصفحتان ${shown[0]!.toLocaleString('ar-EG')}–${shown[1]!.toLocaleString('ar-EG')}`
-                : `صفحة ${shown[0]?.toLocaleString('ar-EG') ?? ''}`}
+                ? `الصفحتان ${shown[0]!.toLocaleString('ar-u-nu-latn')}–${shown[1]!.toLocaleString('ar-u-nu-latn')}`
+                : `صفحة ${shown[0]?.toLocaleString('ar-u-nu-latn') ?? ''}`}
               {slides.length > 1 && (
                 <span className="text-white/60">
                   {' '}
-                  · {(index + 1).toLocaleString('ar-EG')} من {slides.length.toLocaleString('ar-EG')}
+                  · {(index + 1).toLocaleString('ar-u-nu-latn')} من{' '}
+                  {slides.length.toLocaleString('ar-u-nu-latn')}
                 </span>
               )}
             </div>

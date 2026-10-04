@@ -41,7 +41,7 @@ export interface WirdPdfInput {
 export type PdfProgress = (done: number, total: number) => void;
 
 function dateLabel(iso: string): string {
-  return new Intl.DateTimeFormat('ar-EG', {
+  return new Intl.DateTimeFormat('ar-u-nu-latn', {
     timeZone: 'UTC',
     weekday: 'long',
     day: 'numeric',

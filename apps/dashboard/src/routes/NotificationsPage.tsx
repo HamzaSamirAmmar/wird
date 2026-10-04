@@ -89,7 +89,7 @@ const audienceBadge: Record<NotificationAudience, 'brand' | 'completed' | 'in_pr
   incomplete_today: 'completed',
 };
 
-const dateTimeFormat = new Intl.DateTimeFormat('ar', {
+const dateTimeFormat = new Intl.DateTimeFormat('ar-u-nu-latn', {
   weekday: 'long',
   day: 'numeric',
   month: 'long',
@@ -98,7 +98,7 @@ const dateTimeFormat = new Intl.DateTimeFormat('ar', {
 });
 
 // The long form above wraps to three lines in a table cell; rows need the compact one.
-const compactDateTime = new Intl.DateTimeFormat('ar', {
+const compactDateTime = new Intl.DateTimeFormat('ar-u-nu-latn', {
   day: 'numeric',
   month: 'short',
   hour: 'numeric',

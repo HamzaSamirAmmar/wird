@@ -11,7 +11,7 @@ export const BANNER_SOURCE_MAX = 200;
 export interface Banner {
   id: string;
   body: string;
-  /** Attribution — "رواه البخاري", "البقرة: ٢٥٥" — or null when there is nothing to cite. */
+  /** Attribution — "رواه البخاري", "البقرة: 255" — or null when there is nothing to cite. */
   source: string | null;
   isActive: boolean;
   sortOrder: number;

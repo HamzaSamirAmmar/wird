@@ -5,7 +5,7 @@ import { cn } from '@wird/ui-web';
 import type { CachedStep } from '../lib/offline';
 import { haptic } from '../lib/celebrate';
 
-const ar = (n: number) => n.toLocaleString('ar-EG');
+const ar = (n: number) => n.toLocaleString('ar-u-nu-latn');
 
 function storageKey(dutyId: string) {
   return `wird.counter.${dutyId}`;

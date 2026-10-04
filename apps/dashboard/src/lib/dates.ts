@@ -20,7 +20,7 @@ export function isoWeekStart(iso: string) {
   return addDays(iso, -((d.getDay() + 1) % 7));
 }
 
-const longDay = new Intl.DateTimeFormat('ar', {
+const longDay = new Intl.DateTimeFormat('ar-u-nu-latn', {
   weekday: 'long',
   day: 'numeric',
   month: 'long',

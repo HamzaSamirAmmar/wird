@@ -2,8 +2,8 @@ import * as React from 'react';
 import { HISTORY_DAYS, addDays, todayISO } from '../lib/dates';
 import { cn } from '@wird/ui-web';
 
-const dayFormat = new Intl.DateTimeFormat('ar', { weekday: 'narrow' });
-const monthFormat = new Intl.DateTimeFormat('ar', { month: 'short' });
+const dayFormat = new Intl.DateTimeFormat('ar-u-nu-latn', { weekday: 'narrow' });
+const monthFormat = new Intl.DateTimeFormat('ar-u-nu-latn', { month: 'short' });
 
 /**
  * Scrollable day rail, drawn on the teal header.

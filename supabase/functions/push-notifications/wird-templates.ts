@@ -180,7 +180,7 @@ function dutyLines(duties: TemplateDuty[], html: boolean, markDone: boolean): st
     .join('\n');
 }
 
-const dateFormat = new Intl.DateTimeFormat('ar', {
+const dateFormat = new Intl.DateTimeFormat('ar-u-nu-latn', {
   timeZone: 'Asia/Damascus',
   weekday: 'long',
   day: 'numeric',

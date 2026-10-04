@@ -79,9 +79,9 @@ export function ayahsOnPage(page: number): AyahRef[] {
   return refs;
 }
 
-/** Arabic label for a page, e.g. "صفحة ٢٢". */
+/** Arabic label for a page, e.g. "صفحة 22". */
 export function formatPage(page: number): string {
-  return `صفحة ${page.toLocaleString('ar-EG')}`;
+  return `صفحة ${page.toLocaleString('ar-u-nu-latn')}`;
 }
 
 export { PAGE_STARTS };

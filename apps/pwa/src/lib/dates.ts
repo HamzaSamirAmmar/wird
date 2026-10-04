@@ -25,7 +25,7 @@ export function addDays(iso: string, days: number) {
   return new Date(d.getTime() - offset).toISOString().slice(0, 10);
 }
 
-const longDay = new Intl.DateTimeFormat('ar', {
+const longDay = new Intl.DateTimeFormat('ar-u-nu-latn', {
   weekday: 'long',
   day: 'numeric',
   month: 'long',

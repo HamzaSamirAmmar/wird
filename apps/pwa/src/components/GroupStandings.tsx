@@ -31,11 +31,11 @@ const MOVE_TTL_MS = 24 * 60 * 60 * 1000;
 // The full labels are too wide for the inline pill row on a phone.
 const SHORT_WINDOW_LABELS: Record<LeaderboardWindow, string> = {
   '1d': 'اليوم',
-  '7d': '٧ أيام',
-  '30d': '٣٠ يوماً',
+  '7d': '7 أيام',
+  '30d': '30 يوماً',
 };
 
-const ar = (n: number) => n.toLocaleString('ar-EG');
+const ar = (n: number) => n.toLocaleString('ar-u-nu-latn');
 
 function readSavedWindow(): LeaderboardWindow {
   try {
