@@ -16,12 +16,15 @@ export function AuthShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-dvh flex-col bg-canvas">
-      <div className="relative overflow-hidden bg-linear-to-br from-primary-700 via-primary-800 to-primary-950 pb-16 pt-safe">
+    // Phone: a teal hero with the form card overlapping from below. ≥lg: a split screen —
+    // the hero becomes a full-height brand panel (right; the first grid track in RTL) and
+    // the form centers in its own half.
+    <div className="flex min-h-dvh flex-col bg-canvas lg:grid lg:grid-cols-2">
+      <div className="relative overflow-hidden bg-linear-to-br from-primary-700 via-primary-800 to-primary-950 pb-16 pt-safe lg:flex lg:items-center lg:justify-center lg:pb-0">
         <div className="mihrab-pattern absolute inset-0 opacity-80" />
         <WirdMark className="absolute -end-10 -top-10 h-44 w-44 text-white/8" />
 
-        <div className="relative flex flex-col items-center gap-3 px-6 pt-12">
+        <div className="relative flex flex-col items-center gap-3 px-6 pt-12 lg:pt-0">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/12 text-white ring-1 ring-white/20">
             <WirdMark className="h-9 w-9" />
           </div>
@@ -33,20 +36,22 @@ export function AuthShell({
       </div>
 
       {/* z-10: the hero's absolutely-positioned pattern would otherwise paint over this card. */}
-      <div className="relative z-10 -mt-10 flex-1 px-4 pb-8">
-        <div className="mx-auto w-full max-w-sm rounded-2xl bg-surface p-6 shadow-lg ring-1 ring-neutral-200/70">
-          <h1 className="text-lg font-semibold text-neutral-900">{title}</h1>
-          {description && (
-            <p className="mt-1 text-sm leading-relaxed text-neutral-500">{description}</p>
-          )}
-          <div className="mt-6">{children}</div>
-        </div>
+      <div className="relative z-10 -mt-10 flex-1 px-4 pb-8 lg:mt-0 lg:flex lg:items-center lg:justify-center lg:px-8">
+        <div className="mx-auto w-full max-w-sm lg:max-w-md">
+          <div className="rounded-2xl bg-surface p-6 shadow-lg ring-1 ring-neutral-200/70">
+            <h1 className="text-lg font-semibold text-neutral-900">{title}</h1>
+            {description && (
+              <p className="mt-1 text-sm leading-relaxed text-neutral-500">{description}</p>
+            )}
+            <div className="mt-6">{children}</div>
+          </div>
 
-        <div className="mt-8 text-center text-xs text-neutral-400">
-          <span>الإصدار </span>
-          <span dir="ltr" className="font-mono">
-            {APP_VERSION}
-          </span>
+          <div className="mt-8 text-center text-xs text-neutral-400">
+            <span>الإصدار </span>
+            <span dir="ltr" className="font-mono">
+              {APP_VERSION}
+            </span>
+          </div>
         </div>
       </div>
     </div>
