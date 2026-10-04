@@ -1,12 +1,13 @@
 import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowRight, ChevronLeft, ChevronRight, Hash } from 'lucide-react';
 import { DUTY_CATEGORY_LABELS } from '@wird/domain';
 import { formatRange } from '@wird/quran-data';
 import { Alert, Spinner, cn } from '@wird/ui-web';
 import { useAuth } from '../lib/auth-context';
-import { getCachedDuties } from '../lib/duties';
-import type { CachedDuty } from '../lib/offline';
+import { completeStep, getCachedDuties } from '../lib/duties';
+import type { CachedDuty, CachedStep } from '../lib/offline';
+import { RepeatCounter } from '../components/RepeatCounter';
 import {
   MUSHAF_CSS,
   PAGE_WIDTH,
@@ -32,36 +33,70 @@ export default function ReadWird() {
   const { dutyId } = useParams();
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const [duty, setDuty] = React.useState<CachedDuty | null | undefined>(undefined);
+  const [duty, setDuty] = React.useState<(CachedDuty & { steps: CachedStep[] }) | null | undefined>(
+    undefined,
+  );
 
-  React.useEffect(() => {
+  const load = React.useCallback(async () => {
     if (!profile) return;
-    getCachedDuties(profile.id).then((all) => setDuty(all.find((d) => d.id === dutyId) ?? null));
+    const all = await getCachedDuties(profile.id);
+    setDuty(all.find((d) => d.id === dutyId) ?? null);
   }, [profile, dutyId]);
 
+  React.useEffect(() => {
+    load();
+  }, [load]);
+
   const back = () => (window.history.length > 1 ? navigate(-1) : navigate('/', { replace: true }));
-  return <ReaderView duty={duty} onBack={back} />;
+  return (
+    <ReaderView
+      duty={duty}
+      onBack={back}
+      onCompleteStep={async (step) => {
+        // The same one-way tick as the checklist (queued offline, synced later).
+        await completeStep(step.id);
+        await load();
+      }}
+    />
+  );
 }
 
 export function ReaderView({
   duty,
   onBack,
+  onCompleteStep,
 }: {
   /** undefined while loading, null when it is not on this device */
   duty:
-    | Pick<
+    | (Pick<
         CachedDuty,
-        'category' | 'scopeSurahFrom' | 'scopeAyahFrom' | 'scopeSurahTo' | 'scopeAyahTo'
-      >
+        'id' | 'category' | 'scopeSurahFrom' | 'scopeAyahFrom' | 'scopeSurahTo' | 'scopeAyahTo'
+      > & { steps?: CachedStep[] })
     | null
     | undefined;
   onBack: () => void;
+  onCompleteStep?: (step: CachedStep) => Promise<void>;
 }) {
   const [data, setData] = React.useState<MushafData | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [index, setIndex] = React.useState(0);
   const [scale, setScale] = React.useState(0);
   const pagerRef = React.useRef<HTMLDivElement>(null);
+  const [showCounter, setShowCounter] = React.useState(() => {
+    try {
+      return localStorage.getItem('wird.reader.counter') !== 'off';
+    } catch {
+      return true;
+    }
+  });
+  React.useEffect(() => {
+    try {
+      localStorage.setItem('wird.reader.counter', showCounter ? 'on' : 'off');
+    } catch {
+      /* ignore */
+    }
+  }, [showCounter]);
+  const hasSteps = !!duty?.steps && duty.steps.length > 0;
 
   React.useEffect(() => {
     Promise.all([loadMushaf(), hafsReady()])
@@ -169,6 +204,22 @@ export function ReaderView({
               </div>
             )}
           </div>
+          {hasSteps && (
+            <button
+              type="button"
+              onClick={() => setShowCounter((v) => !v)}
+              aria-pressed={showCounter}
+              className={cn(
+                'flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-xs font-medium ring-1 transition-colors',
+                showCounter
+                  ? 'bg-[#e0bc66] text-[#0b4f55] ring-[#e0bc66]'
+                  : 'text-white/85 ring-white/25 hover:bg-white/10',
+              )}
+            >
+              <Hash className="h-3.5 w-3.5" />
+              العدّاد
+            </button>
+          )}
         </div>
         {/* Gold rule — the muṣḥaf's frame colour, echoing the pages below. */}
         <div className="absolute inset-x-0 bottom-0 h-[3px] bg-linear-to-l from-[#b08a3e] via-[#e0bc66] to-[#b08a3e]" />
@@ -217,6 +268,15 @@ export function ReaderView({
           ))}
         </div>
       </main>
+
+      {hasSteps && showCounter && duty && (
+        <RepeatCounter
+          dutyId={duty.id}
+          category={duty.category}
+          steps={duty.steps!}
+          onCompleteStep={onCompleteStep}
+        />
+      )}
 
       {pages.length > 0 && (
         <footer className="flex flex-none items-center justify-between gap-3 bg-[#0b4f55] px-3 pb-safe text-white">

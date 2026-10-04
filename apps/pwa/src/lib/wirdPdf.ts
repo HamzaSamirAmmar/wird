@@ -1,5 +1,5 @@
-import type { QuranRange } from '@wird/quran-data';
-import { DUTY_CATEGORIES, type DutyCategory } from '@wird/domain';
+import { formatRange, type QuranRange } from '@wird/quran-data';
+import { DUTY_CATEGORIES, DUTY_CATEGORY_STEPS, type DutyCategory } from '@wird/domain';
 import { inlineFontCss, inlineImages, rasterize } from './rasterize';
 import {
   HAFS_FAMILY,
@@ -10,6 +10,7 @@ import {
   hafsReady,
   loadMushaf,
   pagesForScope,
+  renderCategoryPage,
   renderPage,
   scopeOf,
 } from './mushaf';
@@ -17,6 +18,9 @@ import {
 /**
  * The day's wird as an A4 PDF of Madinah muṣḥaf pages — the same pages as the reader (both
  * come from lib/mushafPages.ts). Built on the phone, so it also works offline.
+ *
+ * Each category opens on a divider page of its own (what to read, which pages, and the steps
+ * with tally circles to tick on paper), followed by its muṣḥaf pages.
  *
  * Each page is rasterised by the browser's own renderer (lib/rasterize.ts), so the PDF is
  * identical to the layout. html2canvas re-drew the text itself and placed it ~8px low,
@@ -49,26 +53,36 @@ function dateLabel(iso: string): string {
 export async function buildWirdPdf(input: WirdPdfInput, onProgress?: PdfProgress): Promise<Blob> {
   if (input.duties.length === 0) throw new Error('No duties to print');
 
-  const [{ jsPDF }, data] = await Promise.all([
-    import('jspdf'),
-    loadMushaf(),
-    hafsReady(),
-  ]);
+  const [{ jsPDF }, data] = await Promise.all([import('jspdf'), loadMushaf(), hafsReady()]);
 
   const ordered = DUTY_CATEGORIES.flatMap((c) => input.duties.filter((d) => d.category === c));
   const label = dateLabel(input.date);
   const html = ordered
-    .flatMap((d) => {
+    .flatMap((d, i) => {
       const scope = scopeOf(d.range);
-      return pagesForScope(data, scope).map((page) =>
-        renderPage({
-          data,
-          page,
-          scope,
-          print: true,
-          chrome: { date: label, category: d.category, iconUrl: '/icon-192.png' },
-        }),
-      );
+      const pages = pagesForScope(data, scope);
+      const divider = renderCategoryPage({
+        category: d.category,
+        date: label,
+        range: formatRange(d.range),
+        pages,
+        steps: DUTY_CATEGORY_STEPS[d.category],
+        index: i + 1,
+        total: ordered.length,
+        iconUrl: '/icon-192.png',
+      });
+      return [
+        divider,
+        ...pages.map((page) =>
+          renderPage({
+            data,
+            page,
+            scope,
+            print: true,
+            chrome: { date: label, category: d.category, iconUrl: '/icon-192.png' },
+          }),
+        ),
+      ];
     })
     .join('');
 
@@ -113,20 +127,12 @@ export async function buildWirdPdf(input: WirdPdfInput, onProgress?: PdfProgress
   }
 }
 
-/** Hands the PDF to the user: the share sheet on phones (downloads are awkward there), a file elsewhere. */
-export async function deliverPdf(blob: Blob, date: string): Promise<void> {
+/**
+ * Saves the PDF as a file, on every platform. Phones used to get the share sheet instead,
+ * which read as a bug — people tapped «تحميل» and expected a download, not a "send to" menu.
+ */
+export function deliverPdf(blob: Blob, date: string): void {
   const fileName = `wird-${date}.pdf`;
-  const file = new File([blob], fileName, { type: 'application/pdf' });
-  const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
-  if (isMobile && navigator.canShare?.({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title: 'ورد اليوم' });
-      return;
-    } catch (err) {
-      // Dismissing the sheet is not a failure; anything else falls through to a plain download.
-      if (err instanceof DOMException && err.name === 'AbortError') return;
-    }
-  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

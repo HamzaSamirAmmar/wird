@@ -8,6 +8,7 @@ export {
   PAGE_WIDTH,
   fitLines,
   pagesForScope,
+  renderCategoryPage,
   renderPage,
   type AyahScope,
   type MushafData,
@@ -38,7 +39,7 @@ export function loadMushaf(): Promise<MushafData> {
 
 /** Resolves once the Hafs font can paint (it is declared in index.css). */
 export async function hafsReady(): Promise<void> {
-  await document.fonts.load("31px WirdHafs", 'بسم');
+  await document.fonts.load('31px WirdHafs', 'بسم');
   await document.fonts.ready;
 }
 

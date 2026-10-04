@@ -9,6 +9,12 @@ export interface DutyStepDefinition {
   order: number;
   key: string;
   label: string;
+  /**
+   * How many times the step asks the passage to be read, when it names a number — drives the
+   * reader's repetition counter and the PDF's tally circles. UI-only metadata: the SQL seed
+   * (duty_category_steps) has no such column and doesn't need one. Omitted = open-ended.
+   */
+  repeat?: number;
 }
 
 export const DUTY_CATEGORY_LABELS: Record<DutyCategory, string> = {
@@ -20,19 +26,35 @@ export const DUTY_CATEGORY_LABELS: Record<DutyCategory, string> = {
 export const DUTY_CATEGORY_STEPS: Record<DutyCategory, DutyStepDefinition[]> = {
   new_memorization: [
     { order: 1, key: 'listen', label: 'سماع الحفظ الجديد من قارئ عدة مرات كل على حسبه' },
-    { order: 2, key: 'read_seeing_7', label: 'قراءة الحفظ الجديد سبع مرات عن حاضر مع تمعن النظر' },
+    {
+      order: 2,
+      key: 'read_seeing_7',
+      label: 'قراءة الحفظ الجديد سبع مرات عن حاضر مع تمعن النظر',
+      repeat: 7,
+    },
     {
       order: 3,
       key: 'read_by_heart_watch_7',
       label:
         'قراءة الحفظ الجديد سبع مرات غيباً قدر الإمكان، وعند التوقف مشاهدة مكان الخطأ ثم إتمام القراءة غيباً',
+      repeat: 7,
     },
-    { order: 4, key: 'read_by_heart_7', label: 'قراءة الحفظ الجديد سبع مرات غيباً' },
+    { order: 4, key: 'read_by_heart_7', label: 'قراءة الحفظ الجديد سبع مرات غيباً', repeat: 7 },
   ],
   minor_review: [
-    { order: 1, key: 'read_once', label: 'قراءة ما تم تحديده كمراجعة صغرى مرة واحدة غيباً' },
+    {
+      order: 1,
+      key: 'read_once',
+      label: 'قراءة ما تم تحديده كمراجعة صغرى مرة واحدة غيباً',
+      repeat: 1,
+    },
   ],
   major_review: [
-    { order: 1, key: 'read_once', label: 'قراءة ما تم تحديده كمراجعة كبرى مرة واحدة غيباً' },
+    {
+      order: 1,
+      key: 'read_once',
+      label: 'قراءة ما تم تحديده كمراجعة كبرى مرة واحدة غيباً',
+      repeat: 1,
+    },
   ],
 };
