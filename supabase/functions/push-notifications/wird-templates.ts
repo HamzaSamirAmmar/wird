@@ -147,11 +147,40 @@ const AYAH_COUNTS = [
   30, 20, 15, 21, 11, 8, 8, 19, 5, 8, 8, 11, 11, 8, 3, 9, 5, 4, 7, 3, 6, 3, 5, 4, 5, 6,
 ];
 
+// Mirrors packages/quran-data/src/juz.ts.
+const JUZ_STARTS = [
+  [1, 1], [2, 142], [2, 253], [3, 93], [4, 24], [4, 148], [5, 82], [6, 111], [7, 88], [8, 41],
+  [9, 93], [11, 6], [12, 53], [15, 1], [17, 1], [18, 75], [21, 1], [23, 1], [25, 21], [27, 56],
+  [29, 46], [33, 31], [36, 28], [39, 32], [41, 47], [46, 1], [51, 31], [58, 1], [67, 1], [78, 1],
+];
+
+function juzEnd(n: number): [number, number] {
+  if (n === 30) return [114, AYAH_COUNTS[113]];
+  const [s, a] = JUZ_STARTS[n];
+  return a > 1 ? [s, a - 1] : [s - 1, AYAH_COUNTS[s - 2]];
+}
+
+/** { from, to } when the range is exactly whole juz', else null. */
+function wholeJuz(s: number[]): { from: number; to: number } | null {
+  const [surahFrom, ayahFrom, surahTo, ayahTo] = s;
+  const from = JUZ_STARTS.findIndex(([a, b]) => a === surahFrom && b === ayahFrom) + 1;
+  if (from === 0) return null;
+  for (let to = from; to <= 30; to++) {
+    const [es, ea] = juzEnd(to);
+    if (es === surahTo && ea === ayahTo) return { from, to };
+  }
+  return null;
+}
+
 /** Mirrors formatRange() in packages/quran-data. */
 export function formatRange(s: number[]): string {
   const [surahFrom, ayahFrom, surahTo, ayahTo] = s;
   const from = SURAHS[surahFrom - 1];
   const to = SURAHS[surahTo - 1];
+  const juz = wholeJuz(s);
+  if (juz) {
+    return juz.from === juz.to ? `الجزء ${juz.from}` : `من الجزء ${juz.from} إلى الجزء ${juz.to}`;
+  }
   if (ayahFrom === 1 && ayahTo === AYAH_COUNTS[surahTo - 1]) {
     return surahFrom === surahTo ? `سورة ${from} كاملة` : `من سورة ${from} إلى نهاية سورة ${to}`;
   }

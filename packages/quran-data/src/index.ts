@@ -1,9 +1,11 @@
 import { SURAHS, type Surah } from './surahs';
 import { globalAyahIndex } from './pages';
+import { wholeJuzOfRange } from './juz';
 
 export type { Surah };
 export { SURAHS };
 export * from './pages';
+export * from './juz';
 
 const TOTAL_SURAHS = 114;
 const TOTAL_AYAHS = 6236;
@@ -58,13 +60,18 @@ export function isWholeSurahRange(range: QuranRange): boolean {
 
 /**
  * Human-readable Arabic label for a range: "البقرة (1-20)", "البقرة (1) - آل عمران (10)",
- * or, for whole surahs, "سورة النبأ كاملة" / "من سورة الملك إلى نهاية سورة المرسلات".
+ * or, for whole surahs, "سورة النبأ كاملة" / "من سورة الملك إلى نهاية سورة المرسلات", or, for
+ * whole juz', "الجزء 5" / "من الجزء 5 إلى الجزء 7" (checked first: juz 30 is also whole surahs).
  * Mirrored in supabase/functions/push-notifications (formatSnapshotRange) — keep in sync.
  */
 export function formatRange(range: QuranRange): string {
   const { surahFrom, ayahFrom, surahTo, ayahTo } = range;
   const from = getSurah(surahFrom);
   const to = getSurah(surahTo);
+  const juz = wholeJuzOfRange(range);
+  if (juz) {
+    return juz.from === juz.to ? `الجزء ${juz.from}` : `من الجزء ${juz.from} إلى الجزء ${juz.to}`;
+  }
   if (isWholeSurahRange(range)) {
     return surahFrom === surahTo
       ? `سورة ${from.nameAr} كاملة`
