@@ -158,7 +158,8 @@ export function BannerRail() {
   return (
     <div
       // pan-y: the browser keeps vertical scrolling, horizontal drags come to us as a swipe.
-      className="relative mt-3 flex touch-pan-y select-none gap-3.5 overflow-hidden rounded-2xl bg-white/8 px-4 py-3.5 ring-1 ring-white/15"
+      // No margin of its own: the host owns the spacing (phone stack vs lg sidebar column).
+      className="relative flex touch-pan-y select-none gap-3.5 overflow-hidden rounded-2xl bg-white/8 px-4 py-3.5 ring-1 ring-white/15"
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onPointerCancel={() => {
