@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Navigate } from 'react-router-dom';
-import { Check, Copy, Pencil, Plus, ShieldCheck } from 'lucide-react';
+import { Check, Copy, Pencil, Plus, ShieldCheck, UserPlus } from 'lucide-react';
 import {
   Alert,
   Avatar,
@@ -33,17 +33,23 @@ import {
   TableRow,
   Pagination,
 } from '@wird/ui-web';
-import { createEmployeeSchema } from '@wird/domain';
+import { createEmployeeSchema, formatTelegramInput } from '@wird/domain';
 import { useAuth } from '../lib/auth-context';
 import { supabase } from '../lib/supabase';
 import { suggestUsername } from '../lib/suggest-username';
+import { DeleteUserSection } from '../components/DeleteUserSection';
 
 interface SupervisorRow {
   id: string;
   username: string;
   full_name: string;
+  /** 'supervisor' = admin only; 'employee' = also a regular user (does duties) */
+  role: 'supervisor' | 'employee';
   is_active: boolean;
+  /** The group they MANAGE (admin_group_id) */
   group: { id: string; name: string } | null;
+  /** The group they belong to as an employee (null for admin-only accounts) */
+  ownGroup: { id: string; name: string } | null;
 }
 
 interface GroupOption {
@@ -52,9 +58,12 @@ interface GroupOption {
 }
 
 /**
- * Superadmin-only: creates and manages supervisor accounts. Unlike employees, a supervisor
- * is always assigned to exactly one group at creation and cannot be created by another
- * supervisor — only by a superadmin, via the same `create-employee` edge function.
+ * Superadmin-only: creates and manages admins (the people who manage one group). An admin is
+ * either admin-only (no wird of their own) or also a regular user — an employee who does their
+ * own duties in their own group while managing a group (the same one or another). Admins can't
+ * be created by another admin — only by a superadmin, via the `create-employee` edge function —
+ * and an existing employee can be promoted. Permissions of an admin are scoped to the group they
+ * manage.
  */
 export default function SupervisorsPage() {
   const { profile } = useAuth();
@@ -67,13 +76,16 @@ export default function SupervisorsPage() {
     password: string;
   } | null>(null);
   const [editing, setEditing] = React.useState<SupervisorRow | null>(null);
+  const [promoteOpen, setPromoteOpen] = React.useState(false);
 
   const load = React.useCallback(async () => {
     const [supervisorsRes, groupsRes] = await Promise.all([
       supabase
         .from('profiles')
-        .select('id, username, full_name, is_active, group:groups!profiles_group_id_fkey(id, name)')
-        .eq('role', 'supervisor')
+        .select(
+          'id, username, full_name, role, is_active, ownGroup:groups!profiles_group_id_fkey(id, name), group:groups!profiles_admin_group_id_fkey(id, name)',
+        )
+        .not('admin_group_id', 'is', null)
         .order('created_at', { ascending: false }),
       supabase.from('groups').select('id, name').order('name'),
     ]);
@@ -108,12 +120,22 @@ export default function SupervisorsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="المشرفون"
-        description="أنشئ حسابات المشرفين وأسند كل واحد منهم إلى مجموعة واحدة يديرها"
+        description="أنشئ حسابات المشرفين وأسند كل واحد منهم إلى مجموعة واحدة يديرها — وقد يكون المشرف مستخدماً في الوقت نفسه"
         actions={
-          <Button onClick={() => setDialogOpen(true)} disabled={groups.length === 0}>
-            <Plus className="h-4 w-4" />
-            مشرف جديد
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setPromoteOpen(true)}
+              disabled={groups.length === 0}
+            >
+              <UserPlus className="h-4 w-4" />
+              ترقية مستخدم
+            </Button>
+            <Button onClick={() => setDialogOpen(true)} disabled={groups.length === 0}>
+              <Plus className="h-4 w-4" />
+              مشرف جديد
+            </Button>
+          </div>
         }
       />
 
@@ -161,6 +183,7 @@ export default function SupervisorsPage() {
                         <div className="flex items-center gap-3">
                           <Avatar name={s.full_name} size="sm" />
                           <span className="font-medium text-neutral-900">{s.full_name}</span>
+                          {s.role === 'employee' && <Badge variant="neutral">مشرف ومستخدم</Badge>}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -216,6 +239,16 @@ export default function SupervisorsPage() {
 
       <CredentialsDialog creds={createdCreds} onClose={() => setCreatedCreds(null)} />
 
+      <PromoteDialog
+        open={promoteOpen}
+        onOpenChange={setPromoteOpen}
+        groups={groups}
+        onPromoted={() => {
+          setPromoteOpen(false);
+          load();
+        }}
+      />
+
       <EditSupervisorDialog
         supervisor={editing}
         groups={groups}
@@ -248,6 +281,7 @@ function SupervisorCard({ supervisor, onEdit }: { supervisor: SupervisorRow; onE
             {supervisor.username}
           </span>
           <span className="truncate">{supervisor.group?.name ?? '—'}</span>
+          {supervisor.role === 'employee' && <Badge variant="neutral">مشرف ومستخدم</Badge>}
         </div>
         <div className="mt-2">
           <Badge variant={supervisor.is_active ? 'completed' : 'neutral'} dot>
@@ -273,6 +307,10 @@ function CreateSupervisorDialog({
   const [username, setUsername] = React.useState('');
   const [fullName, setFullName] = React.useState('');
   const [groupId, setGroupId] = React.useState('');
+  // Also a regular user: does duties in `ownGroupId` while managing `groupId`.
+  const [alsoUser, setAlsoUser] = React.useState(false);
+  const [ownGroupId, setOwnGroupId] = React.useState('');
+  const [telegram, setTelegram] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [usernameTouched, setUsernameTouched] = React.useState(false);
@@ -282,6 +320,9 @@ function CreateSupervisorDialog({
       setUsername('');
       setFullName('');
       setGroupId('');
+      setAlsoUser(false);
+      setOwnGroupId('');
+      setTelegram('');
       setError(null);
       setUsernameTouched(false);
     }
@@ -299,9 +340,16 @@ function CreateSupervisorDialog({
     const parsed = createEmployeeSchema.safeParse({
       username,
       fullName,
-      groupId,
-      role: 'supervisor',
+      // Admin-only accounts sit in the group they manage; an admin who is also a user sits in
+      // their own group and manages `groupId` separately.
+      groupId: alsoUser ? ownGroupId : groupId,
+      role: alsoUser ? 'employee' : 'supervisor',
+      telegramUsername: alsoUser ? telegram : undefined,
     });
+    if (alsoUser && !groupId) {
+      setError('يجب اختيار المجموعة التي يديرها');
+      return;
+    }
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'خطأ في البيانات');
       return;
@@ -314,7 +362,9 @@ function CreateSupervisorDialog({
       fullName: string;
       password: string;
       error?: string;
-    }>('create-employee', { body: parsed.data });
+    }>('create-employee', {
+      body: { ...parsed.data, adminGroupId: alsoUser ? groupId : undefined },
+    });
     setSubmitting(false);
 
     if (error || !data || data.error) {
@@ -373,6 +423,39 @@ function CreateSupervisorDialog({
                 </SelectContent>
               </Select>
             </Field>
+
+            <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-neutral-700">
+              <Checkbox checked={alsoUser} onCheckedChange={(v) => setAlsoUser(v === true)} />
+              وهو أيضاً مستخدم (يستلم وِرداً)
+            </label>
+
+            {alsoUser && (
+              <>
+                <Field label="مجموعته كمستخدم" hint="قد تختلف عن المجموعة التي يديرها">
+                  <Select value={ownGroupId} onValueChange={setOwnGroupId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="اختر مجموعة" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {groups.map((g) => (
+                        <SelectItem key={g.id} value={g.id}>
+                          {g.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="معرّف تيليجرام" htmlFor="supervisor-telegram">
+                  <Input
+                    id="supervisor-telegram"
+                    dir="ltr"
+                    value={telegram}
+                    onChange={(e) => setTelegram(formatTelegramInput(e.target.value))}
+                    placeholder="@username"
+                  />
+                </Field>
+              </>
+            )}
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
@@ -411,15 +494,37 @@ function EditSupervisorDialog({
     setError(null);
   }, [supervisor]);
 
+  async function removeAdmin() {
+    if (!supervisor) return;
+    setSubmitting(true);
+    setError(null);
+    const { error } = await supabase
+      .from('profiles')
+      .update({ admin_group_id: null })
+      .eq('id', supervisor.id);
+    setSubmitting(false);
+    if (error) {
+      setError('تعذر إزالة صلاحية الإشراف');
+      return;
+    }
+    onSaved();
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!supervisor || !groupId) return;
 
     setSubmitting(true);
     setError(null);
+    // An admin-only account sits in the group it manages, so both columns move together; for
+    // an admin who is also a user, their own group is untouched.
     const { error } = await supabase
       .from('profiles')
-      .update({ group_id: groupId, is_active: isActive })
+      .update(
+        supervisor.role === 'supervisor'
+          ? { group_id: groupId, admin_group_id: groupId, is_active: isActive }
+          : { admin_group_id: groupId, is_active: isActive },
+      )
       .eq('id', supervisor.id);
     setSubmitting(false);
 
@@ -444,7 +549,13 @@ function EditSupervisorDialog({
               <Input dir="ltr" value={supervisor?.username ?? ''} disabled readOnly />
             </Field>
 
-            <Field label="المجموعة">
+            {supervisor?.role === 'employee' && (
+              <Field label="مجموعته كمستخدم" hint="تُعدَّل من صفحة المستخدمين">
+                <Input value={supervisor.ownGroup?.name ?? '—'} disabled readOnly />
+              </Field>
+            )}
+
+            <Field label="المجموعة التي يديرها">
               <Select value={groupId} onValueChange={setGroupId}>
                 <SelectTrigger>
                   <SelectValue placeholder="اختر مجموعة" />
@@ -463,6 +574,27 @@ function EditSupervisorDialog({
               <Checkbox checked={isActive} onCheckedChange={(v) => setIsActive(v === true)} />
               الحساب نشط
             </label>
+
+            {supervisor?.role === 'employee' && (
+              <div>
+                <Button type="button" variant="outline" onClick={removeAdmin} disabled={submitting}>
+                  إزالة صلاحية الإشراف (يبقى مستخدماً)
+                </Button>
+              </div>
+            )}
+
+            {supervisor && (
+              <DeleteUserSection
+                userId={supervisor.id}
+                name={supervisor.full_name}
+                detail={
+                  supervisor.role === 'employee'
+                    ? 'وهو أيضاً مستخدم، فستُحذف أوراده كذلك.'
+                    : undefined
+                }
+                onDeleted={onSaved}
+              />
+            )}
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
@@ -470,6 +602,112 @@ function EditSupervisorDialog({
             </Button>
             <Button type="submit" loading={submitting}>
               حفظ
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Makes an existing employee an admin of a group (they keep their own wird). */
+function PromoteDialog({
+  open,
+  onOpenChange,
+  groups,
+  onPromoted,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  groups: GroupOption[];
+  onPromoted: () => void;
+}) {
+  const [candidates, setCandidates] = React.useState<
+    { id: string; full_name: string; username: string }[]
+  >([]);
+  const [userId, setUserId] = React.useState('');
+  const [groupId, setGroupId] = React.useState('');
+  const [error, setError] = React.useState<string | null>(null);
+  const [submitting, setSubmitting] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setUserId('');
+    setGroupId('');
+    setError(null);
+    supabase
+      .from('profiles')
+      .select('id, full_name, username')
+      .eq('role', 'employee')
+      .is('admin_group_id', null)
+      .order('full_name')
+      .then(({ data }) => setCandidates(data ?? []));
+  }, [open]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!userId || !groupId) {
+      setError('اختر المستخدم والمجموعة');
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    const { error } = await supabase
+      .from('profiles')
+      .update({ admin_group_id: groupId })
+      .eq('id', userId);
+    setSubmitting(false);
+    if (error) {
+      setError('تعذرت الترقية');
+      return;
+    }
+    onPromoted();
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>ترقية مستخدم إلى مشرف</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <DialogBody>
+            {error && <Alert variant="danger">{error}</Alert>}
+            <Field label="المستخدم" hint="يبقى مستخدماً ويستمر في تسلّم أوراده">
+              <Select value={userId} onValueChange={setUserId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="اختر مستخدماً" />
+                </SelectTrigger>
+                <SelectContent>
+                  {candidates.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.full_name} ({c.username})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="المجموعة التي سيديرها">
+              <Select value={groupId} onValueChange={setGroupId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="اختر مجموعة" />
+                </SelectTrigger>
+                <SelectContent>
+                  {groups.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {g.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              إلغاء
+            </Button>
+            <Button type="submit" loading={submitting}>
+              ترقية
             </Button>
           </DialogFooter>
         </form>

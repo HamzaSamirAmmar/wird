@@ -1,5 +1,6 @@
-// Supervisor/superadmin-only: creates an employee (or, superadmin-only, a supervisor) account
-// with an auto-generated password.
+// Admin-only: creates an employee account with an auto-generated password. A superadmin may
+// also create an admin-only account (role 'supervisor') or an employee who is ALSO an admin of
+// a group (`adminGroupId`, which may differ from the employee's own group).
 // Requires SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY (auto-injected by Supabase).
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -65,12 +66,13 @@ Deno.serve(async (req) => {
 
     const { data: callerProfile, error: callerProfileError } = await callerClient
       .from('profiles')
-      .select('role, group_id')
+      .select('role, group_id, admin_group_id')
       .eq('id', user.id)
       .single();
 
-    const callerRole = callerProfile?.role;
-    if (callerProfileError || (callerRole !== 'supervisor' && callerRole !== 'superadmin')) {
+    const callerIsSuperadmin = callerProfile?.role === 'superadmin';
+    const callerAdminGroup: string | null = callerProfile?.admin_group_id ?? null;
+    if (callerProfileError || (!callerIsSuperadmin && !callerAdminGroup)) {
       return json({ error: 'Only supervisors or superadmins can create accounts' }, 403);
     }
 
@@ -82,6 +84,8 @@ Deno.serve(async (req) => {
     const groupId = String(body.groupId ?? '').trim();
     const role = body.role === 'supervisor' ? 'supervisor' : 'employee';
     const telegramUsername = normalizeTelegramUsername(body.telegramUsername);
+    // Employee-and-admin: the group they manage. Admin-only accounts manage the group they sit in.
+    const requestedAdminGroup = String(body.adminGroupId ?? '').trim() || null;
 
     if (!USERNAME_PATTERN.test(username)) {
       return json({ error: 'اسم مستخدم غير صالح' }, 400);
@@ -99,26 +103,29 @@ Deno.serve(async (req) => {
       return json({ error: 'معرف تيليجرام غير صالح' }, 400);
     }
 
-    // A group-scoped supervisor may only create employees, and only within their own group.
-    if (callerRole === 'supervisor') {
-      if (role !== 'employee') {
+    // A group admin may only create plain employees, and only within the group they manage.
+    if (!callerIsSuperadmin) {
+      if (role !== 'employee' || requestedAdminGroup) {
         return json({ error: 'المشرف لا يمكنه إنشاء حساب مشرف' }, 403);
       }
-      if (groupId !== callerProfile.group_id) {
+      if (groupId !== callerAdminGroup) {
         return json({ error: 'لا يمكن إنشاء حساب خارج مجموعتك' }, 403);
       }
     }
+    const adminGroupId = role === 'supervisor' ? groupId : requestedAdminGroup;
 
     // Service-role client for privileged writes (creating the auth user + profile).
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
-    const { data: group, error: groupError } = await adminClient
-      .from('groups')
-      .select('id')
-      .eq('id', groupId)
-      .single();
-    if (groupError || !group) {
-      return json({ error: 'المجموعة غير موجودة' }, 400);
+    for (const id of new Set([groupId, adminGroupId].filter((g): g is string => !!g))) {
+      const { data: group, error: groupError } = await adminClient
+        .from('groups')
+        .select('id')
+        .eq('id', id)
+        .single();
+      if (groupError || !group) {
+        return json({ error: 'المجموعة غير موجودة' }, 400);
+      }
     }
 
     const email = `${username}@${SYNTHETIC_EMAIL_DOMAIN}`;
@@ -142,6 +149,7 @@ Deno.serve(async (req) => {
       full_name: fullName,
       role,
       group_id: groupId,
+      admin_group_id: adminGroupId,
       telegram_username: telegramUsername,
       must_change_password: true,
     });
@@ -149,9 +157,8 @@ Deno.serve(async (req) => {
     if (profileError) {
       // Roll back the orphaned auth user if the profile insert failed.
       await adminClient.auth.admin.deleteUser(created.user.id);
-      const message = profileError.code === '23505'
-        ? 'هذا المعرف مستخدم لمستخدم آخر'
-        : profileError.message;
+      const message =
+        profileError.code === '23505' ? 'هذا المعرف مستخدم لمستخدم آخر' : profileError.message;
       return json({ error: message }, profileError.code === '23505' ? 409 : 500);
     }
 

@@ -51,7 +51,7 @@ export type Database = {
       };
       duties: {
         Row: {
-          assigned_by: string;
+          assigned_by: string | null;
           category: Database['public']['Enums']['duty_category'];
           created_at: string;
           due_date: string;
@@ -67,7 +67,7 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
-          assigned_by: string;
+          assigned_by?: string | null;
           category: Database['public']['Enums']['duty_category'];
           created_at?: string;
           due_date: string;
@@ -83,7 +83,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
-          assigned_by?: string;
+          assigned_by?: string | null;
           category?: Database['public']['Enums']['duty_category'];
           created_at?: string;
           due_date?: string;
@@ -145,7 +145,7 @@ export type Database = {
       };
       duty_group_assignments: {
         Row: {
-          assigned_by: string;
+          assigned_by: string | null;
           category: Database['public']['Enums']['duty_category'];
           created_at: string;
           due_date: string;
@@ -159,7 +159,7 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
-          assigned_by: string;
+          assigned_by?: string | null;
           category: Database['public']['Enums']['duty_category'];
           created_at?: string;
           due_date: string;
@@ -173,7 +173,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
-          assigned_by?: string;
+          assigned_by?: string | null;
           category?: Database['public']['Enums']['duty_category'];
           created_at?: string;
           due_date?: string;
@@ -400,6 +400,7 @@ export type Database = {
       };
       profiles: {
         Row: {
+          admin_group_id: string | null;
           created_at: string;
           full_name: string;
           group_id: string | null;
@@ -411,6 +412,7 @@ export type Database = {
           username: string;
         };
         Insert: {
+          admin_group_id?: string | null;
           created_at?: string;
           full_name: string;
           group_id?: string | null;
@@ -422,6 +424,7 @@ export type Database = {
           username: string;
         };
         Update: {
+          admin_group_id?: string | null;
           created_at?: string;
           full_name?: string;
           group_id?: string | null;

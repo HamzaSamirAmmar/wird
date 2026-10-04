@@ -43,6 +43,8 @@ import {
 import { formatRange } from '@wird/quran-data';
 import { addDays, formatDayLabel, todayISO } from '../lib/dates';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../lib/auth-context';
+import { managedGroups } from '../lib/groups';
 
 type Preset = 'today' | 'yesterday' | '7d' | '30d' | 'month' | 'all' | 'custom';
 
@@ -95,6 +97,7 @@ const SORT_CHIPS: { key: SortKey; label: string }[] = [
 ];
 
 export default function FollowupPage() {
+  const { profile } = useAuth();
   const [groups, setGroups] = React.useState<{ id: string; name: string }[]>([]);
   const [groupId, setGroupId] = React.useState('all');
   const [preset, setPreset] = React.useState<Preset>('30d');
@@ -113,12 +116,8 @@ export default function FollowupPage() {
   const { from, to } = rangeFor(preset, customFrom, customTo);
 
   React.useEffect(() => {
-    supabase
-      .from('groups')
-      .select('id, name')
-      .order('name')
-      .then(({ data }) => setGroups(data ?? []));
-  }, []);
+    managedGroups(profile).then(({ data }) => setGroups(data ?? []));
+  }, [profile]);
 
   const load = React.useCallback(async () => {
     setRows(null);

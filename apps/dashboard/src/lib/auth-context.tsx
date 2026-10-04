@@ -21,6 +21,7 @@ function toProfile(row: {
   full_name: string;
   role: UserRole;
   group_id: string | null;
+  admin_group_id: string | null;
   must_change_password: boolean;
   is_active: boolean;
   created_at: string;
@@ -31,6 +32,7 @@ function toProfile(row: {
     fullName: row.full_name,
     role: row.role,
     groupId: row.group_id,
+    adminGroupId: row.admin_group_id,
     mustChangePassword: row.must_change_password,
     isActive: row.is_active,
     createdAt: row.created_at,

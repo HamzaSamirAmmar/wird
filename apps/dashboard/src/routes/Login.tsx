@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Navigate } from 'react-router-dom';
 import { KeyRound, User } from 'lucide-react';
+import { canUseDashboard } from '@wird/domain';
 import { Alert, Button, Field, Input } from '@wird/ui-web';
 import { AuthShell } from '../components/AuthShell';
 import { useAuth } from '../lib/auth-context';
@@ -13,7 +14,7 @@ export default function Login() {
   const [submitting, setSubmitting] = React.useState(false);
 
   if (!loading && session && profile) {
-    if (profile.role !== 'supervisor' && profile.role !== 'superadmin') {
+    if (!canUseDashboard(profile)) {
       return <Navigate to="/unauthorized" replace />;
     }
     if (profile.mustChangePassword) {

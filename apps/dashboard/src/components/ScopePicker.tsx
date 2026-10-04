@@ -6,17 +6,21 @@ import {
   formatRange,
   getSurah,
   isWholeSurahRange,
+  juzOfAyah,
+  juzRange,
   pagesForRange,
   searchSurahs,
+  TOTAL_JUZ,
+  wholeJuzOfRange,
   wholeSurahs,
   type QuranRange,
 } from '@wird/quran-data';
 import { Checkbox, cn } from '@wird/ui-web';
 
-type Mode = 'surah' | 'ayahs';
+type Mode = 'surah' | 'juz' | 'ayahs';
 
 /**
- * Picks the Quran range of one category: either whole surahs or an exact ayah span.
+ * Picks the Quran range of one category: whole surahs, whole juz' (أجزاء), or an exact ayah span.
  * The value is always a valid range, so the caller never has to handle a half-typed state.
  */
 export function ScopePicker({
@@ -26,13 +30,42 @@ export function ScopePicker({
   value: QuranRange;
   onChange: (range: QuranRange) => void;
 }) {
-  // A range that happens to cover whole surahs opens in the surah tab, everything else in ayahs.
-  const [mode, setMode] = React.useState<Mode>(() => (isWholeSurahRange(value) ? 'surah' : 'ayahs'));
+  // A range that happens to cover whole juz' opens in the juz tab, whole surahs in the surah tab,
+  // everything else in ayahs.
+  const [mode, setMode] = React.useState<Mode>(() =>
+    wholeJuzOfRange(value) ? 'juz' : isWholeSurahRange(value) ? 'surah' : 'ayahs',
+  );
   const [multiSurah, setMultiSurah] = React.useState(() => value.surahFrom !== value.surahTo);
+  const [multiJuz, setMultiJuz] = React.useState(() => {
+    const j = wholeJuzOfRange(value);
+    return !!j && j.from !== j.to;
+  });
+
+  const juz = wholeJuzOfRange(value) ?? {
+    from: juzOfAyah(value.surahFrom, value.ayahFrom),
+    to: juzOfAyah(value.surahFrom, value.ayahFrom),
+  };
 
   function switchMode(next: Mode) {
     setMode(next);
-    if (next === 'surah') onChange(wholeSurahs(value.surahFrom, multiSurah ? value.surahTo : undefined));
+    if (next === 'juz') {
+      const from = juzOfAyah(value.surahFrom, value.ayahFrom);
+      onChange(juzRange(from, multiJuz ? Math.min(from + 1, TOTAL_JUZ) : from));
+      return;
+    }
+    // A juz usually spans several surahs; keep the surah/ayah controls in step with the value.
+    const spans = value.surahFrom !== value.surahTo;
+    setMultiSurah(spans);
+    if (next === 'surah') onChange(wholeSurahs(value.surahFrom, spans ? value.surahTo : undefined));
+  }
+
+  function setJuzFrom(n: number) {
+    onChange(juzRange(n, multiJuz ? Math.max(n, juz.to) : n));
+  }
+
+  function toggleMultiJuz(on: boolean) {
+    setMultiJuz(on);
+    onChange(juzRange(juz.from, on ? Math.min(juz.from + 1, TOTAL_JUZ) : juz.from));
   }
 
   function setFromSurah(n: number) {
@@ -58,7 +91,10 @@ export function ScopePicker({
 
   function toggleMulti(on: boolean) {
     setMultiSurah(on);
-    if (mode === 'surah') onChange(wholeSurahs(value.surahFrom, on ? Math.min(value.surahFrom + 1, 114) : value.surahFrom));
+    if (mode === 'surah')
+      onChange(
+        wholeSurahs(value.surahFrom, on ? Math.min(value.surahFrom + 1, 114) : value.surahFrom),
+      );
     else if (on) {
       const surahTo = Math.min(value.surahFrom + 1, 114);
       onChange({ ...value, surahTo, ayahTo: getSurah(surahTo).ayahCount });
@@ -66,7 +102,10 @@ export function ScopePicker({
       onChange({
         ...value,
         surahTo: value.surahFrom,
-        ayahTo: Math.max(value.ayahFrom, Math.min(value.ayahTo, getSurah(value.surahFrom).ayahCount)),
+        ayahTo: Math.max(
+          value.ayahFrom,
+          Math.min(value.ayahTo, getSurah(value.surahFrom).ayahCount),
+        ),
       });
     }
   }
@@ -80,6 +119,7 @@ export function ScopePicker({
         {(
           [
             ['surah', 'سورة كاملة'],
+            ['juz', 'جزء كامل'],
             ['ayahs', 'آيات محددة'],
           ] as const
         ).map(([m, label]) => (
@@ -101,21 +141,50 @@ export function ScopePicker({
         ))}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <SurahCombobox
-          label={multiSurah ? 'من سورة' : 'السورة'}
-          value={value.surahFrom}
-          onChange={setFromSurah}
-        />
-        {multiSurah && (
+      {mode === 'juz' && (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Stepper
+              label={multiJuz ? 'من الجزء' : 'الجزء'}
+              value={juz.from}
+              min={1}
+              max={TOTAL_JUZ}
+              onChange={setJuzFrom}
+            />
+            {multiJuz && (
+              <Stepper
+                label="إلى الجزء"
+                value={juz.to}
+                min={juz.from}
+                max={TOTAL_JUZ}
+                onChange={(n) => onChange(juzRange(juz.from, n))}
+              />
+            )}
+          </div>
+          <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-neutral-700">
+            <Checkbox checked={multiJuz} onCheckedChange={(v) => toggleMultiJuz(v === true)} />
+            عدة أجزاء متتالية
+          </label>
+        </>
+      )}
+
+      {mode !== 'juz' && (
+        <div className="grid gap-4 sm:grid-cols-2">
           <SurahCombobox
-            label="إلى سورة"
-            value={value.surahTo}
-            min={value.surahFrom}
-            onChange={setToSurah}
+            label={multiSurah ? 'من سورة' : 'السورة'}
+            value={value.surahFrom}
+            onChange={setFromSurah}
           />
-        )}
-      </div>
+          {multiSurah && (
+            <SurahCombobox
+              label="إلى سورة"
+              value={value.surahTo}
+              min={value.surahFrom}
+              onChange={setToSurah}
+            />
+          )}
+        </div>
+      )}
 
       {mode === 'ayahs' && (
         <div className="grid gap-4 sm:grid-cols-2">
@@ -154,10 +223,12 @@ export function ScopePicker({
         </div>
       )}
 
-      <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-neutral-700">
-        <Checkbox checked={multiSurah} onCheckedChange={(v) => toggleMulti(v === true)} />
-        {mode === 'surah' ? 'عدة سور متتالية' : 'يمتد إلى سورة أخرى'}
-      </label>
+      {mode !== 'juz' && (
+        <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-neutral-700">
+          <Checkbox checked={multiSurah} onCheckedChange={(v) => toggleMulti(v === true)} />
+          {mode === 'surah' ? 'عدة سور متتالية' : 'يمتد إلى سورة أخرى'}
+        </label>
+      )}
 
       <Summary range={value} />
     </div>
@@ -195,7 +266,10 @@ function SurahCombobox({
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState('');
   const surah = getSurah(value);
-  const results = React.useMemo(() => searchSurahs(query).filter((s) => s.number >= min), [query, min]);
+  const results = React.useMemo(
+    () => searchSurahs(query).filter((s) => s.number >= min),
+    [query, min],
+  );
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -211,7 +285,9 @@ function SurahCombobox({
         </span>
         <span className="flex-1 text-start font-medium">{surah.nameAr}</span>
         <span className="text-[11px] text-neutral-400">{surah.ayahCount} آية</span>
-        <ChevronDown className={cn('h-4 w-4 text-neutral-400 transition-transform', open && 'rotate-180')} />
+        <ChevronDown
+          className={cn('h-4 w-4 text-neutral-400 transition-transform', open && 'rotate-180')}
+        />
       </button>
 
       {open && (
@@ -325,7 +401,9 @@ function Stepper({
           <Minus className="h-4 w-4" />
         </button>
       </div>
-      <span className="text-[11px] text-neutral-400">من {min.toLocaleString('ar-u-nu-latn')} إلى {max.toLocaleString('ar-u-nu-latn')}</span>
+      <span className="text-[11px] text-neutral-400">
+        من {min.toLocaleString('ar-u-nu-latn')} إلى {max.toLocaleString('ar-u-nu-latn')}
+      </span>
     </div>
   );
 }
