@@ -118,8 +118,8 @@ export function ScopePicker({
       <div role="tablist" className="inline-flex self-start rounded-lg bg-neutral-100 p-1">
         {(
           [
-            ['surah', 'سورة كاملة'],
             ['juz', 'جزء كامل'],
+            ['surah', 'سورة كاملة'],
             ['ayahs', 'آيات محددة'],
           ] as const
         ).map(([m, label]) => (
