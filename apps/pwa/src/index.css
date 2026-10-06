@@ -86,6 +86,14 @@
 .rw-hl-sel {
   background: rgba(224, 188, 102, 0.42);
 }
+/* On precise pointers a hovered ayah tints softly: the click target stays visible even
+   while a zoomed page is dragged around with the mouse. Touch devices never hover. */
+@media (pointer: fine) {
+  .rw-pagebox .mp-ayah:hover > span:not(.mp-e) {
+    background: rgba(224, 188, 102, 0.2);
+    border-radius: 6px;
+  }
+}
 /* The ayah currently being recited — the brand's teal, lighter than the ink. The band
    breathes gently while it plays (still under prefers-reduced-motion's care). */
 .rw-hl-play {

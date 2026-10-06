@@ -5,7 +5,7 @@ import { cn } from '@wird/ui-web';
 import { haptic } from '../lib/celebrate';
 import { ayahText, loadTafseer } from '../lib/tafseer';
 import { HAFS_FAMILY, type MushafData } from '../lib/mushaf';
-import { BottomSheet } from './BottomSheet';
+import { BottomSheet, useSheetClose } from './BottomSheet';
 
 export interface AyahRefHit {
   surah: number;
@@ -40,6 +40,7 @@ export function TafseerSheet({
 }) {
   const [tafseer, setTafseer] = React.useState<string | null | undefined>(undefined);
   const [copied, setCopied] = React.useState(false);
+  const close = useSheetClose();
 
   React.useEffect(() => {
     let alive = true;
@@ -83,6 +84,7 @@ export function TafseerSheet({
 
   return (
     <BottomSheet label="تفسير الآية" onClose={onClose}>
+      <>
       <div className="flex flex-none items-center justify-between border-b border-[#b08a3e]/25 bg-[#f7efd9] px-2 py-2.5">
         {/* Muṣḥaf order: the previous ayah lies to the right. */}
         <button
@@ -114,7 +116,7 @@ export function TafseerSheet({
           </button>
           <button
             type="button"
-            onClick={onClose}
+            onClick={close}
             aria-label="إغلاق"
             className="flex h-10 w-10 items-center justify-center rounded-full text-[#0b4f55] transition-colors hover:bg-[#0b4f55]/8"
           >
@@ -160,7 +162,10 @@ export function TafseerSheet({
       <div className="flex flex-none items-center gap-2 border-t border-neutral-100 px-4 pb-3 pt-3">
         <button
           type="button"
-          onClick={() => onListen(hit)}
+          onClick={() => {
+            close();
+            onListen(hit);
+          }}
           className="flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-[#0b4f55] text-sm font-semibold text-white transition-colors hover:bg-[#0e5a61] active:bg-[#083f44]"
         >
           <Play className="h-4 w-4" />
@@ -188,6 +193,7 @@ export function TafseerSheet({
           {copied ? 'تم النسخ' : 'نسخ'}
         </button>
       </div>
+      </>
     </BottomSheet>
   );
 }

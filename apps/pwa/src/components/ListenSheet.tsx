@@ -18,7 +18,7 @@ import {
   requestPersistentStorage,
 } from '../lib/audioOffline';
 import { useWirdPlayerSnapshot, wirdPlayer } from '../lib/wirdPlayer';
-import { BottomSheet } from './BottomSheet';
+import { BottomSheet, useSheetClose } from './BottomSheet';
 import type { AyahRefHit } from './TafseerSheet';
 
 const ar = (n: number) => n.toLocaleString('ar-u-nu-latn');
@@ -46,6 +46,7 @@ export function ListenSheet({
   const [downloading, setDownloading] = React.useState<{ done: number; total: number } | null>(
     null,
   );
+  const close = useSheetClose();
 
   const urls = React.useMemo(
     () => queueUrls(queue.map((a) => globalAyahIndex(a.surah, a.ayah)), player.reciterId, player.bitrate),
@@ -63,10 +64,6 @@ export function ListenSheet({
   // The CDN's per-ayah files average ~90 KB at 128 kbps and ~45 KB at 64.
   const estMb = ((queue.length * (player.bitrate === 128 ? 0.09 : 0.045))).toFixed(1);
 
-  function requestClose() {
-    if (!downloading) onClose();
-  }
-
   async function download() {
     if (downloading) return;
     haptic(10);
@@ -78,17 +75,13 @@ export function ListenSheet({
     if (failed > 0) window.setTimeout(() => haptic([30, 60, 30]), 0);
   }
 
-  function playFrom(i: number) {
-    onClose();
-    wirdPlayer.playQueue(queue, i);
-  }
-
   const startIndex = fromAyah
     ? queue.findIndex((a) => a.surah === fromAyah.surah && a.ayah === fromAyah.ayah)
     : -1;
 
   return (
-    <BottomSheet label="استماع إلى الورد" onClose={requestClose}>
+    <BottomSheet label="استماع إلى الورد" onClose={onClose}>
+      <>
       <div className="flex flex-none items-center justify-between border-b border-[#b08a3e]/25 bg-[#f7efd9] px-4 py-3">
         <div className="flex items-center gap-2 font-display text-base text-[#0b4f55]">
           <Volume2 className="h-5 w-5" />
@@ -247,7 +240,10 @@ export function ListenSheet({
         <div className="flex flex-none flex-col gap-2 border-t border-neutral-100 px-4 pb-3 pt-3">
           <button
             type="button"
-            onClick={() => playFrom(0)}
+            onClick={() => {
+              close();
+              wirdPlayer.playQueue(queue, 0);
+            }}
             className="flex h-12 items-center justify-center gap-2 rounded-full bg-[#0b4f55] text-sm font-semibold text-white transition-colors hover:bg-[#0e5a61] active:bg-[#083f44]"
           >
             <Play className="h-4 w-4" />
@@ -257,7 +253,10 @@ export function ListenSheet({
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => playFrom(startIndex)}
+                onClick={() => {
+                  close();
+                  wirdPlayer.playQueue(queue, startIndex);
+                }}
                 className="h-11 flex-1 rounded-full bg-[#0b4f55]/8 text-sm font-semibold text-[#0b4f55] transition-colors hover:bg-[#0b4f55]/12"
               >
                 من الآية {ar(fromAyah.ayah)}
@@ -265,7 +264,7 @@ export function ListenSheet({
               <button
                 type="button"
                 onClick={() => {
-                  onClose();
+                  close();
                   wirdPlayer.playQueue([queue[startIndex]!], 0);
                 }}
                 className="h-11 flex-1 rounded-full bg-[#0b4f55]/8 text-sm font-semibold text-[#0b4f55] transition-colors hover:bg-[#0b4f55]/12"
@@ -275,6 +274,7 @@ export function ListenSheet({
             </div>
           )}
         </div>
+      </>
     </BottomSheet>
   );
 }

@@ -378,8 +378,9 @@ export function ReaderView({
   React.useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        if (selected) setSelected(null);
-        else if (zoomRef.current > 1) zoomAt(1);
+        // Open sheets and the showcase close themselves (animated); otherwise fall back
+        // to the whole page.
+        if (!selected && !listenOpen && !showcase && zoomRef.current > 1) zoomAt(1);
         return;
       }
       // While a sheet is open the page behind it must not react to navigation keys.
@@ -399,7 +400,7 @@ export function ReaderView({
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [zoomAt, turnPage, selected, listenOpen]);
+  }, [zoomAt, turnPage, selected, listenOpen, showcase]);
 
   // Leaving the reader pauses the reciter (the lock-screen controls go with it).
   React.useEffect(() => () => wirdPlayer.stop(), []);
