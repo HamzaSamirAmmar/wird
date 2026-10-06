@@ -210,6 +210,11 @@ export const MUSHAF_CSS = `
 .mp-head{display:flex;justify-content:space-between;align-items:center;height:38px;flex:none;border-bottom:1px solid ${GOLD}66;font-family:'Reem Kufi',sans-serif;font-size:17px;color:${TEAL}}
 .mp-lines{flex:1;display:flex;flex-direction:column;justify-content:space-between;padding:14px 0 10px}
 .mp-line{height:58px;display:flex;align-items:center;justify-content:space-between;white-space:nowrap;font-family:${HAFS_FAMILY},serif;font-size:31px;line-height:1}
+/* One wrapper per ayah segment. display:contents keeps its word spans the flex items of
+   .mp-line (the muṣḥaf's space-between justification), while giving long-press and
+   recitation playback an element to resolve the ayah from. It paints nothing itself —
+   the reader highlights through an overlay, never through this box. */
+.mp-ayah{display:contents}
 .mp-line.mp-center{justify-content:center;gap:.32em}
 .mp-lines.mp-opening{justify-content:center;gap:10px}
 .mp-line>span{flex:none}
@@ -365,10 +370,12 @@ function renderLine(
   const parts: string[] = [];
   for (const [surah, ayah, words, end] of line as [number, number, string, string | 0][]) {
     const out = inScope(scope, surah, ayah) ? '' : ' mp-out';
+    const seg: string[] = [];
     for (const w of words ? words.split(' ') : []) {
-      parts.push(`<span class="${out.trim()}">${esc(w)}</span>`);
+      seg.push(`<span class="${out.trim()}">${esc(w)}</span>`);
     }
-    if (end) parts.push(`<span class="mp-e${out}">${esc(end)}</span>`);
+    if (end) seg.push(`<span class="mp-e${out}">${esc(end)}</span>`);
+    parts.push(`<span class="mp-ayah" data-s="${surah}" data-a="${ayah}">${seg.join('')}</span>`);
   }
   return `<div class="mp-line${centered ? ' mp-center' : ''}">${parts.join('')}</div>`;
 }

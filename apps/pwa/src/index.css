@@ -67,3 +67,24 @@
     animation: none;
   }
 }
+
+/* ─── Reader ayah highlights ────────────────────────────────────────────────
+   Bands are painted imperatively (ReadWird's paintOverlays) in page units inside a
+   counter-scaled overlay div, one continuous band per line the ayah touches. Page-unit
+   coordinates mean zooming never repaints, and the muṣḥaf text is never touched. */
+.rw-overlay {
+  z-index: 5;
+}
+.rw-hl {
+  position: absolute;
+  border-radius: 10px;
+}
+/* The long-pressed (tafseer) ayah — the muṣḥaf frame's gold. */
+.rw-hl-sel {
+  background: rgba(224, 188, 102, 0.42);
+}
+/* The ayah currently being recited — the brand's teal, lighter than the ink. */
+.rw-hl-play {
+  background: rgba(2, 99, 108, 0.13);
+  outline: 2px solid rgba(2, 99, 108, 0.38);
+}

@@ -18,6 +18,8 @@ import {
   precacheAndRoute,
 } from 'workbox-precaching';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
+import { CacheFirst } from 'workbox-strategies';
+import { RangeRequestsPlugin } from 'workbox-range-requests';
 import { DUTY_CATEGORY_LABELS } from '@wird/domain';
 import { formatRange } from '@wird/quran-data';
 import {
@@ -46,6 +48,25 @@ clientsClaim();
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html')));
+
+// ─── 1b. Recitation audio (cache-first) ───────────────────────────────────────
+//
+// cdn.islamic.network sends no CORS headers, so the app cannot read the MP3s it fetches
+// page-side — but the Cache API can store the opaque responses a `no-cors` fetch
+// yields, and a media-element load is itself a no-cors request that happily consumes
+// them. This route therefore serves every request for the CDN from the audio cache,
+// filling it from the network on miss: played ayat and explicit «تنزيل صوت الورد»
+// downloads land in the same bucket, and playback works offline afterwards.
+// RangeRequestsPlugin stitches 206 responses out of a cached full body — Safari's
+// media element asks for ranges.
+//
+// (This is a deliberate exception to "data offline-ability lives in Dexie, not SW
+// runtime caching": that rule guards Supabase API responses. Cross-origin opaque
+// audio can only be offline-able here.)
+registerRoute(
+  ({ url }) => url.origin === 'https://cdn.islamic.network',
+  new CacheFirst({ cacheName: 'wird-audio-v1', plugins: [new RangeRequestsPlugin()] }),
+);
 
 // ─── 2. Push ──────────────────────────────────────────────────────────────────
 

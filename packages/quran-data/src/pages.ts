@@ -79,6 +79,20 @@ export function ayahsOnPage(page: number): AyahRef[] {
   return refs;
 }
 
+/**
+ * Every ayah of an inclusive range, in muṣḥaf order — the playback queue of a wird and the
+ * file list of its audio download.
+ */
+export function ayahsInRange(range: QuranRange): AyahRef[] {
+  const refs: AyahRef[] = [];
+  for (let surah = range.surahFrom; surah <= range.surahTo; surah++) {
+    const first = surah === range.surahFrom ? range.ayahFrom : 1;
+    const last = surah === range.surahTo ? range.ayahTo : SURAHS[surah - 1]!.ayahCount;
+    for (let ayah = first; ayah <= last; ayah++) refs.push({ surah, ayah });
+  }
+  return refs;
+}
+
 /** Arabic label for a page, e.g. "صفحة 22". */
 export function formatPage(page: number): string {
   return `صفحة ${page.toLocaleString('ar-u-nu-latn')}`;

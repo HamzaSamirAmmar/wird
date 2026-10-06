@@ -1,13 +1,33 @@
 import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowRight, ChevronLeft, ChevronRight, Minus, Plus } from 'lucide-react';
+import {
+  ArrowRight,
+  ChevronLeft,
+  ChevronRight,
+  Minus,
+  MoveHorizontal,
+  Plus,
+  Volume2,
+} from 'lucide-react';
 import { DUTY_CATEGORY_LABELS } from '@wird/domain';
-import { formatRange } from '@wird/quran-data';
+import { ayahsInRange, formatRange, pageOfAyah } from '@wird/quran-data';
 import { Alert, Spinner, cn } from '@wird/ui-web';
 import { useAuth } from '../lib/auth-context';
 import { completeStep, getCachedDuties } from '../lib/duties';
 import type { CachedDuty, CachedStep } from '../lib/offline';
 import { RepeatCounter } from '../components/RepeatCounter';
+import { TafseerSheet, type AyahRefHit } from '../components/TafseerSheet';
+import { ListenSheet } from '../components/ListenSheet';
+import { PlayerBar } from '../components/PlayerBar';
+import { useWirdPlayerSnapshot, wirdPlayer } from '../lib/wirdPlayer';
+import { haptic } from '../lib/celebrate';
+import {
+  DOUBLE_TAP_ZOOM,
+  applyZoomAnchor,
+  attachReaderGestures,
+  captureZoomAnchor,
+  tweenZoom,
+} from '../lib/readerGestures';
 import {
   MUSHAF_CSS,
   PAGE_WIDTH,
@@ -33,6 +53,11 @@ const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(1, z));
  * printed) wherever two pages fit side by side. Whole pages, with
  * the ayat outside the duty faded — you open the page, not a fragment. Everything it reads is
  * cached (the duty in Dexie, the layout and font precached), so it opens offline.
+ *
+ * Zoom and every gesture run through lib/readerGestures: pinch writes the pager's
+ * `--zoom` CSS variable directly (no React render per frame) and commits once when the
+ * gesture settles. A long-press on an ayah opens its tafseer; the استماع sheet plays it
+ * through a reciter, following along with a highlight and turning pages by itself.
  */
 export default function ReadWird() {
   const { dutyId } = useParams();
@@ -87,10 +112,13 @@ export function ReaderView({
   const [index, setIndex] = React.useState(0);
   const [box, setBox] = React.useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const [zoom, setZoom] = React.useState(1);
+  const [selected, setSelected] = React.useState<AyahRefHit | null>(null);
+  const [listenOpen, setListenOpen] = React.useState(false);
   const zoomed = zoom > 1.001;
   const mainRef = React.useRef<HTMLElement>(null);
   const pagerRef = React.useRef<HTMLDivElement>(null);
   const hasSteps = !!duty?.steps && duty.steps.length > 0;
+  const player = useWirdPlayerSnapshot();
 
   React.useEffect(() => {
     Promise.all([loadMushaf(), hafsReady()])
@@ -161,18 +189,12 @@ export function ReaderView({
   // Fit the page (or the open book) to the reading area: whole and as large as it allows.
   const PAD = twoUp ? 20 : 8;
   const COVER = twoUp ? 14 : 0;
-  const scale =
-    box.w === 0
-      ? 0
-      : Math.max(
-          0.1,
-          Math.min(
-            (box.w - 2 * PAD - 2 * COVER) / (PAGE_WIDTH * (twoUp ? 2 : 1)),
-            (box.h - 2 * PAD - 2 * COVER) / BARE_PAGE_HEIGHT,
-          ),
-        );
-
-  const s = scale * zoom;
+  const xs = (box.w - 2 * PAD - 2 * COVER) / (PAGE_WIDTH * (twoUp ? 2 : 1));
+  const ys = (box.h - 2 * PAD - 2 * COVER) / BARE_PAGE_HEIGHT;
+  const scale = Math.max(0.1, Math.min(xs, ys));
+  // «ملء العرض»: the zoom that trades the letterboxed height for full width — bigger
+  // type on short-wide windows, panned vertically.
+  const fitWidthZoom = clampZoom(ys > 0 && xs > ys ? xs / ys : 1);
 
   React.useEffect(() => {
     if (pagerRef.current && html.size > 0) fitLines(pagerRef.current);
@@ -182,118 +204,106 @@ export function ReaderView({
   const scrollerAt = (i: number) =>
     (pagerRef.current?.children[i]?.firstElementChild as HTMLElement | null | undefined) ?? null;
 
-  const goTo = React.useCallback((i: number, behavior: ScrollBehavior = 'smooth') => {
-    const slide = pagerRef.current?.children[i] as HTMLElement | undefined;
-    // A zoomed page opens at its top right, where its first line starts.
-    const sc = slide?.firstElementChild as HTMLElement | null | undefined;
-    if (sc) {
-      sc.scrollTop = 0;
-      sc.scrollLeft = sc.scrollWidth;
-    }
-    slide?.scrollIntoView({ behavior, inline: 'start', block: 'nearest' });
-  }, []);
-
-  // Zoom keeps the point under the fingers / cursor where it is: remember it as a fraction
-  // of the page, then scroll it back under the same screen point once the page has grown.
+  // ── Zoom plumbing ────────────────────────────────────────────────────────────
+  // `--zoom` lives as a CSS variable on the pager: gestures write it imperatively (many
+  // times a second, no React render), commits land in state once. React mirrors the same
+  // value through the style prop, so renders and gestures never fight over it.
   const indexRef = React.useRef(0);
   indexRef.current = index;
   const zoomRef = React.useRef(1);
   zoomRef.current = zoom;
-  const drag = React.useRef<{ x: number; y: number; left: number; top: number } | null>(null);
-  const anchor = React.useRef<{ fx: number; fy: number; cx: number; cy: number } | null>(null);
+  const slidesLenRef = React.useRef(0);
+  slidesLenRef.current = slides.length;
 
-  const zoomAt = React.useCallback((next: number, cx?: number, cy?: number) => {
-    const z = clampZoom(next);
+  const zoomImmediate = React.useCallback((z: number, cx?: number, cy?: number) => {
+    const pager = pagerRef.current;
+    if (!pager) return;
     const sc = scrollerAt(indexRef.current);
-    const content = sc?.firstElementChild as HTMLElement | null | undefined;
-    if (sc && content) {
-      const sr = sc.getBoundingClientRect();
-      const r = content.getBoundingClientRect();
-      const x = cx ?? sr.left + sr.width / 2;
-      const y = cy ?? sr.top + sr.height / 2;
-      anchor.current = {
-        fx: (x - r.left) / Math.max(r.width, 1),
-        fy: (y - r.top) / Math.max(r.height, 1),
-        cx: x - sr.left,
-        cy: y - sr.top,
-      };
-    }
-    // Several wheel/pinch events can land before React renders; each builds on the last.
+    const anchor =
+      sc && cx !== undefined && cy !== undefined ? captureZoomAnchor(sc, cx, cy) : null;
     zoomRef.current = z;
-    setZoom(z);
+    pager.style.setProperty('--zoom', String(z));
+    if (sc && anchor) applyZoomAnchor(sc, anchor);
   }, []);
 
-  React.useLayoutEffect(() => {
-    const a = anchor.current;
-    anchor.current = null;
-    const sc = scrollerAt(indexRef.current);
-    const content = sc?.firstElementChild as HTMLElement | null | undefined;
-    if (!a || !sc || !content) return;
-    sc.scrollLeft = content.offsetLeft + a.fx * content.offsetWidth - a.cx;
-    sc.scrollTop = content.offsetTop + a.fy * content.offsetHeight - a.cy;
-  }, [zoom]);
+  const zoomAt = React.useCallback(
+    (next: number, cx?: number, cy?: number) => {
+      const z = clampZoom(next);
+      zoomImmediate(z, cx, cy);
+      setZoom(z);
+    },
+    [zoomImmediate],
+  );
 
-  // Pinch on a touch screen, pinch on a laptop trackpad (Chromium/Firefox report it as a
-  // ctrl+wheel, Safari as gesture events) and ctrl+wheel all zoom the page itself. Left to
-  // the browser they either zoomed the whole app shell or did nothing, since the page
-  // refits to the reading area.
+  const goToRef = React.useRef<(i: number, behavior?: ScrollBehavior, keepScroll?: boolean) => void>(
+    () => {},
+  );
+
+  const goTo = React.useCallback((i: number, behavior: ScrollBehavior = 'smooth', keepScroll = false) => {
+    const pager = pagerRef.current;
+    if (!pager) return;
+    // Turning while zoomed keeps the vertical reading position on the next page.
+    const cur = scrollerAt(indexRef.current);
+    const frac =
+      keepScroll && cur && cur.scrollHeight > cur.clientHeight + 1
+        ? cur.scrollTop / (cur.scrollHeight - cur.clientHeight)
+        : 0;
+    const slide = pager.children[i] as HTMLElement | undefined;
+    const sc = slide?.firstElementChild as HTMLElement | null | undefined;
+    if (sc) {
+      // A fresh page opens at its top right, where its first line starts.
+      sc.scrollTop = frac * Math.max(0, sc.scrollHeight - sc.clientHeight);
+      sc.scrollLeft = sc.scrollWidth;
+    }
+    slide?.scrollIntoView({ behavior, inline: 'start', block: 'nearest' });
+    setIndex(i);
+  }, []);
+  goToRef.current = goTo;
+
+  /** Turn one slide in the muṣḥaf's direction (+1 next), preserving zoom and position. */
+  const turnPage = React.useCallback((dir: 1 | -1) => {
+    const i = indexRef.current;
+    const next = Math.max(0, Math.min(slidesLenRef.current - 1, i + dir));
+    if (next !== i) goToRef.current(next, 'smooth', true);
+  }, []);
+
+  const toggleZoom = React.useCallback(
+    (cx: number, cy: number) => {
+      const from = zoomRef.current;
+      const to = clampZoom(from > 1.001 ? 1 : DOUBLE_TAP_ZOOM);
+      tweenZoom(
+        from,
+        to,
+        (z) => zoomImmediate(z, cx, cy),
+        (z) => {
+          zoomImmediate(z, cx, cy);
+          setZoom(z);
+        },
+      );
+    },
+    [zoomImmediate],
+  );
+
+  // Every pointer gesture the reader knows: pinch (touch/trackpad/Safari), double-tap,
+  // drag-to-pan, edge-drag page turns, and the long-press that opens the tafseer.
   React.useEffect(() => {
     const el = mainRef.current;
     if (!el) return;
-    let pinch: { dist: number; zoom: number } | null = null;
-    let gestureZoom = 1;
-    const dist = (t: TouchList) =>
-      Math.hypot(t[0]!.clientX - t[1]!.clientX, t[0]!.clientY - t[1]!.clientY);
-    const mid = (t: TouchList) =>
-      [(t[0]!.clientX + t[1]!.clientX) / 2, (t[0]!.clientY + t[1]!.clientY) / 2] as const;
-
-    const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return;
-      e.preventDefault();
-      const d = Math.max(-50, Math.min(50, e.deltaY));
-      zoomAt(zoomRef.current * Math.exp(-d * 0.01), e.clientX, e.clientY);
-    };
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) pinch = { dist: dist(e.touches), zoom: zoomRef.current };
-    };
-    const onTouchMove = (e: TouchEvent) => {
-      if (!pinch || e.touches.length !== 2) return;
-      e.preventDefault();
-      const [x, y] = mid(e.touches);
-      zoomAt((pinch.zoom * dist(e.touches)) / Math.max(pinch.dist, 1), x, y);
-    };
-    const onTouchEnd = (e: TouchEvent) => {
-      if (e.touches.length < 2) pinch = null;
-    };
-    type GestureEvent = UIEvent & { scale: number; clientX: number; clientY: number };
-    const onGestureStart = (e: Event) => {
-      e.preventDefault();
-      gestureZoom = zoomRef.current;
-    };
-    const onGestureChange = (e: Event) => {
-      e.preventDefault();
-      if (pinch) return; // iOS reports a touch pinch both ways; the touch path handles it
-      const g = e as GestureEvent;
-      zoomAt(gestureZoom * g.scale, g.clientX, g.clientY);
-    };
-
-    el.addEventListener('wheel', onWheel, { passive: false });
-    el.addEventListener('touchstart', onTouchStart, { passive: true });
-    el.addEventListener('touchmove', onTouchMove, { passive: false });
-    el.addEventListener('touchend', onTouchEnd);
-    el.addEventListener('touchcancel', onTouchEnd);
-    el.addEventListener('gesturestart', onGestureStart);
-    el.addEventListener('gesturechange', onGestureChange);
-    return () => {
-      el.removeEventListener('wheel', onWheel);
-      el.removeEventListener('touchstart', onTouchStart);
-      el.removeEventListener('touchmove', onTouchMove);
-      el.removeEventListener('touchend', onTouchEnd);
-      el.removeEventListener('touchcancel', onTouchEnd);
-      el.removeEventListener('gesturestart', onGestureStart);
-      el.removeEventListener('gesturechange', onGestureChange);
-    };
-  }, [zoomAt]);
+    return attachReaderGestures(el, {
+      getZoom: () => zoomRef.current,
+      clampZoom,
+      zoomImmediate,
+      commitZoom: setZoom,
+      toggleZoom,
+      activeScroller: () => scrollerAt(indexRef.current),
+      isZoomed: () => zoomRef.current > 1.001,
+      turn: turnPage,
+      onAyahLongPress: (hit) => {
+        haptic(14);
+        setSelected(hit);
+      },
+    });
+  }, [zoomImmediate, toggleZoom, turnPage]);
 
   // Switching between one page and the open book keeps the page you were on in view.
   const currentPage = React.useRef<number | null>(null);
@@ -316,8 +326,25 @@ export function ReaderView({
     setIndex(Math.round(Math.abs(el.scrollLeft) / el.clientWidth));
   }
 
+  // A felt tick when a page settles (not on the first paint).
+  const firstSettle = React.useRef(true);
+  React.useEffect(() => {
+    if (firstSettle.current) {
+      firstSettle.current = false;
+      return;
+    }
+    haptic(6);
+  }, [index]);
+
   React.useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        if (selected) setSelected(null);
+        else if (zoomRef.current > 1) zoomAt(1);
+        return;
+      }
+      // While a sheet is open the page behind it must not react to navigation keys.
+      if (selected || listenOpen) return;
       // Ctrl/⌘ +, −, 0 (and the bare keys) zoom the page rather than the whole app.
       if (e.key === '+' || e.key === '=' || e.key === '-' || e.key === '0') {
         e.preventDefault();
@@ -325,14 +352,114 @@ export function ReaderView({
         else zoomAt(zoomRef.current * (e.key === '-' ? 1 / 1.25 : 1.25));
         return;
       }
-      if (e.key === 'Escape' && zoomRef.current > 1) zoomAt(1);
       // Muṣḥaf order: the next page lies to the left.
-      if (e.key === 'ArrowLeft') goTo(Math.min(index + 1, slides.length - 1));
-      if (e.key === 'ArrowRight') goTo(Math.max(index - 1, 0));
+      if (e.key === 'ArrowLeft' || e.key === 'PageDown') turnPage(1);
+      else if (e.key === 'ArrowRight' || e.key === 'PageUp') turnPage(-1);
+      else if (e.key === 'Home') goToRef.current(0, 'smooth', true);
+      else if (e.key === 'End') goToRef.current(slidesLenRef.current - 1, 'smooth', true);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [goTo, zoomAt, index, slides.length]);
+  }, [zoomAt, turnPage, selected, listenOpen]);
+
+  // Leaving the reader pauses the reciter (the lock-screen controls go with it).
+  React.useEffect(() => () => wirdPlayer.stop(), []);
+
+  // ── Recitation follow-along ──────────────────────────────────────────────────
+  const playingAyah =
+    player.status !== 'idle' ? (player.queue[player.index] ?? null) : null;
+
+  // Playback crossing onto another page turns it by itself.
+  React.useEffect(() => {
+    if (!playingAyah) return;
+    const page = pageOfAyah(playingAyah.surah, playingAyah.ayah);
+    const i = slides.findIndex((sl) => sl.includes(page));
+    if (i >= 0 && i !== indexRef.current) goToRef.current(i, 'smooth', true);
+  }, [playingAyah, slides]);
+
+  // ── Ayah highlights (selection + playing) ────────────────────────────────────
+  // Bands are painted in page units inside a counter-scaled overlay, so zooming never
+  // needs a repaint and the text itself is never touched.
+  const paintRef = React.useRef<() => void>(() => {});
+  paintRef.current = () => {
+    const pager = pagerRef.current;
+    if (!pager) return;
+    for (const o of pager.querySelectorAll('.rw-overlay')) o.replaceChildren();
+    const marks: Array<[AyahRefHit | { surah: number; ayah: number }, 'sel' | 'play']> = [];
+    if (playingAyah) marks.push([playingAyah, 'play']);
+    if (selected) marks.push([selected, 'sel']);
+    for (const [ref, kind] of marks) {
+      const wraps = pager.querySelectorAll(
+        `.mp-ayah[data-s="${ref.surah}"][data-a="${ref.ayah}"]`,
+      );
+      for (const wrap of wraps) {
+        const pageBox = (wrap as Element).closest('.rw-pagebox');
+        const overlay = pageBox?.querySelector(':scope > .rw-overlay');
+        if (!pageBox || !overlay) continue;
+        const box = pageBox as HTMLElement;
+        const s = box.clientWidth / PAGE_WIDTH || 1;
+        const br = box.getBoundingClientRect();
+        // One continuous band per line the ayah touches.
+        const bands: { l: number; t: number; r: number; b: number }[] = [];
+        for (const w of (wrap as Element).querySelectorAll(':scope > span:not(.mp-e)')) {
+          for (const rect of (w as HTMLElement).getClientRects()) {
+            const l = (rect.left - br.left) / s;
+            const t = (rect.top - br.top) / s;
+            const r = (rect.right - br.left) / s;
+            const b = (rect.bottom - br.top) / s;
+            const band = bands.find((x) => t < x.b + 4 && b > x.t - 4);
+            if (band) {
+              band.l = Math.min(band.l, l);
+              band.r = Math.max(band.r, r);
+              band.t = Math.min(band.t, t);
+              band.b = Math.max(band.b, b);
+            } else {
+              bands.push({ l, t, r, b });
+            }
+          }
+        }
+        let first = true;
+        for (const band of bands) {
+          const d = document.createElement('div');
+          d.className = `rw-hl rw-hl-${kind}`;
+          d.style.left = `${band.l - 4}px`;
+          d.style.top = `${band.t - 3}px`;
+          d.style.width = `${band.r - band.l + 8}px`;
+          d.style.height = `${band.b - band.t + 6}px`;
+          overlay.append(d);
+          // Follow along when zoomed: bring the playing ayah into view.
+          if (first && kind === 'play' && zoomRef.current > 1.001) {
+            first = false;
+            d.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+          }
+        }
+      }
+    }
+  };
+
+  React.useEffect(() => {
+    paintRef.current();
+  }, [selected, playingAyah, html]);
+
+  // The wird's ayat in order — the playback queue and the download set.
+  const queue = React.useMemo(
+    () =>
+      duty
+        ? ayahsInRange({
+            surahFrom: duty.scopeSurahFrom,
+            ayahFrom: duty.scopeAyahFrom,
+            surahTo: duty.scopeSurahTo,
+            ayahTo: duty.scopeAyahTo,
+          })
+        : [],
+    [duty],
+  );
+
+  function listenFrom(hit: AyahRefHit) {
+    setSelected(null);
+    const i = queue.findIndex((a) => a.surah === hit.surah && a.ayah === hit.ayah);
+    if (queue.length > 0) wirdPlayer.playQueue(queue, Math.max(0, i));
+  }
 
   const shown = slides[index] ?? [];
   const inRange = (p: number) => pages.includes(p);
@@ -340,12 +467,20 @@ export function ReaderView({
   const pageBox = (page: number, side: 'right' | 'left' | 'single') => (
     <div
       key={page}
-      className="relative overflow-hidden bg-[#fdfaf1]"
-      style={{ width: PAGE_WIDTH * s, height: BARE_PAGE_HEIGHT * s }}
+      className="rw-pagebox relative overflow-hidden bg-[#fdfaf1]"
+      style={
+        {
+          width: `calc(${PAGE_WIDTH}px * var(--fit) * var(--zoom))`,
+          height: `calc(${BARE_PAGE_HEIGHT}px * var(--fit) * var(--zoom))`,
+        } as React.CSSProperties
+      }
     >
       <div
         className="absolute left-0 top-0 origin-top-left"
-        style={{ width: PAGE_WIDTH, transform: `scale(${s})` }}
+        style={{
+          width: PAGE_WIDTH,
+          transform: 'scale(calc(var(--fit) * var(--zoom)))',
+        }}
         dangerouslySetInnerHTML={{ __html: html.get(page) ?? '' }}
       />
       {/* The curve of the paper into the spine. */}
@@ -363,6 +498,19 @@ export function ReaderView({
       {!inRange(page) && (
         <div aria-hidden className="pointer-events-none absolute inset-0 bg-[#efe7d3]/25" />
       )}
+      {/* Ayah highlights paint here (page units, counter-scaled) — above the ink and
+          the spine shading, never part of the text flow. */}
+      <div
+        aria-hidden
+        className="rw-overlay pointer-events-none absolute left-0 top-0 origin-top-left"
+        style={
+          {
+            width: PAGE_WIDTH,
+            height: BARE_PAGE_HEIGHT,
+            transform: 'scale(calc(var(--fit) * var(--zoom)))',
+          } as React.CSSProperties
+        }
+      />
     </div>
   );
 
@@ -395,6 +543,20 @@ export function ReaderView({
               </div>
             )}
           </div>
+          {duty && (
+            <button
+              type="button"
+              onClick={() => setListenOpen(true)}
+              aria-label="استماع إلى الورد"
+              title="استماع إلى الورد"
+              className={cn(
+                'flex h-10 w-10 items-center justify-center rounded-full transition-colors',
+                playingAyah ? 'bg-[#e0bc66] text-[#0b4f55]' : 'active:bg-white/10',
+              )}
+            >
+              <Volume2 className="h-5 w-5" />
+            </button>
+          )}
         </div>
         {/* Gold rule — the muṣḥaf's frame colour, echoing the pages below. */}
         <div className="absolute inset-x-0 bottom-0 h-[3px] bg-linear-to-l from-[#b08a3e] via-[#e0bc66] to-[#b08a3e]" />
@@ -402,25 +564,7 @@ export function ReaderView({
 
       <main
         ref={mainRef}
-        onDoubleClick={(e) => zoomAt(zoomed ? 1 : 2, e.clientX, e.clientY)}
-        onPointerDown={(e) => {
-          // With a mouse, a zoomed page is dragged around like a sheet of paper.
-          if (!zoomed || e.pointerType !== 'mouse' || e.button !== 0) return;
-          const sc = scrollerAt(index);
-          if (!sc || !sc.contains(e.target as Node)) return;
-          drag.current = { x: e.clientX, y: e.clientY, left: sc.scrollLeft, top: sc.scrollTop };
-          e.currentTarget.setPointerCapture(e.pointerId);
-        }}
-        onPointerMove={(e) => {
-          const d = drag.current;
-          const sc = scrollerAt(index);
-          if (!d || !sc) return;
-          sc.scrollLeft = d.left - (e.clientX - d.x);
-          sc.scrollTop = d.top - (e.clientY - d.y);
-        }}
-        onPointerUp={() => (drag.current = null)}
-        onPointerCancel={() => (drag.current = null)}
-        className="relative min-h-0 flex-1 select-none bg-[radial-gradient(ellipse_at_center,#f5eedc_0%,#e9dec3_70%,#ddd0b0_100%)]"
+        className="relative min-h-0 flex-1 select-none bg-[radial-gradient(ellipse_at_center,#f5eedc_0%,#e9dec3_70%,#ddd0b0_100%)] [-webkit-touch-callout:none]"
       >
         {error ? (
           <div className="p-4">
@@ -440,9 +584,10 @@ export function ReaderView({
           ref={pagerRef}
           onScroll={onScroll}
           dir="rtl"
+          style={{ '--fit': scale, '--zoom': zoom } as React.CSSProperties}
           className={cn(
             'absolute inset-0 flex snap-x snap-mandatory overflow-y-hidden overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
-            // Zoomed, a swipe pans the page; the arrows and keys still turn it.
+            // Zoomed, a swipe pans the page; the arrows, keys and edge-drags still turn it.
             zoomed ? 'overflow-x-hidden' : 'overflow-x-auto',
             (html.size === 0 || scale === 0) && 'invisible',
           )}
@@ -539,9 +684,21 @@ export function ReaderView({
             >
               <Plus className="h-4 w-4" />
             </button>
+            <button
+              type="button"
+              onClick={() => zoomAt(Math.abs(zoom - fitWidthZoom) < 0.01 ? 1 : fitWidthZoom)}
+              disabled={fitWidthZoom <= 1}
+              aria-label="ملء العرض"
+              title="ملء العرض"
+              className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-white/10 disabled:opacity-30"
+            >
+              <MoveHorizontal className="h-4 w-4" />
+            </button>
           </div>
         )}
       </main>
+
+      {player.status !== 'idle' && <PlayerBar />}
 
       {hasSteps && duty && (
         <RepeatCounter
@@ -557,7 +714,7 @@ export function ReaderView({
           <button
             type="button"
             disabled={index === 0}
-            onClick={() => goTo(index - 1)}
+            onClick={() => goTo(index - 1, 'smooth', true)}
             aria-label="الصفحة السابقة"
             className="flex h-12 w-12 items-center justify-center rounded-full transition-colors hover:bg-white/10 disabled:opacity-25 active:bg-white/10"
           >
@@ -584,7 +741,7 @@ export function ReaderView({
                     key={sl.join('-')}
                     type="button"
                     aria-label={`صفحة ${sl[0]}`}
-                    onClick={() => goTo(i)}
+                    onClick={() => goTo(i, 'smooth', true)}
                     className={cn(
                       'h-1.5 rounded-full transition-all',
                       i === index ? 'w-5 bg-[#e0bc66]' : 'w-1.5 bg-white/35',
@@ -598,13 +755,30 @@ export function ReaderView({
           <button
             type="button"
             disabled={index >= slides.length - 1}
-            onClick={() => goTo(index + 1)}
+            onClick={() => goTo(index + 1, 'smooth', true)}
             aria-label="الصفحة التالية"
             className="flex h-12 w-12 items-center justify-center rounded-full transition-colors hover:bg-white/10 disabled:opacity-25 active:bg-white/10"
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
         </footer>
+      )}
+
+      {selected && (
+        <TafseerSheet
+          hit={selected}
+          data={data}
+          onClose={() => setSelected(null)}
+          onListen={listenFrom}
+        />
+      )}
+
+      {listenOpen && duty && queue.length > 0 && (
+        <ListenSheet
+          queue={queue}
+          fromAyah={selected}
+          onClose={() => setListenOpen(false)}
+        />
       )}
     </div>
   );
