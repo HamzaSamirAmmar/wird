@@ -31,8 +31,8 @@ export interface ReaderGesturesConfig {
   isZoomed(): boolean;
   /** Turn the page (±1 slide), keeping zoom and the vertical reading position. */
   turn(dir: 1 | -1): void;
-  /** Long-press (touch) or context-menu (mouse) landed on an ayah. */
-  onAyahLongPress(hit: AyahHit): void;
+  /** Long-press (touch), click (mouse), or context-menu on an ayah activates it. */
+  onAyahActivate(hit: AyahHit): void;
 }
 
 /** How far a finger must keep dragging past a zoomed page's edge to turn it (px). */
@@ -119,7 +119,7 @@ export function attachReaderGestures(el: HTMLElement, cfg: ReaderGesturesConfig)
         timer: window.setTimeout(() => {
           const hit = ayahAt(document.elementFromPoint(t.clientX, t.clientY));
           press = null;
-          if (hit) cfg.onAyahLongPress(hit);
+          if (hit) cfg.onAyahActivate(hit);
         }, LONG_PRESS_MS),
       };
     }
@@ -228,9 +228,19 @@ export function attachReaderGestures(el: HTMLElement, cfg: ReaderGesturesConfig)
   const onGestureEnd = () => settle();
 
   // ── mouse ────────────────────────────────────────────────────────────────────
+  // A click (mouse) on an ayah activates it — a desktop has no long-press. A click is a
+  // press-release pair that never moved, so drags (panning a zoomed page) stay drags.
+  let clickCandidate: { x: number; y: number } | null = null;
+  let clickActivatedAt = 0;
+
   const onPointerDown = (e: PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.button === 0) {
+      clickCandidate =
+        e.target instanceof Node && (e.target as HTMLElement).closest?.('button,a,input')
+          ? null
+          : { x: e.clientX, y: e.clientY };
+    }
     if (e.pointerType !== 'mouse' || e.button !== 0) return;
-    if (e.target instanceof Node && (e.target as HTMLElement).closest?.('button,a,input')) return;
     const sc = cfg.activeScroller();
     if (!cfg.isZoomed() || !sc || !sc.contains(e.target as Node)) return;
     drag = { x: e.clientX, y: e.clientY, left: sc.scrollLeft, top: sc.scrollTop };
@@ -261,11 +271,25 @@ export function attachReaderGestures(el: HTMLElement, cfg: ReaderGesturesConfig)
     sc.scrollTop = d.top - dy;
   };
 
-  const onPointerUp = () => (drag = null);
+  const onPointerUp = (e: PointerEvent) => {
+    drag = null;
+    const c = clickCandidate;
+    clickCandidate = null;
+    if (!c || e.pointerType !== 'mouse' || e.button !== 0) return;
+    if (Math.hypot(e.clientX - c.x, e.clientY - c.y) > 6) return; // it was a drag
+    const hit = ayahAt(e.target);
+    if (hit) {
+      clickActivatedAt = performance.now();
+      cfg.onAyahActivate(hit);
+    }
+  };
 
   const onDoubleClick = (e: MouseEvent) => {
     // The touch double-tap path already handled it (touch also synthesizes dblclick)…
     if (Math.abs(performance.now() - lastDoubleTapAt) < 80) return;
+    // …so did the click that just opened the tafseer sheet: the second click of a fast
+    // double-click landed on its backdrop, and this dblclick must not zoom beneath it…
+    if (Math.abs(performance.now() - clickActivatedAt) < 350) return;
     // …and controls double-clicked on their own behalf (stopPropagation on the React side
     // can't help: this native listener sits below React's root handler).
     if (e.target instanceof Node && (e.target as HTMLElement).closest?.('button,a,input')) return;
@@ -280,7 +304,7 @@ export function attachReaderGestures(el: HTMLElement, cfg: ReaderGesturesConfig)
     if (!hit) return;
     e.preventDefault();
     cancelPress();
-    cfg.onAyahLongPress(hit);
+    cfg.onAyahActivate(hit);
   };
 
   el.addEventListener('touchstart', onTouchStart, { passive: true });

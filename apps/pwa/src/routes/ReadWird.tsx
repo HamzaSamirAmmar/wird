@@ -4,13 +4,14 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
+  CircleHelp,
   Minus,
   MoveHorizontal,
   Plus,
   Volume2,
 } from 'lucide-react';
 import { DUTY_CATEGORY_LABELS } from '@wird/domain';
-import { ayahsInRange, formatRange, pageOfAyah } from '@wird/quran-data';
+import { ayahsInRange, ayahsOnPage, formatRange, pageOfAyah } from '@wird/quran-data';
 import { Alert, Spinner, cn } from '@wird/ui-web';
 import { useAuth } from '../lib/auth-context';
 import { completeStep, getCachedDuties } from '../lib/duties';
@@ -19,6 +20,7 @@ import { RepeatCounter } from '../components/RepeatCounter';
 import { TafseerSheet, type AyahRefHit } from '../components/TafseerSheet';
 import { ListenSheet } from '../components/ListenSheet';
 import { PlayerBar } from '../components/PlayerBar';
+import { ReaderShowcase, showcaseUnseen } from '../components/ReaderShowcase';
 import { useWirdPlayerSnapshot, wirdPlayer } from '../lib/wirdPlayer';
 import { haptic } from '../lib/celebrate';
 import {
@@ -114,6 +116,7 @@ export function ReaderView({
   const [zoom, setZoom] = React.useState(1);
   const [selected, setSelected] = React.useState<AyahRefHit | null>(null);
   const [listenOpen, setListenOpen] = React.useState(false);
+  const [showcase, setShowcase] = React.useState(false);
   const zoomed = zoom > 1.001;
   const mainRef = React.useRef<HTMLElement>(null);
   const pagerRef = React.useRef<HTMLDivElement>(null);
@@ -298,7 +301,7 @@ export function ReaderView({
       activeScroller: () => scrollerAt(indexRef.current),
       isZoomed: () => zoomRef.current > 1.001,
       turn: turnPage,
-      onAyahLongPress: (hit) => {
+      onAyahActivate: (hit) => {
         haptic(14);
         setSelected(hit);
       },
@@ -325,6 +328,42 @@ export function ReaderView({
     if (!el || el.clientWidth === 0) return;
     setIndex(Math.round(Math.abs(el.scrollLeft) / el.clientWidth));
   }
+
+  // ── Resume where the reader left off (per duty) ──────────────────────────────
+  // The slide index survives leaving the reader, a reload, or a week away; restoring it
+  // waits until the slides exist, and saving waits until the restore has landed (a save
+  // on the first paint would clobber the stored position with 0 before it applies).
+  const posKey = duty ? `wird.reader.pos.${duty.id}` : null;
+  const restoredRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!posKey || slides.length === 0 || restoredRef.current) return;
+    restoredRef.current = true;
+    let saved: number | null = null;
+    try {
+      saved = Number(localStorage.getItem(posKey));
+    } catch {
+      /* private mode — always open at the first page */
+    }
+    if (saved !== null && Number.isFinite(saved) && saved > 0 && saved < slides.length) {
+      goTo(saved, 'instant');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posKey, slides.length]);
+
+  React.useEffect(() => {
+    if (!posKey || !restoredRef.current) return;
+    try {
+      localStorage.setItem(posKey, String(index));
+    } catch {
+      /* see above */
+    }
+  }, [posKey, index]);
+
+  // The first time the reader opens, a short showcase points at what it can do; the
+  // header's help button replays it any time.
+  React.useEffect(() => {
+    if (html.size > 0 && showcaseUnseen()) setShowcase(true);
+  }, [html]);
 
   // A felt tick when a page settles (not on the first paint).
   const firstSettle = React.useRef(true);
@@ -455,10 +494,38 @@ export function ReaderView({
     [duty],
   );
 
+  // Every ayah the reader actually shows (the duty's pages, faded ranges included), in
+  // muṣḥaf order — the tafseer sheet's walking order. An ayah long-pressed outside the
+  // duty scope is still visible, so it is still walkable.
+  const sheetList = React.useMemo(() => {
+    const seen = new Set<number>();
+    const list: AyahRefHit[] = [];
+    for (const p of pages) {
+      for (const a of ayahsOnPage(p)) {
+        const key = a.surah * 1000 + a.ayah;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        list.push({ surah: a.surah, ayah: a.ayah });
+      }
+    }
+    return list;
+  }, [pages]);
+
+  const neighbours = React.useMemo(() => {
+    const i = selected
+      ? sheetList.findIndex((a) => a.surah === selected.surah && a.ayah === selected.ayah)
+      : -1;
+    return {
+      prev: i > 0 ? sheetList[i - 1]! : null,
+      next: i >= 0 && i < sheetList.length - 1 ? sheetList[i + 1]! : null,
+    };
+  }, [sheetList, selected]);
+
   function listenFrom(hit: AyahRefHit) {
     setSelected(null);
     const i = queue.findIndex((a) => a.surah === hit.surah && a.ayah === hit.ayah);
-    if (queue.length > 0) wirdPlayer.playQueue(queue, Math.max(0, i));
+    // Inside the wird: play it through from here. A faded ayah outside the scope: just it.
+    wirdPlayer.playQueue(i >= 0 ? queue : [hit], Math.max(0, i));
   }
 
   const shown = slides[index] ?? [];
@@ -544,18 +611,29 @@ export function ReaderView({
             )}
           </div>
           {duty && (
-            <button
-              type="button"
-              onClick={() => setListenOpen(true)}
-              aria-label="استماع إلى الورد"
-              title="استماع إلى الورد"
-              className={cn(
-                'flex h-10 w-10 items-center justify-center rounded-full transition-colors',
-                playingAyah ? 'bg-[#e0bc66] text-[#0b4f55]' : 'active:bg-white/10',
-              )}
-            >
-              <Volume2 className="h-5 w-5" />
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setShowcase(true)}
+                aria-label="شرح القارئ"
+                title="شرح القارئ"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-white/80 transition-colors hover:bg-white/10 active:bg-white/10"
+              >
+                <CircleHelp className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setListenOpen(true)}
+                aria-label="استماع إلى الورد"
+                title="استماع إلى الورد"
+                className={cn(
+                  'flex h-10 w-10 items-center justify-center rounded-full transition-colors',
+                  playingAyah ? 'bg-[#e0bc66] text-[#0b4f55]' : 'active:bg-white/10',
+                )}
+              >
+                <Volume2 className="h-5 w-5" />
+              </button>
+            </>
           )}
         </div>
         {/* Gold rule — the muṣḥaf's frame colour, echoing the pages below. */}
@@ -768,10 +846,21 @@ export function ReaderView({
         <TafseerSheet
           hit={selected}
           data={data}
+          prev={neighbours.prev}
+          next={neighbours.next}
+          onNavigate={(dir) => {
+            const to = dir === -1 ? neighbours.prev : neighbours.next;
+            if (to) {
+              haptic(6);
+              setSelected(to);
+            }
+          }}
           onClose={() => setSelected(null)}
           onListen={listenFrom}
         />
       )}
+
+      {showcase && <ReaderShowcase onClose={() => setShowcase(false)} />}
 
       {listenOpen && duty && queue.length > 0 && (
         <ListenSheet
