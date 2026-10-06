@@ -66,6 +66,9 @@
   .animate-\[counter-ripple_\.5s_ease-out_forwards\] {
     animation: none;
   }
+  .rw-hl-play {
+    animation: none;
+  }
 }
 
 /* ─── Reader ayah highlights ────────────────────────────────────────────────
@@ -83,8 +86,19 @@
 .rw-hl-sel {
   background: rgba(224, 188, 102, 0.42);
 }
-/* The ayah currently being recited — the brand's teal, lighter than the ink. */
+/* The ayah currently being recited — the brand's teal, lighter than the ink. The band
+   breathes gently while it plays (still under prefers-reduced-motion's care). */
 .rw-hl-play {
   background: rgba(2, 99, 108, 0.13);
   outline: 2px solid rgba(2, 99, 108, 0.38);
+  animation: rw-play-pulse 1.7s ease-in-out infinite;
+}
+@keyframes rw-play-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
 }

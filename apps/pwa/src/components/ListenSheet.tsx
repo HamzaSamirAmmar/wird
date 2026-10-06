@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Check, Download, Play, Trash2, Volume2, X } from 'lucide-react';
+import { Check, Download, Play, Trash2, Volume2 } from 'lucide-react';
 import { globalAyahIndex, type AyahRef } from '@wird/quran-data';
 import { cn } from '@wird/ui-web';
 import { haptic } from '../lib/celebrate';
@@ -18,6 +18,7 @@ import {
   requestPersistentStorage,
 } from '../lib/audioOffline';
 import { useWirdPlayerSnapshot, wirdPlayer } from '../lib/wirdPlayer';
+import { BottomSheet } from './BottomSheet';
 import type { AyahRefHit } from './TafseerSheet';
 
 const ar = (n: number) => n.toLocaleString('ar-u-nu-latn');
@@ -57,16 +58,14 @@ export function ListenSheet({
 
   React.useEffect(refreshCached, [refreshCached]);
 
-  React.useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && !downloading) onClose();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, downloading]);
-
   const reciter = reciterById(player.reciterId);
   const fullyCached = cached !== null && cached >= urls.length && urls.length > 0;
+  // The CDN's per-ayah files average ~90 KB at 128 kbps and ~45 KB at 64.
+  const estMb = ((queue.length * (player.bitrate === 128 ? 0.09 : 0.045))).toFixed(1);
+
+  function requestClose() {
+    if (!downloading) onClose();
+  }
 
   async function download() {
     if (downloading) return;
@@ -89,28 +88,14 @@ export function ListenSheet({
     : -1;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end" role="dialog" aria-modal="true">
-      <button
-        type="button"
-        aria-label="إغلاق"
-        className="absolute inset-0 cursor-default bg-black/35 backdrop-blur-[2px]"
-        onClick={() => !downloading && onClose()}
-      />
-      <div className="animate-slide-up relative mx-auto flex max-h-[88dvh] w-full max-w-xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl">
-        <div className="flex flex-none items-center justify-between border-b border-[#b08a3e]/25 bg-[#f7efd9] px-4 py-3">
-          <div className="flex items-center gap-2 font-display text-base text-[#0b4f55]">
-            <Volume2 className="h-5 w-5" />
-            استماع إلى الورد
-          </div>
-          <button
-            type="button"
-            onClick={() => !downloading && onClose()}
-            aria-label="إغلاق"
-            className="flex h-9 w-9 items-center justify-center rounded-full text-[#0b4f55] transition-colors hover:bg-[#0b4f55]/8"
-          >
-            <X className="h-5 w-5" />
-          </button>
+    <BottomSheet label="استماع إلى الورد" onClose={requestClose}>
+      <div className="flex flex-none items-center justify-between border-b border-[#b08a3e]/25 bg-[#f7efd9] px-4 py-3">
+        <div className="flex items-center gap-2 font-display text-base text-[#0b4f55]">
+          <Volume2 className="h-5 w-5" />
+          استماع إلى الورد
         </div>
+        <span className="text-[11px] text-[#9c7025]">اسحب للأسفل للإغلاق</span>
+      </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
           {/* ── Reciter ── */}
@@ -253,13 +238,13 @@ export function ListenSheet({
                     ? 'يعمل هذا الورد صوتيًا دون اتصال.'
                     : cached !== null && cached > 0
                       ? `منزّل ${ar(cached)} من ${ar(urls.length)} — يتم استكمال التنزيل عند الطلب.`
-                      : 'الاستماع يحتاج اتصالاً بالإنترنت ما لم تنزّل الصوت مسبقًا.'}
+                      : `الاستماع يحتاج اتصالاً بالإنترنت ما لم تنزّل الصوت مسبقًا (الحجم التقريبي ${estMb} ميغابايت).`}
             </p>
           </div>
         </div>
 
         {/* ── Play ── */}
-        <div className="flex flex-none flex-col gap-2 border-t border-neutral-100 px-4 pb-safe pt-3">
+        <div className="flex flex-none flex-col gap-2 border-t border-neutral-100 px-4 pb-3 pt-3">
           <button
             type="button"
             onClick={() => playFrom(0)}
@@ -290,7 +275,6 @@ export function ListenSheet({
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </BottomSheet>
   );
 }

@@ -48,7 +48,7 @@ export function PlayerBar() {
         <Repeat className="h-3.5 w-3.5" />
         {player.repeatEach && (
           <span className="absolute -end-0.5 -top-1 text-[9px] font-bold leading-none">
-            {ar(7)}
+            {ar(player.repeatsLeft)}
           </span>
         )}
       </button>
