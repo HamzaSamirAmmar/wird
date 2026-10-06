@@ -145,7 +145,13 @@ importers:
       workbox-precaching:
         specifier: ^7.4.1
         version: 7.4.1
+      workbox-range-requests:
+        specifier: ^7.4.1
+        version: 7.4.1
       workbox-routing:
+        specifier: ^7.4.1
+        version: 7.4.1
+      workbox-strategies:
         specifier: ^7.4.1
         version: 7.4.1
       zod:
