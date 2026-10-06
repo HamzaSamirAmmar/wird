@@ -78,6 +78,23 @@ export function ReaderShowcase({ onClose }: { onClose: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [i, last]);
 
+  // The browser/Android back button closes the showcase instead of leaving the reader
+  // (same sentinel dance as BottomSheet — see the note there).
+  React.useEffect(() => {
+    history.pushState({ wirdShowcase: true }, '');
+    let popped = false;
+    const onPop = () => {
+      popped = true;
+      finish();
+    };
+    window.addEventListener('popstate', onPop);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      if (!popped && history.state?.wirdShowcase) history.back();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const Icon = slide.icon;
 
   return (

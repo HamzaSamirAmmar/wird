@@ -230,7 +230,10 @@ export function attachReaderGestures(el: HTMLElement, cfg: ReaderGesturesConfig)
   // ── mouse ────────────────────────────────────────────────────────────────────
   // A click (mouse) on an ayah activates it — a desktop has no long-press. A click is a
   // press-release pair that never moved, so drags (panning a zoomed page) stay drags.
-  let clickCandidate: { x: number; y: number } | null = null;
+  // The candidate carries the *pressed* target: a zoomed page arms a pan on press, and
+  // pointer capture then retargets the release to the container — without remembering
+  // the target, no ayah could ever be resolved while zoomed.
+  let clickCandidate: { x: number; y: number; target: EventTarget | null } | null = null;
   let clickActivatedAt = 0;
 
   const onPointerDown = (e: PointerEvent) => {
@@ -238,7 +241,7 @@ export function attachReaderGestures(el: HTMLElement, cfg: ReaderGesturesConfig)
       clickCandidate =
         e.target instanceof Node && (e.target as HTMLElement).closest?.('button,a,input')
           ? null
-          : { x: e.clientX, y: e.clientY };
+          : { x: e.clientX, y: e.clientY, target: e.target };
     }
     if (e.pointerType !== 'mouse' || e.button !== 0) return;
     const sc = cfg.activeScroller();
@@ -277,7 +280,7 @@ export function attachReaderGestures(el: HTMLElement, cfg: ReaderGesturesConfig)
     clickCandidate = null;
     if (!c || e.pointerType !== 'mouse' || e.button !== 0) return;
     if (Math.hypot(e.clientX - c.x, e.clientY - c.y) > 6) return; // it was a drag
-    const hit = ayahAt(e.target);
+    const hit = ayahAt(c.target);
     if (hit) {
       clickActivatedAt = performance.now();
       cfg.onAyahActivate(hit);
