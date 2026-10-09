@@ -120,7 +120,7 @@ export default function ReadWird() {
       onOpenDuty={openDuty}
       onBack={back}
       onCompleteStep={async (step) => {
-        // The same one-way tick as the checklist (queued offline, synced later).
+        // The same tick as the checklist (queued offline, synced later).
         await completeStep(step.id);
         await load();
       }}

@@ -2,6 +2,9 @@ import * as React from 'react';
 import { HISTORY_DAYS, addDays } from '../lib/dates';
 import { cn } from '@wird/ui-web';
 
+/** A day's wird state: every duty finished, or something still open. */
+export type DayMark = 'done' | 'open';
+
 const dayFormat = new Intl.DateTimeFormat('ar-u-nu-latn', { weekday: 'narrow' });
 const monthFormat = new Intl.DateTimeFormat('ar-u-nu-latn', { month: 'short' });
 
@@ -21,10 +24,13 @@ const monthFormat = new Intl.DateTimeFormat('ar-u-nu-latn', { month: 'short' });
 export function DayStrip({
   value,
   today,
+  marks = {},
   onChange,
 }: {
   value: string;
   today: string;
+  /** Days that had a wird: a dot under the date — green finished, red not (amber today). */
+  marks?: Record<string, DayMark>;
   onChange: (iso: string) => void;
 }) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -75,10 +81,16 @@ export function DayStrip({
             type="button"
             onClick={() => onChange(iso)}
             aria-pressed={selected}
-            aria-label={iso}
+            aria-label={
+              marks[iso] === 'done'
+                ? `${iso} — مكتمل`
+                : marks[iso] === 'open'
+                  ? `${iso} — غير مكتمل`
+                  : iso
+            }
             data-day={iso}
             className={cn(
-              'flex w-11 shrink-0 flex-col items-center gap-1 rounded-xl py-2 transition-colors duration-150',
+              'flex w-11 shrink-0 flex-col items-center gap-1 rounded-xl pt-2 pb-1.5 transition-colors duration-150',
               selected ? 'bg-white text-primary-800' : 'text-primary-100/70 active:bg-white/10',
             )}
           >
@@ -95,6 +107,19 @@ export function DayStrip({
             >
               {date.getDate()}
             </span>
+            <span
+              aria-hidden
+              className={cn(
+                'h-1.5 w-1.5 rounded-full',
+                !marks[iso]
+                  ? 'bg-transparent'
+                  : marks[iso] === 'done'
+                    ? 'bg-mint-400'
+                    : isToday
+                      ? 'bg-accent-400'
+                      : 'bg-rose-400',
+              )}
+            />
           </button>
         );
       })}

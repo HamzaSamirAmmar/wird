@@ -39,7 +39,7 @@ interface CounterStep {
  * Repetition counter docked above the reader's page bar: several steps ask for the passage to
  * be read seven times, and losing count mid-way is the common failure. One big tap target per
  * reading, dots that fill toward the target, and — once it is reached — a one-tap way to tick
- * the step in the checklist (still an explicit tap: ticks are final).
+ * the step in the checklist (still an explicit tap).
  *
  * Counts live in localStorage per duty, so they survive leaving the reader, a reload, or
  * going offline. They are a reading aid only — nothing here is synced.

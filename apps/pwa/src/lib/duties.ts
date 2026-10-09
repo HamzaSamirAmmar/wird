@@ -111,14 +111,14 @@ export async function getCachedDuties(employeeId: string) {
 }
 
 /**
- * Optimistically completes a step locally, queues the write, and tries to sync immediately.
- * Completion is one-way: a step that is already done is left alone, never unticked.
+ * Optimistically ticks or unticks a step locally, queues the write, and tries to sync
+ * immediately. The server owns `completed_at` on every transition (stamp_step_completed_at):
+ * an untick clears it and a re-tick counts from the re-tick.
  */
-export async function completeStep(stepId: string) {
+export async function setStepCompleted(stepId: string, isCompleted: boolean) {
   const step = await db.steps.get(stepId);
-  if (!step || step.isCompleted) return;
-  const isCompleted = true;
-  const completedAt = new Date().toISOString();
+  if (!step || step.isCompleted === isCompleted) return;
+  const completedAt = isCompleted ? new Date().toISOString() : null;
   await db.steps.update(stepId, { isCompleted, completedAt });
 
   // One queued write per step, latest wins: a repeated tick offline replays as one update.
@@ -137,6 +137,11 @@ export async function completeStep(stepId: string) {
   if (step) await recomputeLocalDutyStatus(step.dutyId);
   await requestBackgroundSync();
   await flushOutbox();
+}
+
+/** Ticks a step (see setStepCompleted). */
+export function completeStep(stepId: string) {
+  return setStepCompleted(stepId, true);
 }
 
 /**

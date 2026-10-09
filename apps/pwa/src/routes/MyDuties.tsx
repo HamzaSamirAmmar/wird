@@ -39,11 +39,11 @@ import {
 } from '@wird/ui-web';
 import { useAuth } from '../lib/auth-context';
 import { supabase } from '../lib/supabase';
-import { completeStep, getCachedDuties, pendingOutboxCount, syncNow } from '../lib/duties';
+import { getCachedDuties, pendingOutboxCount, setStepCompleted, syncNow } from '../lib/duties';
 import { useOnline } from '../lib/connectivity';
 import { getLastSyncedAt, type CachedDuty, type CachedStep } from '../lib/offline';
 import { BannerRail } from '../components/BannerRail';
-import { DayStrip } from '../components/DayStrip';
+import { DayStrip, type DayMark } from '../components/DayStrip';
 import { GroupStandings } from '../components/GroupStandings';
 import { PushNotice } from '../components/PushNotice';
 import { ensurePushRegistered } from '../lib/notifications';
@@ -121,6 +121,8 @@ export default function MyDuties() {
     [setSearchParams, today],
   );
   const [duties, setDuties] = React.useState<DutyWithSteps[] | null>(null);
+  // Every cached day's state, for the day rail's marks (done / not done).
+  const [dayMarks, setDayMarks] = React.useState<Record<string, DayMark>>({});
   // Opened from the Telegram "تحميل الورد" button: offer the file up front. It is a prompt to
   // tap rather than an automatic download, because phones only save files on a user gesture.
   const [downloadPrompt, setDownloadPrompt] = React.useState(() =>
@@ -158,6 +160,12 @@ export default function MyDuties() {
     if (!employeeId) return;
     const all = await getCachedDuties(employeeId);
     setDuties(all.filter((d) => d.dueDate === selectedDate));
+    const marks: Record<string, DayMark> = {};
+    for (const d of all) {
+      const done = d.steps.length > 0 && d.steps.every((x) => x.isCompleted);
+      marks[d.dueDate] = marks[d.dueDate] === 'open' || !done ? 'open' : 'done';
+    }
+    setDayMarks(marks);
     setPendingSync(await pendingOutboxCount());
     setLastSynced(await getLastSyncedAt());
   }, [employeeId, selectedDate]);
@@ -284,9 +292,28 @@ export default function MyDuties() {
     return <Navigate to="/supervisor" replace />;
   }
 
-  // Ticking a step is final: a completed step cannot be unticked.
-  async function handleComplete(step: CachedStep) {
-    if (step.isCompleted) return;
+  // A tap ticks a step, or unticks it again.
+  async function handleToggle(step: CachedStep) {
+    if (step.isCompleted) {
+      haptic(8);
+      setDuties((prev) =>
+        prev
+          ? prev.map((d) =>
+              d.id !== step.dutyId
+                ? d
+                : {
+                    ...d,
+                    steps: d.steps.map((s) =>
+                      s.id === step.id ? { ...s, isCompleted: false } : s,
+                    ),
+                  },
+            )
+          : prev,
+      );
+      await setStepCompleted(step.id, false);
+      await reloadFromCache();
+      return;
+    }
     haptic();
     // The tick that finishes the whole day gets a small celebration — only on a real tick,
     // never on load, so reopening a finished day stays calm.
@@ -307,7 +334,7 @@ export default function MyDuties() {
           )
         : prev,
     );
-    await completeStep(step.id);
+    await setStepCompleted(step.id, true);
     await reloadFromCache();
   }
 
@@ -434,7 +461,12 @@ export default function MyDuties() {
               />
 
               <div className="relative mt-3">
-                <DayStrip value={selectedDate} today={today} onChange={setSelectedDate} />
+                <DayStrip
+                  value={selectedDate}
+                  today={today}
+                  marks={dayMarks}
+                  onChange={setSelectedDate}
+                />
               </div>
             </div>
           </div>
@@ -502,7 +534,7 @@ export default function MyDuties() {
                 {/* xl: two duty cards per row — each card's checklist still reads top-down. */}
                 <div className="flex flex-col gap-3 xl:grid xl:grid-cols-2 xl:items-start">
                   {orderedDuties.map((duty) => (
-                    <DutyCard key={duty.id} duty={duty} onComplete={handleComplete} />
+                    <DutyCard key={duty.id} duty={duty} onToggle={handleToggle} />
                   ))}
                 </div>
               </div>
@@ -683,10 +715,10 @@ function DownloadWirdButton({
 
 function DutyCard({
   duty,
-  onComplete,
+  onToggle,
 }: {
   duty: DutyWithSteps;
-  onComplete: (step: CachedStep) => void;
+  onToggle: (step: CachedStep) => void;
 }) {
   const stepDefs = DUTY_CATEGORY_STEPS[duty.category];
   const done = duty.steps.filter((s) => s.isCompleted).length;
@@ -782,18 +814,16 @@ function DutyCard({
             <label
               key={step.id}
               className={cn(
-                'flex items-start gap-3 px-4 py-3 transition-colors',
+                'flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors',
                 step.isCompleted
-                  ? 'cursor-default bg-neutral-50/50'
-                  : 'cursor-pointer hover:bg-primary-50/40 active:bg-primary-50/60',
+                  ? 'bg-neutral-50/50 hover:bg-neutral-100/60'
+                  : 'hover:bg-primary-50/40 active:bg-primary-50/60',
               )}
             >
-              {/* A done step stays done: the checkbox locks once ticked. */}
               <Checkbox
                 checked={step.isCompleted}
-                disabled={step.isCompleted}
-                onCheckedChange={() => onComplete(step)}
-                className="mt-0.5 disabled:cursor-default disabled:opacity-100"
+                onCheckedChange={() => onToggle(step)}
+                className="mt-0.5"
               />
               <span className="min-w-0 flex-1">
                 {duty.steps.length > 1 && (

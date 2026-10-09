@@ -1,10 +1,8 @@
 import * as React from 'react';
 import {
-  CheckCircle2,
   ChevronDown,
-  Circle,
-  CircleDashed,
   ListChecks,
+  Search,
   TrendingUp,
   Trophy,
   UserCheck,
@@ -104,6 +102,7 @@ export default function FollowupPage() {
   const [customFrom, setCustomFrom] = React.useState('');
   const [customTo, setCustomTo] = React.useState('');
   const [onlyGaps, setOnlyGaps] = React.useState(false);
+  const [query, setQuery] = React.useState('');
   const [sort, setSort] = React.useState<{ key: SortKey; dir: 'asc' | 'desc' }>({
     key: 'rate',
     dir: 'asc',
@@ -156,7 +155,14 @@ export default function FollowupPage() {
 
   const visible = React.useMemo(() => {
     if (!rows) return null;
-    const filtered = onlyGaps ? rows.filter((r) => r.incompleteCount > 0) : rows;
+    const needle = normalizeArabic(query.trim());
+    const filtered = rows.filter(
+      (r) =>
+        (!onlyGaps || r.incompleteCount > 0) &&
+        (!needle ||
+          normalizeArabic(r.fullName).includes(needle) ||
+          normalizeArabic(r.groupName ?? '').includes(needle)),
+    );
     const dir = sort.dir === 'asc' ? 1 : -1;
     return [...filtered].sort((a, b) => {
       switch (sort.key) {
@@ -171,7 +177,7 @@ export default function FollowupPage() {
           return (a.completionRate - b.completionRate) * dir;
       }
     });
-  }, [rows, onlyGaps, sort]);
+  }, [rows, onlyGaps, sort, query]);
 
   const totals = React.useMemo(() => {
     if (!rows) return null;
@@ -196,7 +202,7 @@ export default function FollowupPage() {
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(10);
 
-  const filterKey = `${groupId}:${preset}:${customFrom}:${customTo}:${onlyGaps}:${sort.key}:${sort.dir}`;
+  const filterKey = `${groupId}:${preset}:${customFrom}:${customTo}:${onlyGaps}:${sort.key}:${sort.dir}:${query}`;
   const [prevFilterKey, setPrevFilterKey] = React.useState(filterKey);
   if (filterKey !== prevFilterKey) {
     setPrevFilterKey(filterKey);
@@ -287,6 +293,16 @@ export default function FollowupPage() {
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="w-full sm:w-72">
+            <Input
+              type="search"
+              icon={<Search className="h-4 w-4" />}
+              placeholder="ابحث بالاسم أو المجموعة"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="h-9 text-sm"
+            />
+          </div>
           <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-neutral-600">
             <input
               type="checkbox"
@@ -342,9 +358,19 @@ export default function FollowupPage() {
         ) : visible.length === 0 ? (
           <EmptyState
             icon={Trophy}
-            title={onlyGaps ? 'لا يوجد متعثرون في هذا المدى' : 'لا توجد بيانات'}
+            title={
+              query.trim()
+                ? 'لا نتائج مطابقة للبحث'
+                : onlyGaps
+                  ? 'لا يوجد متعثرون في هذا المدى'
+                  : 'لا توجد بيانات'
+            }
             description={
-              onlyGaps ? 'الجميع أتمّ أوراداً — أحسنوا.' : 'اختر مجموعة أو مدى زمني آخر.'
+              query.trim()
+                ? 'جرّب اسماً آخر أو امسح البحث.'
+                : onlyGaps
+                  ? 'الجميع أتمّ أوراداً — أحسنوا.'
+                  : 'اختر مجموعة أو مدى زمني آخر.'
             }
           />
         ) : (
@@ -478,40 +504,42 @@ interface DutyRow {
   range: { surahFrom: number; ayahFrom: number; surahTo: number; ayahTo: number };
 }
 
-/**
- * The three buckets a supervisor actually asks about, in the order they are worried about
- * them: what was missed, what is half-done, what is finished.
- */
-const STATUS_BUCKETS = [
-  {
-    status: 'pending' as const,
-    label: 'لم تبدأ',
-    icon: Circle,
-    panel: 'bg-danger-50/70 ring-danger-200',
-    head: 'text-danger-700',
-  },
-  {
-    status: 'in_progress' as const,
-    label: 'قيد التنفيذ',
-    icon: CircleDashed,
-    panel: 'bg-accent-50/70 ring-accent-200',
-    head: 'text-accent-800',
-  },
-  {
-    status: 'completed' as const,
-    label: 'مكتملة',
-    icon: CheckCircle2,
-    panel: 'bg-mint-50/70 ring-mint-200',
-    head: 'text-mint-800',
-  },
+type DutyFilter = 'open' | 'pending' | 'in_progress' | 'completed' | 'all';
+
+const DUTY_FILTERS: { key: DutyFilter; label: string }[] = [
+  { key: 'open', label: 'غير مكتملة' },
+  { key: 'pending', label: 'لم تبدأ' },
+  { key: 'in_progress', label: 'قيد التنفيذ' },
+  { key: 'completed', label: 'مكتملة' },
+  { key: 'all', label: 'الكل' },
 ];
 
+const STATUS_STYLE: Record<DutyStatus, { label: string; dot: string; text: string }> = {
+  pending: { label: 'لم تبدأ', dot: 'bg-danger-500', text: 'text-danger-700' },
+  in_progress: { label: 'قيد التنفيذ', dot: 'bg-accent-500', text: 'text-accent-800' },
+  completed: { label: 'مكتملة', dot: 'bg-mint-500', text: 'text-mint-700' },
+};
+
+/** Rows shown per «عرض المزيد» step — a year of wirds must not render as a wall of cards. */
+const DETAIL_STEP = 12;
+
+function matchesFilter(status: DutyStatus, f: DutyFilter): boolean {
+  if (f === 'all') return true;
+  if (f === 'open') return status !== 'completed';
+  return status === f;
+}
+
 /**
- * The expanded per-employee duty breakdown. Mounted only while open, so the fetch
- * runs on open — shared by the desktop table row and the phone card.
+ * The expanded per-employee breakdown, built to stay small however many wirds the range
+ * holds: a strip of one square per assigned day (done / partly / missed — the whole range at
+ * a glance), status tabs with counts (unfinished first — what a supervisor opens this for),
+ * and a day-grouped list that grows in steps. Mounted only while open, so the fetch runs on
+ * open — shared by the desktop table row and the phone card.
  */
 function DutyDetail({ employeeId, from, to }: { employeeId: string; from: string; to: string }) {
   const [duties, setDuties] = React.useState<DutyRow[] | null>(null);
+  const [filter, setFilter] = React.useState<DutyFilter | null>(null);
+  const [limit, setLimit] = React.useState(DETAIL_STEP);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -547,22 +575,161 @@ function DutyDetail({ employeeId, from, to }: { employeeId: string; from: string
     };
   }, [employeeId, from, to]);
 
+  // One entry per assigned day, oldest first for the strip (read like a timeline).
+  const days = React.useMemo(() => {
+    const map = new Map<string, DutyRow[]>();
+    for (const d of duties ?? []) map.set(d.date, [...(map.get(d.date) ?? []), d]);
+    return [...map.entries()]
+      .map(([date, list]) => {
+        const done = list.filter((d) => d.status === 'completed').length;
+        const started = list.some((d) => d.status !== 'pending');
+        const state: 'done' | 'partial' | 'missed' =
+          done === list.length ? 'done' : started ? 'partial' : 'missed';
+        return { date, list, state, done };
+      })
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [duties]);
+
   if (duties === null) {
     return <div className="py-2 text-xs text-neutral-400">جارٍ تحميل تفصيل الأوراد…</div>;
   }
   if (duties.length === 0) {
     return <div className="py-2 text-xs text-neutral-400">لا توجد أوراد مُسندة في هذا المدى.</div>;
   }
+
+  const counts: Record<DutyFilter, number> = {
+    open: duties.filter((d) => d.status !== 'completed').length,
+    pending: duties.filter((d) => d.status === 'pending').length,
+    in_progress: duties.filter((d) => d.status === 'in_progress').length,
+    completed: duties.filter((d) => d.status === 'completed').length,
+    all: duties.length,
+  };
+  // Default: what is still open — or everything, when nothing is.
+  const active: DutyFilter = filter ?? (counts.open > 0 ? 'open' : 'all');
+  const shown = duties.filter((d) => matchesFilter(d.status, active));
+  const page = shown.slice(0, limit);
+
+  // Group the visible page by day (already newest first).
+  const groups: { date: string; list: DutyRow[] }[] = [];
+  for (const d of page) {
+    const last = groups[groups.length - 1];
+    if (last && last.date === d.date) last.list.push(d);
+    else groups.push({ date: d.date, list: [d] });
+  }
+
   return (
-    <div className="grid gap-3 md:grid-cols-3">
-      {STATUS_BUCKETS.map((bucket) => (
-        <StatusBucket
-          key={bucket.status}
-          bucket={bucket}
-          duties={duties.filter((d) => d.status === bucket.status)}
-        />
-      ))}
+    <div className="flex flex-col gap-3">
+      {/* The whole range at a glance: one square per assigned day. */}
+      <div>
+        <div className="mb-1.5 flex items-center justify-between text-[11px] text-neutral-500">
+          <span>
+            الأيام: <b className="text-mint-700">{days.filter((d) => d.state === 'done').length}</b>{' '}
+            مكتملة من {days.length}
+          </span>
+          <span className="flex items-center gap-2.5">
+            <Legend className="bg-mint-500" label="مكتمل" />
+            <Legend className="bg-accent-400" label="جزئي" />
+            <Legend className="bg-danger-400" label="لم يبدأ" />
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-1" dir="ltr">
+          {days.map((d) => (
+            <span
+              key={d.date}
+              title={`${formatDayLabel(d.date)} — ${d.done}/${d.list.length}`}
+              className={cn(
+                'h-3.5 w-3.5 rounded-[4px]',
+                d.state === 'done'
+                  ? 'bg-mint-500'
+                  : d.state === 'partial'
+                    ? 'bg-accent-400'
+                    : 'bg-danger-400',
+              )}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        {DUTY_FILTERS.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => {
+              setFilter(key);
+              setLimit(DETAIL_STEP);
+            }}
+            aria-pressed={active === key}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors',
+              active === key
+                ? 'bg-primary-600 text-white'
+                : 'bg-white text-neutral-600 ring-1 ring-neutral-200 hover:bg-neutral-100',
+            )}
+          >
+            {label}
+            <span
+              className={cn('tabular-nums', active === key ? 'text-white/80' : 'text-neutral-400')}
+            >
+              {counts[key]}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {shown.length === 0 ? (
+        <p className="py-2 text-xs text-neutral-400">لا شيء هنا.</p>
+      ) : (
+        <div className="overflow-hidden rounded-xl bg-white ring-1 ring-neutral-200">
+          {groups.map((g) => (
+            <div key={g.date} className="border-b border-neutral-100 last:border-0">
+              <div className="bg-neutral-50 px-3 py-1 text-[11px] font-medium text-neutral-500">
+                {formatDayLabel(g.date)}
+              </div>
+              <ul className="divide-y divide-neutral-100">
+                {g.list.map((duty) => {
+                  const st = STATUS_STYLE[duty.status];
+                  return (
+                    <li key={duty.id} className="flex items-center gap-3 px-3 py-2">
+                      <span className={cn('h-2 w-2 shrink-0 rounded-full', st.dot)} />
+                      <span className="w-24 shrink-0 text-xs font-medium text-neutral-800">
+                        {DUTY_CATEGORY_LABELS[duty.category]}
+                      </span>
+                      {/* The range is the duty — a date and a category alone do not tell a
+                          supervisor which passage was missed. */}
+                      <span className="min-w-0 flex-1 truncate text-xs text-neutral-500">
+                        {formatRange(duty.range)}
+                      </span>
+                      <span className={cn('shrink-0 text-[11px] font-medium', st.text)}>
+                        {st.label}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+          {shown.length > limit && (
+            <button
+              type="button"
+              onClick={() => setLimit((l) => l + DETAIL_STEP * 2)}
+              className="w-full border-t border-neutral-100 py-2 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-50/50"
+            >
+              عرض المزيد ({shown.length - limit})
+            </button>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+function Legend({ className, label }: { className: string; label: string }) {
+  return (
+    <span className="flex items-center gap-1">
+      <span className={cn('h-2.5 w-2.5 rounded-[3px]', className)} />
+      {label}
+    </span>
   );
 }
 
@@ -743,49 +910,6 @@ function MiniStat({
   );
 }
 
-function StatusBucket({
-  bucket,
-  duties,
-}: {
-  bucket: (typeof STATUS_BUCKETS)[number];
-  duties: DutyRow[];
-}) {
-  const Icon = bucket.icon;
-  return (
-    <section className={cn('flex flex-col gap-2 rounded-xl p-3 ring-1', bucket.panel)}>
-      <header className={cn('flex items-center gap-1.5 text-xs font-semibold', bucket.head)}>
-        <Icon className="h-3.5 w-3.5" />
-        {bucket.label}
-        <span className="ms-auto tabular-nums">{duties.length}</span>
-      </header>
-
-      {duties.length === 0 ? (
-        <p className="py-1 text-[11px] text-neutral-400">لا شيء</p>
-      ) : (
-        <ul className="flex flex-col gap-1.5">
-          {duties.map((duty) => (
-            <li key={duty.id} className="rounded-lg bg-surface/80 px-2.5 py-2">
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-[11px] font-medium text-neutral-700">
-                  {DUTY_CATEGORY_LABELS[duty.category]}
-                </span>
-                <span className="shrink-0 text-[10px] text-neutral-400">
-                  {formatDayLabel(duty.date)}
-                </span>
-              </div>
-              {/* The range is the duty — a date and a category alone do not tell a supervisor
-                  which passage was missed. */}
-              <div className="mt-0.5 truncate text-[11px] text-neutral-500">
-                {formatRange(duty.range)}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
 function StatTile({
   icon: Icon,
   label,
@@ -806,4 +930,14 @@ function StatTile({
       </div>
     </Card>
   );
+}
+
+/** Letter-variant-insensitive Arabic for search: أ/إ/آ → ا, ة → ه, ى → ي, no tashkeel. */
+function normalizeArabic(text: string): string {
+  return text
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .toLowerCase();
 }
