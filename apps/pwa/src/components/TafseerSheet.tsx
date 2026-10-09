@@ -1,6 +1,5 @@
 import * as React from 'react';
 import {
-  BookOpen,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -230,13 +229,6 @@ export function TafseerSheet({
                   {a.text} <span className="text-[#8a6a1f]">{endMark(a.ayah)}</span>{' '}
                 </React.Fragment>
               ))}
-            </p>
-          )}
-
-          {multi && (
-            <p className="mt-2.5 flex items-center justify-center gap-1.5 text-center text-[11px] text-[#9c7025]">
-              <BookOpen className="h-3.5 w-3.5 shrink-0" />
-              يفسّر التفسير الميسر هذه الآيات معاً في مقطع واحد
             </p>
           )}
 

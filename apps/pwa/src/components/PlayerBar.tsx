@@ -1,4 +1,4 @@
-import { Pause, Play, Repeat, SkipBack, SkipForward, Volume2, X } from 'lucide-react';
+import { Pause, Play, Repeat, SkipBack, SkipForward, X } from 'lucide-react';
 import { getSurah } from '@wird/quran-data';
 import { cn } from '@wird/ui-web';
 import { reciterById } from '../lib/reciters';
@@ -20,13 +20,18 @@ export function PlayerBar() {
   const playing = player.status === 'playing' || player.status === 'loading';
 
   return (
-    <div className="flex flex-none items-center gap-2 border-t border-[#b08a3e]/40 bg-[#0b4f55] px-3 py-2 text-white">
-      <Volume2 className="h-4 w-4 flex-none text-[#e0bc66]" />
+    <div className="relative flex flex-none items-center gap-2 bg-[#0b4f55] px-3 py-2 text-white">
+      {/* Where in the wird playback is: a gold line filling across the bar's top edge. */}
+      <div aria-hidden className="absolute inset-x-0 top-0 h-[3px] bg-white/10">
+        <div
+          className="h-full bg-[#e0bc66] transition-[width] duration-500"
+          style={{ width: `${((player.index + 1) / player.queue.length) * 100}%` }}
+        />
+      </div>
 
       <div className="min-w-0 flex-1 leading-tight">
         <div className="truncate text-[13px] font-semibold">
           {surah.nameAr} · الآية {ar(current.ayah)}
-          <span className="text-white/55"> / {ar(player.queue.length)}</span>
         </div>
         <div className="truncate text-[11px] text-white/65">
           {reciter.note ? `${reciter.name} (${reciter.note})` : reciter.name}

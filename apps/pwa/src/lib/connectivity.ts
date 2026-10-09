@@ -53,6 +53,21 @@ const REQUEST_TIMEOUT_MS = 12_000;
  * reachable; only a thrown network error or the timeout counts as offline.
  */
 export const fetchWithTimeout: typeof fetch = async (input, init) => {
+  // Never time out a token refresh. Refresh tokens rotate: the server consumes the old one
+  // the moment it answers, so aborting a slow refresh client-side throws away the only valid
+  // token — the retry presents the consumed one, the server revokes the whole session as a
+  // reuse, and the user is signed out (production sessions showed exactly this: a session's
+  // last refresh at the very minute the same person had to log in again).
+  if (isTokenRefresh(input)) {
+    try {
+      const res = await fetch(input, init);
+      reportReachable(true);
+      return res;
+    } catch (e) {
+      if (!init?.signal?.aborted) reportReachable(false);
+      throw e;
+    }
+  }
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   // AbortSignal.any is missing before iOS 17.4; there the caller's own signal wins and the
   // request simply goes without our timeout.
@@ -71,3 +86,8 @@ export const fetchWithTimeout: typeof fetch = async (input, init) => {
     throw e;
   }
 };
+
+function isTokenRefresh(input: RequestInfo | URL): boolean {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  return url.includes('/auth/v1/token');
+}
