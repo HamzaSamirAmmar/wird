@@ -2,8 +2,8 @@ import * as React from 'react';
 import {
   ArrowDown,
   ArrowUp,
+  ArrowUpDown,
   ChevronDown,
-  Clock,
   Flame,
   Info,
   Medal,
@@ -118,23 +118,6 @@ function useRankMovement(win: LeaderboardWindow, rank: number | null): number {
     }
   }, [win, rank]);
   return delta;
-}
-
-/**
- * Average wrap-up time as a clock time: «٥:٤٠ ص». Past midnight (a day finished the next
- * morning on average) it says so rather than wrapping around to look early.
- */
-function formatFinish(secs: number): string {
-  const total = Math.round(secs / 60);
-  const days = Math.floor(total / 1440);
-  const mins = total % 1440;
-  const h24 = Math.floor(mins / 60);
-  const m = mins % 60;
-  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
-  const clock = `${ar(h12)}:${String(m)
-    .padStart(2, '0')
-    .replace(/\d/g, (d) => ar(Number(d)))} ${h24 < 12 ? 'ص' : 'م'}`;
-  return days > 0 ? `${clock} +${ar(days)}ي` : clock;
 }
 
 /** Cache-first fetch of one window's board. `onData` may fire twice: cached, then fresh. */
@@ -347,7 +330,7 @@ export function GroupStandings({
                 className={cn('h-4 w-4 transition-transform', tableOpen && 'rotate-180')}
               />
             </button>
-            {tableOpen && <RankTable entries={entries} win={win} />}
+            {tableOpen && <RankTable entries={entries} />}
           </div>
 
           <RankingRules />
@@ -617,23 +600,23 @@ const medalDot: Record<number, string> = {
   3: 'bg-linear-to-br from-[#f2d3b9] to-[#c3895c] text-[#6a3f1d]',
 };
 
-type SortKey = 'place' | 'rate' | 'finish' | 'streak';
+type SortKey = 'place' | 'rate' | 'streak';
 type SortDir = 'best' | 'worst';
 
 const SORT_NAMES: Record<SortKey, string> = {
   place: 'المركز',
   rate: 'الإنجاز',
-  finish: 'وقت الإتمام',
   streak: 'السلسلة',
 };
 
 /**
  * The complete group ranking. The # column is always the official place; tapping a column
  * header re-sorts the rows by that column (best first, tap again for the reverse), like any
- * table — the active header is highlighted with its arrow, and a chip above says what the
- * rows are sorted by with a one-tap way back to the ranking order.
+ * table — sortable headers carry a faint ↕, the active one is highlighted with its arrow and
+ * its column tinted, and a bar above says what the rows are sorted by, with a one-tap way
+ * back to the group's order.
  */
-function RankTable({ entries, win }: { entries: LeaderboardEntry[]; win: LeaderboardWindow }) {
+function RankTable({ entries }: { entries: LeaderboardEntry[] }) {
   const [sort, setSort] = React.useState<{ key: SortKey; dir: SortDir }>({
     key: 'place',
     dir: 'best',
@@ -642,14 +625,14 @@ function RankTable({ entries, win }: { entries: LeaderboardEntry[]; win: Leaderb
   const rows = React.useMemo(() => {
     const { key, dir } = sort;
     if (key === 'place' && dir === 'best') return entries;
-    // Higher is better for every key (time is negated: earlier is better).
+    // Higher is better for every key.
     const val = (e: LeaderboardEntry): number => {
       if (key === 'place') return -e.place;
       if (key === 'rate') return e.daysAssigned === 0 ? -1 : e.completionRate;
-      if (key === 'streak') return e.currentStreak;
-      return e.meanFinishSecs === null ? -Infinity : -e.meanFinishSecs;
+      return e.currentStreak;
     };
     const sign = dir === 'best' ? 1 : -1;
+    // Equal values keep the group's order, so a sort never shuffles ties at random.
     return [...entries].sort((a, b) => sign * (val(b) - val(a)) || a.place - b.place);
   }, [entries, sort]);
 
@@ -661,35 +644,38 @@ function RankTable({ entries, win }: { entries: LeaderboardEntry[]; win: Leaderb
 
   const header = (key: SortKey, label: React.ReactNode, className?: string) => {
     const active = sort.key === key;
-    const Arrow = sort.dir === 'best' ? ArrowDown : ArrowUp;
+    const Arrow = !active ? ArrowUpDown : sort.dir === 'best' ? ArrowDown : ArrowUp;
     return (
       <TableHead className={cn('px-1 text-center', className)}>
         <button
           type="button"
           onClick={() => sortBy(key)}
           aria-label={`ترتيب حسب ${SORT_NAMES[key]}`}
+          aria-pressed={active}
           className={cn(
-            'inline-flex items-center justify-center gap-0.5 rounded-md px-1.5 py-1 text-[11px] font-semibold transition-colors',
+            'inline-flex h-7 items-center justify-center gap-1 rounded-full px-2 text-[11px] font-semibold transition-colors',
             active
-              ? 'bg-primary-100 text-primary-800'
+              ? 'bg-primary-700 text-white shadow-xs'
               : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800',
           )}
         >
           {label}
-          {active && <Arrow className="h-3 w-3" />}
+          <Arrow className={cn('h-3 w-3', !active && 'opacity-40')} />
         </button>
       </TableHead>
     );
   };
 
   const custom = sort.key !== 'place' || sort.dir !== 'best';
+  const tint = (key: SortKey) => sort.key === key && custom && 'bg-primary-50/50';
 
   return (
     <Card variant="flat" className="animate-fade-in overflow-hidden">
       {custom && (
-        <div className="flex items-center justify-between gap-2 border-b border-neutral-100 bg-primary-50/50 px-3 py-1.5 text-[11px] text-primary-800">
+        <div className="flex items-center justify-between gap-2 border-b border-neutral-100 bg-primary-50/60 px-3 py-1.5 text-[11px] text-primary-800">
           <span>
             مرتّب حسب <b>{SORT_NAMES[sort.key]}</b>
+            {sort.dir === 'worst' && ' (من الأقل)'}
           </span>
           <button
             type="button"
@@ -703,17 +689,16 @@ function RankTable({ entries, win }: { entries: LeaderboardEntry[]; win: Leaderb
       <Table>
         <TableHeader>
           <TableRow>
-            {header('place', '#', 'w-10')}
+            {header('place', '#', 'w-12')}
             <TableHead className="px-2 text-[11px]">الاسم</TableHead>
             {header('rate', 'الإنجاز')}
             {header(
-              'finish',
-              <Clock
-                className="h-3.5 w-3.5"
-                aria-label={win === '1d' ? 'وقت الإتمام' : 'متوسط الإتمام'}
-              />,
+              'streak',
+              <>
+                <Flame className="h-3 w-3" />
+                <span className="hidden min-[400px]:inline">السلسلة</span>
+              </>,
             )}
-            {header('streak', <Flame className="h-3.5 w-3.5" aria-label="السلسلة" />)}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -725,7 +710,7 @@ function RankTable({ entries, win }: { entries: LeaderboardEntry[]; win: Leaderb
             const medal = !nothing ? medalDot[rank] : undefined;
             return (
               <TableRow key={entry.employeeId} className={cn(entry.isMe && 'bg-primary-50')}>
-                <TableCell className="px-1 text-center">
+                <TableCell className={cn('px-1 text-center', tint('place'))}>
                   {unranked ? (
                     <span className="text-neutral-300">—</span>
                   ) : medal ? (
@@ -748,7 +733,7 @@ function RankTable({ entries, win }: { entries: LeaderboardEntry[]; win: Leaderb
                     <Avatar
                       name={entry.fullName}
                       size="sm"
-                      className="hidden min-[420px]:inline-flex"
+                      className="hidden min-[400px]:inline-flex"
                     />
                     <span className="truncate font-medium text-neutral-900">{entry.fullName}</span>
                     {entry.isMe && (
@@ -758,44 +743,40 @@ function RankTable({ entries, win }: { entries: LeaderboardEntry[]; win: Leaderb
                     )}
                   </div>
                 </TableCell>
-                <TableCell
-                  className={cn('px-1 text-center', sort.key === 'rate' && 'bg-primary-50/40')}
-                >
+                <TableCell className={cn('px-1', tint('rate'))}>
                   {unranked ? (
-                    <span className="text-neutral-300">—</span>
+                    <div className="text-center text-neutral-300">—</div>
                   ) : (
-                    <div className="flex flex-col items-center leading-tight">
-                      <span
-                        className={cn(
-                          'text-sm font-bold tabular-nums',
-                          pct === 100 ? 'text-mint-600' : 'text-neutral-800',
-                        )}
-                      >
-                        {ar(pct)}%
-                      </span>
-                      <span className="text-[10px] tabular-nums text-neutral-400">
-                        {ar(entry.daysCompleted)}/{ar(entry.daysAssigned)}
-                      </span>
+                    <div className="mx-auto flex w-16 flex-col gap-1">
+                      <div className="flex items-baseline justify-between gap-1">
+                        <span
+                          className={cn(
+                            'text-sm font-bold tabular-nums',
+                            pct === 100 ? 'text-mint-600' : 'text-neutral-800',
+                          )}
+                        >
+                          {ar(pct)}%
+                        </span>
+                        <span className="text-[10px] tabular-nums text-neutral-400">
+                          {ar(entry.daysCompleted)}/{ar(entry.daysAssigned)}
+                        </span>
+                      </div>
+                      <div className="h-1 overflow-hidden rounded-full bg-neutral-100">
+                        <div
+                          className={cn(
+                            'h-full rounded-full',
+                            pct === 100 ? 'bg-mint-500' : 'bg-primary-500',
+                          )}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
                     </div>
                   )}
                 </TableCell>
-                <TableCell
-                  className={cn(
-                    'whitespace-nowrap px-1 text-center text-[11px] tabular-nums text-neutral-600',
-                    sort.key === 'finish' && 'bg-primary-50/40',
-                  )}
-                >
-                  {entry.meanFinishSecs === null ? (
-                    <span className="text-neutral-300">—</span>
-                  ) : (
-                    formatFinish(entry.meanFinishSecs)
-                  )}
-                </TableCell>
-                <TableCell
-                  className={cn('px-1 text-center', sort.key === 'streak' && 'bg-primary-50/40')}
-                >
+                <TableCell className={cn('px-1 text-center', tint('streak'))}>
                   {entry.currentStreak > 0 ? (
-                    <span className="text-xs font-semibold tabular-nums text-accent-600">
+                    <span className="inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums text-accent-600">
+                      <Flame className="h-3 w-3" />
                       {ar(entry.currentStreak)}
                     </span>
                   ) : (
