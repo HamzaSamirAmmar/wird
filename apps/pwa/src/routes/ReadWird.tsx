@@ -1,7 +1,8 @@
 import * as React from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowRight,
+  Check,
   ChevronLeft,
   ChevronRight,
   CircleHelp,
@@ -10,7 +11,7 @@ import {
   Plus,
   Volume2,
 } from 'lucide-react';
-import { DUTY_CATEGORY_LABELS } from '@wird/domain';
+import { DUTY_CATEGORIES, DUTY_CATEGORY_LABELS } from '@wird/domain';
 import { ayahsInRange, ayahsOnPage, formatRange, pageOfAyah } from '@wird/quran-data';
 import { Alert, Spinner, cn } from '@wird/ui-web';
 import { useAuth } from '../lib/auth-context';
@@ -18,6 +19,9 @@ import { completeStep, getCachedDuties } from '../lib/duties';
 import type { CachedDuty, CachedStep } from '../lib/offline';
 import { RepeatCounter } from '../components/RepeatCounter';
 import { TafseerSheet, type AyahRefHit } from '../components/TafseerSheet';
+import type { TafseerPassage } from '../lib/tafseer';
+import { formatRelativeDay } from '../lib/dates';
+import { useToday } from '../lib/useToday';
 import { ListenSheet } from '../components/ListenSheet';
 import { PlayerBar } from '../components/PlayerBar';
 import { ReaderShowcase, showcaseUnseen } from '../components/ReaderShowcase';
@@ -61,28 +65,59 @@ const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(1, z));
  * gesture settles. A long-press on an ayah opens its tafseer; the استماع sheet plays it
  * through a reciter, following along with a highlight and turning pages by itself.
  */
+type DutyWithSteps = CachedDuty & { steps: CachedStep[] };
+
 export default function ReadWird() {
   const { dutyId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { profile } = useAuth();
-  const [duty, setDuty] = React.useState<(CachedDuty & { steps: CachedStep[] }) | null | undefined>(
-    undefined,
-  );
+  const today = useToday();
+  const [duty, setDuty] = React.useState<DutyWithSteps | null | undefined>(undefined);
+  const [dayDuties, setDayDuties] = React.useState<DutyWithSteps[]>([]);
 
   const load = React.useCallback(async () => {
     if (!profile) return;
     const all = await getCachedDuties(profile.id);
-    setDuty(all.find((d) => d.id === dutyId) ?? null);
+    const d = all.find((x) => x.id === dutyId) ?? null;
+    setDuty(d);
+    // The same day's other wirds, in the checklist's category order — the reader's tabs.
+    setDayDuties(
+      d
+        ? DUTY_CATEGORIES.flatMap((c) =>
+            all.filter((x) => x.dueDate === d.dueDate && x.category === c),
+          )
+        : [],
+    );
   }, [profile, dutyId]);
 
   React.useEffect(() => {
     load();
   }, [load]);
 
-  const back = () => (window.history.length > 1 ? navigate(-1) : navigate('/', { replace: true }));
+  // Back returns to the day this wird belongs to. Inside the app that is simply the
+  // previous entry (the list keeps its day in the URL); opened directly — a notification,
+  // a shared link, a reload — there is no in-app entry, so go to the duty's own day.
+  const back = () => {
+    if (location.key !== 'default') {
+      navigate(-1);
+      return;
+    }
+    const day = duty?.dueDate;
+    navigate(day && day !== today ? `/?date=${day}` : '/', { replace: true });
+  };
+
+  // Switching between the day's wirds replaces this entry, so back still means "the list".
+  const openDuty = (id: string) => navigate(`/read/${id}`, { replace: true });
+
   return (
     <ReaderView
+      // A fresh reader per duty: page index, zoom and resume position are per wird.
+      key={dutyId}
       duty={duty}
+      dayLabel={duty && duty.dueDate !== today ? formatRelativeDay(duty.dueDate) : null}
+      siblings={dayDuties}
+      onOpenDuty={openDuty}
       onBack={back}
       onCompleteStep={async (step) => {
         // The same one-way tick as the checklist (queued offline, synced later).
@@ -95,6 +130,9 @@ export default function ReadWird() {
 
 export function ReaderView({
   duty,
+  dayLabel = null,
+  siblings = [],
+  onOpenDuty,
   onBack,
   onCompleteStep,
 }: {
@@ -106,6 +144,11 @@ export function ReaderView({
       > & { steps?: CachedStep[] })
     | null
     | undefined;
+  /** Set when the wird is not today's ("أمس", "الأحد ٥ أكتوبر") — shown in the header. */
+  dayLabel?: string | null;
+  /** All of the day's wirds (this one included), for switching between them. */
+  siblings?: Pick<CachedDuty, 'id' | 'category' | 'status'>[];
+  onOpenDuty?: (id: string) => void;
   onBack: () => void;
   onCompleteStep?: (step: CachedStep) => Promise<void>;
 }) {
@@ -115,6 +158,9 @@ export function ReaderView({
   const [box, setBox] = React.useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const [zoom, setZoom] = React.useState(1);
   const [selected, setSelected] = React.useState<AyahRefHit | null>(null);
+  // The tafseer passage on show: al-Muyassar may explain several ayat together, and the
+  // highlight covers all of them.
+  const [selPassage, setSelPassage] = React.useState<TafseerPassage | null>(null);
   const [listenOpen, setListenOpen] = React.useState(false);
   const [showcase, setShowcase] = React.useState(false);
   const zoomed = zoom > 1.001;
@@ -238,29 +284,32 @@ export function ReaderView({
     [zoomImmediate],
   );
 
-  const goToRef = React.useRef<(i: number, behavior?: ScrollBehavior, keepScroll?: boolean) => void>(
-    () => {},
-  );
+  const goToRef = React.useRef<
+    (i: number, behavior?: ScrollBehavior, keepScroll?: boolean) => void
+  >(() => {});
 
-  const goTo = React.useCallback((i: number, behavior: ScrollBehavior = 'smooth', keepScroll = false) => {
-    const pager = pagerRef.current;
-    if (!pager) return;
-    // Turning while zoomed keeps the vertical reading position on the next page.
-    const cur = scrollerAt(indexRef.current);
-    const frac =
-      keepScroll && cur && cur.scrollHeight > cur.clientHeight + 1
-        ? cur.scrollTop / (cur.scrollHeight - cur.clientHeight)
-        : 0;
-    const slide = pager.children[i] as HTMLElement | undefined;
-    const sc = slide?.firstElementChild as HTMLElement | null | undefined;
-    if (sc) {
-      // A fresh page opens at its top right, where its first line starts.
-      sc.scrollTop = frac * Math.max(0, sc.scrollHeight - sc.clientHeight);
-      sc.scrollLeft = sc.scrollWidth;
-    }
-    slide?.scrollIntoView({ behavior, inline: 'start', block: 'nearest' });
-    setIndex(i);
-  }, []);
+  const goTo = React.useCallback(
+    (i: number, behavior: ScrollBehavior = 'smooth', keepScroll = false) => {
+      const pager = pagerRef.current;
+      if (!pager) return;
+      // Turning while zoomed keeps the vertical reading position on the next page.
+      const cur = scrollerAt(indexRef.current);
+      const frac =
+        keepScroll && cur && cur.scrollHeight > cur.clientHeight + 1
+          ? cur.scrollTop / (cur.scrollHeight - cur.clientHeight)
+          : 0;
+      const slide = pager.children[i] as HTMLElement | undefined;
+      const sc = slide?.firstElementChild as HTMLElement | null | undefined;
+      if (sc) {
+        // A fresh page opens at its top right, where its first line starts.
+        sc.scrollTop = frac * Math.max(0, sc.scrollHeight - sc.clientHeight);
+        sc.scrollLeft = sc.scrollWidth;
+      }
+      slide?.scrollIntoView({ behavior, inline: 'start', block: 'nearest' });
+      setIndex(i);
+    },
+    [],
+  );
   goToRef.current = goTo;
 
   /** Turn one slide in the muṣḥaf's direction (+1 next), preserving zoom and position. */
@@ -406,8 +455,7 @@ export function ReaderView({
   React.useEffect(() => () => wirdPlayer.stop(), []);
 
   // ── Recitation follow-along ──────────────────────────────────────────────────
-  const playingAyah =
-    player.status !== 'idle' ? (player.queue[player.index] ?? null) : null;
+  const playingAyah = player.status !== 'idle' ? (player.queue[player.index] ?? null) : null;
 
   // Playback crossing onto another page turns it by itself.
   React.useEffect(() => {
@@ -427,11 +475,14 @@ export function ReaderView({
     for (const o of pager.querySelectorAll('.rw-overlay')) o.replaceChildren();
     const marks: Array<[AyahRefHit | { surah: number; ayah: number }, 'sel' | 'play']> = [];
     if (playingAyah) marks.push([playingAyah, 'play']);
-    if (selected) marks.push([selected, 'sel']);
+    if (selected && selPassage && selPassage.surah === selected.surah) {
+      for (let a = selPassage.ayahFrom; a <= selPassage.ayahTo; a++)
+        marks.push([{ surah: selPassage.surah, ayah: a }, 'sel']);
+    } else if (selected) {
+      marks.push([selected, 'sel']);
+    }
     for (const [ref, kind] of marks) {
-      const wraps = pager.querySelectorAll(
-        `.mp-ayah[data-s="${ref.surah}"][data-a="${ref.ayah}"]`,
-      );
+      const wraps = pager.querySelectorAll(`.mp-ayah[data-s="${ref.surah}"][data-a="${ref.ayah}"]`);
       for (const wrap of wraps) {
         const pageBox = (wrap as Element).closest('.rw-pagebox');
         const overlay = pageBox?.querySelector(':scope > .rw-overlay');
@@ -479,7 +530,16 @@ export function ReaderView({
 
   React.useEffect(() => {
     paintRef.current();
-  }, [selected, playingAyah, html]);
+  }, [selected, selPassage, playingAyah, html]);
+
+  // The sheet's selection may land on another page (the arrows walk passages across the
+  // wird's pages): bring that page into view.
+  React.useEffect(() => {
+    if (!selected) return;
+    const page = pageOfAyah(selected.surah, selected.ayah);
+    const i = slides.findIndex((sl) => sl.includes(page));
+    if (i >= 0 && i !== indexRef.current) goToRef.current(i, 'smooth', true);
+  }, [selected, slides]);
 
   // The wird's ayat in order — the playback queue and the download set.
   const queue = React.useMemo(
@@ -512,16 +572,6 @@ export function ReaderView({
     return list;
   }, [pages]);
 
-  const neighbours = React.useMemo(() => {
-    const i = selected
-      ? sheetList.findIndex((a) => a.surah === selected.surah && a.ayah === selected.ayah)
-      : -1;
-    return {
-      prev: i > 0 ? sheetList[i - 1]! : null,
-      next: i >= 0 && i < sheetList.length - 1 ? sheetList[i + 1]! : null,
-    };
-  }, [sheetList, selected]);
-
   function listenFrom(hit: AyahRefHit) {
     setSelected(null);
     const i = queue.findIndex((a) => a.surah === hit.surah && a.ayah === hit.ayah);
@@ -530,6 +580,9 @@ export function ReaderView({
   }
 
   const shown = slides[index] ?? [];
+  const atLast = slides.length > 0 && index >= slides.length - 1;
+  const myIndex = duty ? siblings.findIndex((d) => d.id === duty.id) : -1;
+  const nextDuty = myIndex >= 0 ? (siblings[myIndex + 1] ?? null) : null;
   const inRange = (p: number) => pages.includes(p);
 
   const pageBox = (page: number, side: 'right' | 'left' | 'single') => (
@@ -602,6 +655,7 @@ export function ReaderView({
             </div>
             {duty && (
               <div className="truncate text-xs text-white/70">
+                {dayLabel && <span className="font-semibold text-[#e0bc66]">{dayLabel} · </span>}
                 {formatRange({
                   surahFrom: duty.scopeSurahFrom,
                   ayahFrom: duty.scopeAyahFrom,
@@ -637,6 +691,31 @@ export function ReaderView({
             </>
           )}
         </div>
+        {/* The day's other wirds, one tap away (only when there is more than one). */}
+        {duty && siblings.length > 1 && onOpenDuty && (
+          <div className="mt-2 flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {siblings.map((d) => {
+              const current = d.id === duty.id;
+              return (
+                <button
+                  key={d.id}
+                  type="button"
+                  onClick={() => !current && onOpenDuty(d.id)}
+                  aria-current={current ? 'page' : undefined}
+                  className={cn(
+                    'flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                    current
+                      ? 'bg-[#e0bc66] text-[#0b4f55]'
+                      : 'bg-white/10 text-white/80 hover:bg-white/15',
+                  )}
+                >
+                  {d.status === 'completed' && <Check className="h-3 w-3" strokeWidth={3} />}
+                  {DUTY_CATEGORY_LABELS[d.category]}
+                </button>
+              );
+            })}
+          </div>
+        )}
         {/* Gold rule — the muṣḥaf's frame colour, echoing the pages below. */}
         <div className="absolute inset-x-0 bottom-0 h-[3px] bg-linear-to-l from-[#b08a3e] via-[#e0bc66] to-[#b08a3e]" />
       </header>
@@ -831,15 +910,27 @@ export function ReaderView({
             )}
           </div>
 
-          <button
-            type="button"
-            disabled={index >= slides.length - 1}
-            onClick={() => goTo(index + 1, 'smooth', true)}
-            aria-label="الصفحة التالية"
-            className="flex h-12 w-12 items-center justify-center rounded-full transition-colors hover:bg-white/10 disabled:opacity-25 active:bg-white/10"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
+          {atLast && nextDuty && onOpenDuty ? (
+            // The last page of this wird hands over to the day's next one.
+            <button
+              type="button"
+              onClick={() => onOpenDuty(nextDuty.id)}
+              className="flex h-10 shrink-0 items-center gap-1 rounded-full bg-[#e0bc66] ps-3 pe-2 text-xs font-semibold text-[#0b4f55] transition-colors hover:bg-[#ebc979]"
+            >
+              {DUTY_CATEGORY_LABELS[nextDuty.category]}
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={atLast}
+              onClick={() => goTo(index + 1, 'smooth', true)}
+              aria-label="الصفحة التالية"
+              className="flex h-12 w-12 items-center justify-center rounded-full transition-colors hover:bg-white/10 disabled:opacity-25 active:bg-white/10"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+          )}
         </footer>
       )}
 
@@ -847,15 +938,9 @@ export function ReaderView({
         <TafseerSheet
           hit={selected}
           data={data}
-          prev={neighbours.prev}
-          next={neighbours.next}
-          onNavigate={(dir) => {
-            const to = dir === -1 ? neighbours.prev : neighbours.next;
-            if (to) {
-              haptic(6);
-              setSelected(to);
-            }
-          }}
+          list={sheetList}
+          onSelect={setSelected}
+          onPassage={setSelPassage}
           onClose={() => setSelected(null)}
           onListen={listenFrom}
         />
@@ -864,11 +949,7 @@ export function ReaderView({
       {showcase && <ReaderShowcase onClose={() => setShowcase(false)} />}
 
       {listenOpen && duty && queue.length > 0 && (
-        <ListenSheet
-          queue={queue}
-          fromAyah={selected}
-          onClose={() => setListenOpen(false)}
-        />
+        <ListenSheet queue={queue} fromAyah={selected} onClose={() => setListenOpen(false)} />
       )}
     </div>
   );

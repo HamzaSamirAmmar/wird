@@ -39,3 +39,31 @@ https://t.me/${BOT_USERNAME}
 
 تقبل الله منك`;
 }
+
+/** The message an admin sends after resetting someone's password (see the reset-password function). */
+export function buildResetMessage({
+  fullName,
+  username,
+  password,
+}: {
+  fullName: string;
+  username: string;
+  password: string;
+}): string {
+  return `السلام عليكم ورحمة الله وبركاته يا ${fullName}
+
+تمت إعادة تعيين كلمة المرور لحسابك في تطبيق الورد اليومي.
+
+اسم المستخدم:
+\`${username}\`
+
+كلمة المرور المؤقتة:
+\`${password}\`
+
+(اضغط على أيٍّ منهما لنسخه)
+
+سجّل الدخول بها من التطبيق، وسيُطلب منك مباشرةً تعيين كلمة مرور جديدة خاصة بك:
+${APP_URL}
+
+تقبل الله منك`;
+}

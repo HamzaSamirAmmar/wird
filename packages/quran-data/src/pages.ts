@@ -22,6 +22,18 @@ export function globalAyahIndex(surah: number, ayah: number): number {
   return offset + ayah;
 }
 
+/** The inverse of globalAyahIndex: (surah, ayah) of the n-th ayah of the muṣḥaf (1 … 6236). */
+export function ayahOfGlobal(n: number): AyahRef {
+  let lo = 0;
+  let hi = SURAH_OFFSETS.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (SURAH_OFFSETS[mid]! < n) lo = mid;
+    else hi = mid - 1;
+  }
+  return { surah: lo + 1, ayah: n - SURAH_OFFSETS[lo]! };
+}
+
 const PAGE_START_INDEXES = PAGE_STARTS.map(([surah, ayah]) => globalAyahIndex(surah, ayah));
 
 /** Page (1 … 604) of the Mushaf al-Madinah that a given ayah sits on. */

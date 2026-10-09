@@ -38,6 +38,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth-context';
 import { managedGroups } from '../lib/groups';
 import { DeleteUserSection } from '../components/DeleteUserSection';
+import { ResetPasswordSection } from '../components/ResetPasswordSection';
 import { suggestUsername } from '../lib/suggest-username';
 import { BulkCreateDialog, type BulkCreatedCreds } from '../components/BulkCreateDialog';
 import { BulkCredentialsDialog } from '../components/BulkCredentialsDialog';
@@ -618,8 +619,9 @@ function CreateEmployeeDialog({
  * not editable — it is the auth identity (`<username>@wird.local`) that the account was
  * created against, so renaming it here would silently lock the employee out.
  *
- * Moving a group only changes future fan-out: `duties` rows already created for this employee
- * are theirs and stay put, which is why nothing else has to be rewritten here.
+ * Moving a group is handled by the database (`backfill_group_duties`): the employee's old
+ * duties are deleted, history included, and every assignment of the new group is issued to
+ * them on its own date — nothing else has to be rewritten here.
  */
 function EditEmployeeDialog({
   employee,
@@ -745,8 +747,8 @@ function EditEmployeeDialog({
 
             {movingGroup && (
               <Alert variant="warning">
-                ستُحذف جميع أوراد المستخدم السابقة، وتُسند إليه أوراد المجموعة الجديدة لليوم والأيام
-                القادمة.
+                ستُحذف جميع أوراد المستخدم السابقة بسجلّها، وتُسند إليه كل أوراد المجموعة الجديدة
+                بنفس تواريخها.
               </Alert>
             )}
 
@@ -754,6 +756,14 @@ function EditEmployeeDialog({
               <Checkbox checked={isActive} onCheckedChange={(v) => setIsActive(v === true)} />
               الحساب نشط
             </label>
+
+            {employee && employee.id !== currentUserId && (
+              <ResetPasswordSection
+                key={employee.id}
+                userId={employee.id}
+                name={employee.full_name}
+              />
+            )}
 
             {employee && employee.id !== currentUserId && (
               <DeleteUserSection

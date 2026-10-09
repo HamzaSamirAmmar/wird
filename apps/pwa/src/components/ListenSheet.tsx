@@ -1,15 +1,10 @@
 import * as React from 'react';
-import { Check, Download, Play, Trash2, Volume2 } from 'lucide-react';
+import { Check, Download, Play, Search, Trash2, Volume2 } from 'lucide-react';
 import { globalAyahIndex, type AyahRef } from '@wird/quran-data';
 import { cn } from '@wird/ui-web';
 import { haptic } from '../lib/celebrate';
 import { useOnline } from '../lib/connectivity';
-import {
-  RECITERS,
-  reciterById,
-  reciterLabel,
-  type AudioBitrate,
-} from '../lib/reciters';
+import { RECITERS, reciterById, reciterLabel, type AudioBitrate } from '../lib/reciters';
 import {
   clearAudioCache,
   countCached,
@@ -42,6 +37,7 @@ export function ListenSheet({
   const player = useWirdPlayerSnapshot();
   const online = useOnline();
   const [pickingReciter, setPickingReciter] = React.useState(false);
+  const [reciterQuery, setReciterQuery] = React.useState('');
   const [cached, setCached] = React.useState<number | null>(null);
   const [downloading, setDownloading] = React.useState<{ done: number; total: number } | null>(
     null,
@@ -49,7 +45,12 @@ export function ListenSheet({
   const close = useSheetClose();
 
   const urls = React.useMemo(
-    () => queueUrls(queue.map((a) => globalAyahIndex(a.surah, a.ayah)), player.reciterId, player.bitrate),
+    () =>
+      queueUrls(
+        queue.map((a) => globalAyahIndex(a.surah, a.ayah)),
+        player.reciterId,
+        player.bitrate,
+      ),
     [queue, player.reciterId, player.bitrate],
   );
 
@@ -60,9 +61,13 @@ export function ListenSheet({
   React.useEffect(refreshCached, [refreshCached]);
 
   const reciter = reciterById(player.reciterId);
+  const needle = normalizeArabic(reciterQuery.trim());
+  const reciters = needle
+    ? RECITERS.filter((r) => normalizeArabic(reciterLabel(r)).includes(needle))
+    : RECITERS;
   const fullyCached = cached !== null && cached >= urls.length && urls.length > 0;
   // The CDN's per-ayah files average ~90 KB at 128 kbps and ~45 KB at 64.
-  const estMb = ((queue.length * (player.bitrate === 128 ? 0.09 : 0.045))).toFixed(1);
+  const estMb = (queue.length * (player.bitrate === 128 ? 0.09 : 0.045)).toFixed(1);
 
   async function download() {
     if (downloading) return;
@@ -82,13 +87,13 @@ export function ListenSheet({
   return (
     <BottomSheet label="استماع إلى الورد" onClose={onClose}>
       <>
-      <div className="flex flex-none items-center justify-between border-b border-[#b08a3e]/25 bg-[#f7efd9] px-4 py-3">
-        <div className="flex items-center gap-2 font-display text-base text-[#0b4f55]">
-          <Volume2 className="h-5 w-5" />
-          استماع إلى الورد
+        <div className="flex flex-none items-center justify-between border-b border-[#b08a3e]/25 bg-[#f7efd9] px-4 py-3">
+          <div className="flex items-center gap-2 font-display text-base text-[#0b4f55]">
+            <Volume2 className="h-5 w-5" />
+            استماع إلى الورد
+          </div>
+          <span className="text-[11px] text-[#9c7025]">اسحب للأسفل للإغلاق</span>
         </div>
-        <span className="text-[11px] text-[#9c7025]">اسحب للأسفل للإغلاق</span>
-      </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
           {/* ── Reciter ── */}
@@ -109,25 +114,49 @@ export function ListenSheet({
           </button>
 
           {pickingReciter && (
-            <ul className="mt-2 max-h-64 overflow-y-auto rounded-2xl ring-1 ring-neutral-200">
-              {RECITERS.map((r) => (
-                <li key={r.id}>
-                  <button
-                    type="button"
-                    onClick={() => wirdPlayer.setReciter(r.id)}
-                    className={cn(
-                      'flex w-full items-center justify-between px-4 py-2.5 text-start text-sm transition-colors',
-                      r.id === player.reciterId
-                        ? 'bg-primary-50 font-semibold text-primary-800'
-                        : 'text-neutral-700 hover:bg-neutral-50',
-                    )}
-                  >
-                    <span>{reciterLabel(r)}</span>
-                    {r.id === player.reciterId && <Check className="h-4 w-4" />}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <div className="mt-2 overflow-hidden rounded-2xl ring-1 ring-neutral-200">
+              <label className="flex items-center gap-2 border-b border-neutral-100 px-3">
+                <Search className="h-4 w-4 shrink-0 text-neutral-400" />
+                <input
+                  type="search"
+                  value={reciterQuery}
+                  onChange={(e) => setReciterQuery(e.target.value)}
+                  placeholder="ابحث عن قارئ…"
+                  className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-neutral-400"
+                />
+              </label>
+              <ul className="max-h-64 overflow-y-auto">
+                {reciters.length === 0 && (
+                  <li className="px-4 py-4 text-center text-sm text-neutral-500">
+                    لا يوجد قارئ بهذا الاسم
+                  </li>
+                )}
+                {reciters.map((r) => (
+                  <li key={r.id}>
+                    <button
+                      type="button"
+                      onClick={() => wirdPlayer.setReciter(r.id)}
+                      className={cn(
+                        'flex w-full items-center justify-between px-4 py-2.5 text-start text-sm transition-colors',
+                        r.id === player.reciterId
+                          ? 'bg-primary-50 font-semibold text-primary-800'
+                          : 'text-neutral-700 hover:bg-neutral-50',
+                      )}
+                    >
+                      <span>
+                        {r.name}
+                        {r.note && (
+                          <span className="ms-1.5 text-xs font-normal text-[#9c7025]">
+                            {r.note}
+                          </span>
+                        )}
+                      </span>
+                      {r.id === player.reciterId && <Check className="h-4 w-4" />}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
           {/* ── Quality ── */}
@@ -277,4 +306,14 @@ export function ListenSheet({
       </>
     </BottomSheet>
   );
+}
+
+/** Letter-variant-insensitive Arabic for search: أ/إ/آ → ا, ة → ه, ى → ي, no tashkeel. */
+function normalizeArabic(s: string): string {
+  return s
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .toLowerCase();
 }

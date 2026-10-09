@@ -506,6 +506,8 @@ export type Database = {
           completion_rate: number;
           current_streak: number;
           is_me: boolean;
+          mean_finish_secs: number | null;
+          place: number;
         }[];
       };
       register_push_token: {
