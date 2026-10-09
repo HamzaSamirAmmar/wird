@@ -163,6 +163,8 @@ export function ReaderView({
   const [selPassage, setSelPassage] = React.useState<TafseerPassage | null>(null);
   const [listenOpen, setListenOpen] = React.useState(false);
   const [showcase, setShowcase] = React.useState(false);
+  // Focus mode: a tap on the page hides the header, counter and page bar — just the muṣḥaf.
+  const [immersive, setImmersive] = React.useState(false);
   const zoomed = zoom > 1.001;
   const mainRef = React.useRef<HTMLElement>(null);
   const pagerRef = React.useRef<HTMLDivElement>(null);
@@ -354,6 +356,7 @@ export function ReaderView({
         haptic(14);
         setSelected(hit);
       },
+      onTap: () => setImmersive((v) => !v),
     });
   }, [zoomImmediate, toggleZoom, turnPage]);
 
@@ -427,9 +430,11 @@ export function ReaderView({
   React.useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        // Open sheets and the showcase close themselves (animated); otherwise fall back
-        // to the whole page.
-        if (!selected && !listenOpen && !showcase && zoomRef.current > 1) zoomAt(1);
+        // Open sheets and the showcase close themselves (animated); otherwise bring the
+        // chrome back, then fall back to the whole page.
+        if (selected || listenOpen || showcase) return;
+        if (immersive) setImmersive(false);
+        else if (zoomRef.current > 1) zoomAt(1);
         return;
       }
       // While a sheet is open the page behind it must not react to navigation keys.
@@ -449,7 +454,7 @@ export function ReaderView({
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [zoomAt, turnPage, selected, listenOpen, showcase]);
+  }, [zoomAt, turnPage, selected, listenOpen, showcase, immersive]);
 
   // Leaving the reader pauses the reciter (the lock-screen controls go with it).
   React.useEffect(() => () => wirdPlayer.stop(), []);
@@ -639,7 +644,12 @@ export function ReaderView({
     <div className="flex h-dvh flex-col bg-[#efe7d3]">
       <style>{MUSHAF_CSS}</style>
 
-      <header className="relative flex-none bg-[#0b4f55] px-3 pb-3 pt-safe text-white">
+      <header
+        className={cn(
+          'relative flex-none bg-[#0b4f55] px-3 pb-2.5 pt-safe text-white',
+          immersive && 'hidden',
+        )}
+      >
         <div className="flex items-center gap-2 pt-2">
           <button
             type="button"
@@ -758,8 +768,13 @@ export function ReaderView({
               <div
                 dir="ltr"
                 className={cn(
-                  'absolute inset-0 flex overscroll-contain',
-                  zoomed ? 'cursor-grab overflow-auto active:cursor-grabbing' : 'overflow-hidden',
+                  'absolute inset-0 flex',
+                  // Only a zoomed page pans (and contains its overscroll). Unzoomed, the box
+                  // must not contain anything: `overscroll-behavior: contain` here stopped a
+                  // swipe from reaching the pager on some phones — no page turn by swiping.
+                  zoomed
+                    ? 'cursor-grab overflow-auto overscroll-contain active:cursor-grabbing'
+                    : 'overflow-hidden',
                 )}
               >
                 <div className="m-auto flex-none" style={{ padding: PAD }}>
@@ -858,7 +873,7 @@ export function ReaderView({
 
       {player.status !== 'idle' && <PlayerBar />}
 
-      {hasSteps && duty && (
+      {hasSteps && duty && !immersive && (
         <RepeatCounter
           dutyId={duty.id}
           category={duty.category}
@@ -867,7 +882,7 @@ export function ReaderView({
         />
       )}
 
-      {slides.length > 0 && (
+      {slides.length > 0 && !immersive && (
         <footer className="flex flex-none items-center justify-between gap-3 bg-[#0b4f55] px-3 pb-safe text-white">
           <button
             type="button"
@@ -884,7 +899,8 @@ export function ReaderView({
               {shown.length === 2
                 ? `الصفحتان ${shown[0]!.toLocaleString('ar-u-nu-latn')}–${shown[1]!.toLocaleString('ar-u-nu-latn')}`
                 : `صفحة ${shown[0]?.toLocaleString('ar-u-nu-latn') ?? ''}`}
-              {slides.length > 1 && (
+              {/* Dots carry the position; long wirds (no dots) get it in words. */}
+              {slides.length > 20 && (
                 <span className="text-white/60">
                   {' '}
                   · {(index + 1).toLocaleString('ar-u-nu-latn')} من{' '}

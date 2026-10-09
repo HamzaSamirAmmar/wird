@@ -149,7 +149,7 @@ export function RepeatCounter({
           />
           <div className="absolute inset-x-2 bottom-full z-20 mb-2 animate-slide-up overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-black/5 sm:inset-x-auto sm:start-3 sm:w-96">
             <div className="border-b border-neutral-100 px-4 py-2.5 text-xs font-semibold text-neutral-500">
-              اختر الخطوة التي تعدّ قراءاتها
+              الخطوات
             </div>
             <ul className="max-h-[50dvh] overflow-y-auto py-1">
               {items.map((item, k) => {

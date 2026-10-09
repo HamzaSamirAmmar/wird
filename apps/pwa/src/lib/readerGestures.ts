@@ -33,6 +33,11 @@ export interface ReaderGesturesConfig {
   turn(dir: 1 | -1): void;
   /** Long-press (touch), click (mouse), or context-menu on an ayah activates it. */
   onAyahActivate(hit: AyahHit): void;
+  /**
+   * A single tap (touch) or a click away from any ayah (mouse) — the reader toggles its
+   * chrome. Fires only once the double-tap window has passed, so a double-tap stays a zoom.
+   */
+  onTap?(): void;
 }
 
 /** How far a finger must keep dragging past a zoomed page's edge to turn it (px). */
@@ -45,6 +50,10 @@ const DOUBLE_TAP_MS = 300;
 const DOUBLE_TAP_DIST = 32;
 /** Trackpad pinch streams wheel events; commit this long after the last one. */
 const WHEEL_COMMIT_MS = 160;
+/** A mouse drag this far sideways on an unzoomed page turns it, like a swipe (px). */
+const MOUSE_SWIPE_PX = 60;
+/** A touch that moves less than this is a tap, not a swipe (px). */
+const TAP_SLOP = 10;
 
 interface GestureEvent extends UIEvent {
   scale: number;
@@ -100,25 +109,38 @@ export function attachReaderGestures(el: HTMLElement, cfg: ReaderGesturesConfig)
     }
   };
 
-  // ── double-tap ───────────────────────────────────────────────────────────────
+  // ── double-tap / single tap ─────────────────────────────────────────────────
   let lastTap: { t: number; x: number; y: number } | null = null;
   let lastDoubleTapAt = 0;
+  let tapTimer: number | undefined;
+  /** Where the current single touch started, and whether it ever moved / long-pressed. */
+  let touch: { x: number; y: number; moved: boolean; longPressed: boolean } | null = null;
+  const queueTap = () => {
+    clearTimeout(tapTimer);
+    tapTimer = window.setTimeout(() => cfg.onTap?.(), DOUBLE_TAP_MS);
+  };
+  const cancelTap = () => clearTimeout(tapTimer);
 
-  // ── mouse drag-to-pan ────────────────────────────────────────────────────────
+  // ── mouse drag-to-pan (zoomed) / drag-to-turn (unzoomed) ────────────────────
   let drag: { x: number; y: number; left: number; top: number } | null = null;
+  let swipe: { x: number; y: number } | null = null;
 
   const onTouchStart = (e: TouchEvent) => {
     if (e.touches.length === 2) {
       cancelPress();
+      cancelTap();
+      pinchedThisTouch = true;
       pinch = { dist: dist(e.touches), zoom: cfg.getZoom() };
     } else if (e.touches.length === 1) {
       const t = e.touches[0]!;
+      touch = { x: t.clientX, y: t.clientY, moved: false, longPressed: false };
       press = {
         x: t.clientX,
         y: t.clientY,
         timer: window.setTimeout(() => {
           const hit = ayahAt(document.elementFromPoint(t.clientX, t.clientY));
           press = null;
+          if (touch) touch.longPressed = true;
           if (hit) cfg.onAyahActivate(hit);
         }, LONG_PRESS_MS),
       };
@@ -137,9 +159,13 @@ export function attachReaderGestures(el: HTMLElement, cfg: ReaderGesturesConfig)
     }
     if (e.touches.length === 1) {
       // A swipe (or a pan) is not a long-press: moving past a few px cancels it.
+      const t0 = e.touches[0]!;
+      if (touch && Math.hypot(t0.clientX - touch.x, t0.clientY - touch.y) > TAP_SLOP) {
+        touch.moved = true;
+      }
       if (press) {
         const t = e.touches[0]!;
-        if (Math.hypot(t.clientX - press.x, t.clientY - press.y) > 10) cancelPress();
+        if (Math.hypot(t.clientX - press.x, t.clientY - press.y) > TAP_SLOP) cancelPress();
       }
       if (cfg.isZoomed()) {
         const t = e.touches[0]!;
@@ -182,6 +208,7 @@ export function attachReaderGestures(el: HTMLElement, cfg: ReaderGesturesConfig)
       const changed = e.changedTouches[0];
       if (changed) {
         const now = performance.now();
+        const wasTap = !!touch && !touch.moved && !touch.longPressed && !pinchedThisTouch;
         if (
           lastTap &&
           now - lastTap.t < DOUBLE_TAP_MS &&
@@ -190,13 +217,19 @@ export function attachReaderGestures(el: HTMLElement, cfg: ReaderGesturesConfig)
           lastTap = null;
           lastDoubleTapAt = now;
           cancelPress();
+          cancelTap();
           cfg.toggleZoom(changed.clientX, changed.clientY);
         } else {
-          lastTap = { t: now, x: changed.clientX, y: changed.clientY };
+          lastTap = wasTap ? { t: now, x: changed.clientX, y: changed.clientY } : null;
+          // A plain tap toggles the reader's chrome — unless a second tap makes it a zoom.
+          if (wasTap) queueTap();
         }
       }
+      touch = null;
+      pinchedThisTouch = false;
     }
   };
+  let pinchedThisTouch = false;
 
   // ── wheel: ctrl/⌘ + wheel is a trackpad pinch (Chromium/Firefox) or explicit zoom ──
   let wheelTimer: number | undefined;
@@ -245,12 +278,28 @@ export function attachReaderGestures(el: HTMLElement, cfg: ReaderGesturesConfig)
     }
     if (e.pointerType !== 'mouse' || e.button !== 0) return;
     const sc = cfg.activeScroller();
-    if (!cfg.isZoomed() || !sc || !sc.contains(e.target as Node)) return;
+    if (!cfg.isZoomed()) {
+      // Unzoomed, a mouse drag sideways turns the page (touch gets this from native
+      // scrolling; a mouse has no swipe otherwise).
+      if (clickCandidate) swipe = { x: e.clientX, y: e.clientY };
+      return;
+    }
+    if (!sc || !sc.contains(e.target as Node)) return;
     drag = { x: e.clientX, y: e.clientY, left: sc.scrollLeft, top: sc.scrollTop };
     el.setPointerCapture(e.pointerId);
   };
 
   const onPointerMove = (e: PointerEvent) => {
+    if (swipe && e.pointerType === 'mouse') {
+      const dx = e.clientX - swipe.x;
+      if (Math.abs(dx) > MOUSE_SWIPE_PX && Math.abs(dx) > Math.abs(e.clientY - swipe.y)) {
+        swipe = null;
+        clickCandidate = null;
+        // Muṣḥaf direction: pulling the page rightwards brings the next one in from the left.
+        cfg.turn(dx > 0 ? 1 : -1);
+      }
+      return;
+    }
     const d = drag;
     if (!d) return;
     const sc = cfg.activeScroller();
@@ -276,6 +325,7 @@ export function attachReaderGestures(el: HTMLElement, cfg: ReaderGesturesConfig)
 
   const onPointerUp = (e: PointerEvent) => {
     drag = null;
+    swipe = null;
     const c = clickCandidate;
     clickCandidate = null;
     if (!c || e.pointerType !== 'mouse' || e.button !== 0) return;
@@ -284,6 +334,9 @@ export function attachReaderGestures(el: HTMLElement, cfg: ReaderGesturesConfig)
     if (hit) {
       clickActivatedAt = performance.now();
       cfg.onAyahActivate(hit);
+    } else if (!cfg.isZoomed()) {
+      // A click on the page away from any ayah toggles the chrome (after the dblclick window).
+      queueTap();
     }
   };
 
@@ -297,6 +350,7 @@ export function attachReaderGestures(el: HTMLElement, cfg: ReaderGesturesConfig)
     // can't help: this native listener sits below React's root handler).
     if (e.target instanceof Node && (e.target as HTMLElement).closest?.('button,a,input')) return;
     e.preventDefault();
+    cancelTap();
     cfg.toggleZoom(e.clientX, e.clientY);
   };
 
@@ -327,6 +381,7 @@ export function attachReaderGestures(el: HTMLElement, cfg: ReaderGesturesConfig)
 
   return () => {
     cancelPress();
+    cancelTap();
     clearTimeout(wheelTimer);
     el.removeEventListener('touchstart', onTouchStart);
     el.removeEventListener('touchmove', onTouchMove);
@@ -364,11 +419,7 @@ export interface ZoomAnchor {
  * content is resized the same fraction can be scrolled back under the same point — the
  * pinch keeps the text under the fingers where it was.
  */
-export function captureZoomAnchor(
-  sc: HTMLElement,
-  cx: number,
-  cy: number,
-): ZoomAnchor | null {
+export function captureZoomAnchor(sc: HTMLElement, cx: number, cy: number): ZoomAnchor | null {
   const content = sc.firstElementChild as HTMLElement | null;
   if (!content) return null;
   const sr = sc.getBoundingClientRect();
