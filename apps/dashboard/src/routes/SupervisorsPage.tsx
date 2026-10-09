@@ -38,6 +38,7 @@ import { useAuth } from '../lib/auth-context';
 import { supabase } from '../lib/supabase';
 import { suggestUsername } from '../lib/suggest-username';
 import { DeleteUserSection } from '../components/DeleteUserSection';
+import { ResetPasswordSection } from '../components/ResetPasswordSection';
 
 interface SupervisorRow {
   id: string;
@@ -581,6 +582,14 @@ function EditSupervisorDialog({
                   إزالة صلاحية الإشراف (يبقى مستخدماً)
                 </Button>
               </div>
+            )}
+
+            {supervisor && (
+              <ResetPasswordSection
+                key={supervisor.id}
+                userId={supervisor.id}
+                name={supervisor.full_name}
+              />
             )}
 
             {supervisor && (

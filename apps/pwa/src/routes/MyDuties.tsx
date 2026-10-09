@@ -49,7 +49,8 @@ import { PushNotice } from '../components/PushNotice';
 import { ensurePushRegistered } from '../lib/notifications';
 import { useGroupName } from '../lib/groups';
 import { celebrate, haptic } from '../lib/celebrate';
-import { clampToVisibleRange, formatRelativeDay, todayISO } from '../lib/dates';
+import { clampToVisibleRange, formatRelativeDay } from '../lib/dates';
+import { useToday } from '../lib/useToday';
 import { APP_VERSION } from '../version';
 
 type DutyWithSteps = CachedDuty & { steps: CachedStep[] };
@@ -106,8 +107,18 @@ function wantsDownload(link: string | null | undefined): boolean {
 export default function MyDuties() {
   const { profile, signOut } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [selectedDate, setSelectedDate] = React.useState(
-    () => dateFromLink(`/?${searchParams.toString()}`) ?? todayISO(),
+  const today = useToday();
+  // The day on screen lives in the URL (`/?date=…`, absent for today), so leaving for the
+  // reader and coming back — or a reload — lands on the same day instead of snapping back
+  // to today. Day changes replace the entry: the system back button leaves the app rather
+  // than walking through every day that was tapped.
+  const selectedDate = dateFromLink(`/?${searchParams.toString()}`) ?? today;
+  const setSelectedDate = React.useCallback(
+    (iso: string) => {
+      const day = clampToVisibleRange(iso);
+      setSearchParams(day === today ? {} : { date: day }, { replace: true });
+    },
+    [setSearchParams, today],
   );
   const [duties, setDuties] = React.useState<DutyWithSteps[] | null>(null);
   // Opened from the Telegram "تحميل الورد" button: offer the file up front. It is a prompt to
@@ -134,9 +145,12 @@ export default function MyDuties() {
   const employeeId = profile?.id ?? '';
   const groupName = useGroupName(profile?.groupId);
 
-  // The notification's ?date= has done its job once read; drop it so a reload opens on today.
+  // The Telegram link's `download=1` has done its job once read (the prompt is up); keep
+  // only the day.
   React.useEffect(() => {
-    if (searchParams.has('date')) setSearchParams({}, { replace: true });
+    if (!searchParams.has('download')) return;
+    const date = searchParams.get('date');
+    setSearchParams(date ? { date } : {}, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -183,8 +197,10 @@ export default function MyDuties() {
 
   React.useEffect(() => {
     refresh();
+    // A new day (midnight passed with the app open) moves the synced window, today's
+    // duties and the standings: sync again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [employeeId]);
+  }, [employeeId, today]);
 
   React.useEffect(() => {
     // An installed PWA resumed from the background never remounts, so the mount-time refresh
@@ -222,7 +238,7 @@ export default function MyDuties() {
       const msg = event.data as { type?: string; link?: string } | null;
       if (msg?.type === 'wird:open') {
         // A notification was tapped while the app was already open.
-        setSelectedDate(dateFromLink(msg.link) ?? todayISO());
+        setSelectedDate(dateFromLink(msg.link) ?? today);
         if (wantsDownload(msg.link)) setDownloadPrompt(true);
         refreshSoon();
       } else if (msg?.type === 'wird:push' || msg?.type === 'wird:synced') {
@@ -234,7 +250,7 @@ export default function MyDuties() {
     }
     navigator.serviceWorker.addEventListener('message', onMessage);
     return () => navigator.serviceWorker.removeEventListener('message', onMessage);
-  }, [reloadFromCache, refreshSoon]);
+  }, [reloadFromCache, refreshSoon, setSelectedDate, today]);
 
   React.useEffect(() => {
     if (!employeeId) return;
@@ -331,7 +347,7 @@ export default function MyDuties() {
 
   const allSteps = duties?.flatMap((d) => d.steps) ?? [];
   const doneSteps = allSteps.filter((s) => s.isCompleted).length;
-  const isToday = selectedDate === todayISO();
+  const isToday = selectedDate === today;
   const orderedDuties = duties
     ? DUTY_CATEGORIES.flatMap((c) => duties.filter((d) => d.category === c))
     : null;
@@ -418,10 +434,7 @@ export default function MyDuties() {
               />
 
               <div className="relative mt-3">
-                <DayStrip
-                  value={selectedDate}
-                  onChange={(iso) => setSelectedDate(clampToVisibleRange(iso))}
-                />
+                <DayStrip value={selectedDate} today={today} onChange={setSelectedDate} />
               </div>
             </div>
           </div>
@@ -443,7 +456,7 @@ export default function MyDuties() {
             {!isToday && (
               <button
                 type="button"
-                onClick={() => setSelectedDate(todayISO())}
+                onClick={() => setSelectedDate(today)}
                 className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 ring-1 ring-inset ring-primary-100 transition-colors hover:bg-primary-100"
               >
                 <CalendarCheck className="h-3.5 w-3.5" />
@@ -498,7 +511,8 @@ export default function MyDuties() {
 
           {/* Secondary to the checklist above, and deliberately out of the way. */}
           <aside className="lg:sticky lg:top-6 lg:self-start">
-            <GroupStandings reloadKey={syncTick} groupName={groupName} />
+            {/* Keyed by day: a new day starts from nothing rather than yesterday's board. */}
+            <GroupStandings key={today} reloadKey={syncTick} today={today} groupName={groupName} />
           </aside>
         </div>
 

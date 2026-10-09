@@ -1,40 +1,103 @@
-// ─── Reciters (قرّاء) — free per-ayah audio from the Islamic Network CDN ──────
+import { ayahOfGlobal } from '@wird/quran-data';
+
+// ─── Reciters (قرّاء) — free per-ayah audio, keyable purely by URL ────────────
 //
-// cdn.islamic.network (the alquran.cloud project) serves verse-by-verse MP3s for a set
-// of Arabic reciters, keyable purely by URL:
+// Two sources, both verse-by-verse MP3s with no key and no quota:
 //
-//   https://cdn.islamic.network/quran/audio/{bitrate}/{edition}/{globalAyah}.mp3
+//   cdn.islamic.network (alquran.cloud)  …/quran/audio/{bitrate}/{edition}/{globalAyah}.mp3
+//   everyayah.com                         …/data/{folder}/{SSS}{AAA}.mp3
 //
-// No key, no quota. The list below is curated in code (names as the app shows them);
-// every edition was verified to exist on the CDN. Audio streams online; the service
-// worker caches what was played or explicitly downloaded (see src/sw.ts).
+// The list below is curated in code (names as the app shows them, Ḥafṣ only); every
+// edition/folder was checked to exist, through the last ayah of the muṣḥaf. Audio streams
+// online; the service worker caches what was played or explicitly downloaded, for both
+// origins (see src/sw.ts).
+
+type Source =
+  | { kind: 'islamic'; edition: string }
+  /** everyayah publishes each reciter at fixed bitrates — one folder per quality. */
+  | { kind: 'everyayah'; high: string; low?: string };
 
 export interface Reciter {
-  /** CDN edition id, e.g. `ar.alafasy`. */
+  /** Stable id, saved as the user's choice (CDN edition id, or `ea.<name>`). */
   id: string;
   /** Name as shown in the app. */
   name: string;
   /** Style qualifier when the reciter has more than one recording. */
   note?: string;
+  source: Source;
 }
 
+const islamic = (id: string, name: string, note?: string): Reciter => ({
+  id,
+  name,
+  note,
+  source: { kind: 'islamic', edition: id },
+});
+const everyayah = (
+  id: string,
+  name: string,
+  high: string,
+  low?: string,
+  note?: string,
+): Reciter => ({
+  id: `ea.${id}`,
+  name,
+  note,
+  source: { kind: 'everyayah', high, low },
+});
+
 export const RECITERS: Reciter[] = [
-  { id: 'ar.alafasy', name: 'مشاري راشد العفاسي' },
-  { id: 'ar.husary', name: 'محمود خليل الحصري' },
-  { id: 'ar.husarymujawwad', name: 'محمود خليل الحصري', note: 'مجوَّد' },
-  { id: 'ar.minshawi', name: 'محمد صديق المنشاوي' },
-  { id: 'ar.minshawimujawwad', name: 'محمد صديق المنشاوي', note: 'مجوَّد' },
-  { id: 'ar.abdulbasitmurattal', name: 'عبد الباسط عبد الصمد' },
-  { id: 'ar.mahermuaiqly', name: 'ماهر المعيقلي' },
-  { id: 'ar.abdurrahmaansudais', name: 'عبدالرحمن السديس' },
-  { id: 'ar.hudhaify', name: 'علي بن عبدالرحمن الحذيفي' },
-  { id: 'ar.shaatree', name: 'أبو بكر الشاطري' },
-  { id: 'ar.ahmedajamy', name: 'أحمد بن علي العجمي' },
-  { id: 'ar.hanirifai', name: 'هاني الرفاعي' },
-  { id: 'ar.saoodshuraym', name: 'سعود الشريم' },
-  { id: 'ar.muhammadayyoub', name: 'محمد أيوب' },
-  { id: 'ar.muhammadjibreel', name: 'محمد جبريل' },
-  { id: 'ar.aymanswoaid', name: 'أيمن سويد', note: 'مرتل تعليمي' },
+  islamic('ar.alafasy', 'مشاري راشد العفاسي'),
+  islamic('ar.husary', 'محمود خليل الحصري'),
+  everyayah(
+    'husary_muallim',
+    'محمود خليل الحصري',
+    'Husary_Muallim_128kbps',
+    undefined,
+    'المعلّم — للحفظ',
+  ),
+  islamic('ar.husarymujawwad', 'محمود خليل الحصري', 'مجوَّد'),
+  islamic('ar.minshawi', 'محمد صديق المنشاوي'),
+  islamic('ar.minshawimujawwad', 'محمد صديق المنشاوي', 'مجوَّد'),
+  islamic('ar.abdulbasitmurattal', 'عبد الباسط عبد الصمد'),
+  everyayah(
+    'abdulbasit_mujawwad',
+    'عبد الباسط عبد الصمد',
+    'Abdul_Basit_Mujawwad_128kbps',
+    undefined,
+    'مجوَّد',
+  ),
+  islamic('ar.mahermuaiqly', 'ماهر المعيقلي'),
+  islamic('ar.abdurrahmaansudais', 'عبدالرحمن السديس'),
+  islamic('ar.saoodshuraym', 'سعود الشريم'),
+  everyayah('dussary', 'ياسر الدوسري', 'Yasser_Ad-Dussary_128kbps'),
+  everyayah('qatami', 'ناصر القطامي', 'Nasser_Alqatami_128kbps'),
+  everyayah('ghamadi', 'سعد الغامدي', 'Ghamadi_40kbps'),
+  everyayah('budair', 'صلاح البدير', 'Salah_Al_Budair_128kbps'),
+  everyayah('juhany', 'عبدالله عواد الجهني', 'Abdullaah_3awwaad_Al-Juhaynee_128kbps'),
+  everyayah('basfar', 'عبدالله بصفر', 'Abdullah_Basfar_192kbps', 'Abdullah_Basfar_64kbps'),
+  everyayah('fares_abbad', 'فارس عباد', 'Fares_Abbad_64kbps'),
+  everyayah('ali_jaber', 'علي جابر', 'Ali_Jaber_64kbps'),
+  everyayah('qahtani', 'خالد القحطاني', 'Khaalid_Abdullaah_al-Qahtaanee_192kbps'),
+  everyayah('muhsin_qasim', 'محسن القاسم', 'Muhsin_Al_Qasim_192kbps'),
+  everyayah('matroud', 'عبدالله المطرود', 'Abdullah_Matroud_128kbps'),
+  everyayah('bukhatir', 'صلاح بو خاطر', 'Salaah_AbdulRahman_Bukhatir_128kbps'),
+  everyayah(
+    'tablaway',
+    'محمد محمود الطبلاوي',
+    'Mohammad_al_Tablaway_128kbps',
+    'Mohammad_al_Tablaway_64kbps',
+  ),
+  everyayah('alaqimy', 'أكرم العلاقمي', 'Akram_AlAlaqimy_128kbps'),
+  everyayah('yaser_salamah', 'ياسر سلامة', 'Yaser_Salamah_128kbps'),
+  everyayah('sahl_yassin', 'سهل ياسين', 'Sahl_Yassin_128kbps'),
+  islamic('ar.hudhaify', 'علي بن عبدالرحمن الحذيفي'),
+  islamic('ar.shaatree', 'أبو بكر الشاطري'),
+  islamic('ar.ahmedajamy', 'أحمد بن علي العجمي'),
+  islamic('ar.hanirifai', 'هاني الرفاعي'),
+  islamic('ar.muhammadayyoub', 'محمد أيوب'),
+  islamic('ar.muhammadjibreel', 'محمد جبريل'),
+  islamic('ar.aymanswoaid', 'أيمن سويد', 'مرتل تعليمي'),
 ];
 
 export const DEFAULT_RECITER_ID = 'ar.alafasy';
@@ -85,7 +148,18 @@ export function saveBitrate(b: AudioBitrate): void {
   }
 }
 
+/** The audio hosts — the service worker serves both from the offline audio cache. */
+export const AUDIO_ORIGINS = ['https://cdn.islamic.network', 'https://everyayah.com'] as const;
+
 /** Direct URL of one ayah's MP3. `globalAyah` is @wird/quran-data's 1…6236 ordinal. */
 export function audioUrl(reciterId: string, bitrate: AudioBitrate, globalAyah: number): string {
-  return `https://cdn.islamic.network/quran/audio/${bitrate}/${reciterId}/${globalAyah}.mp3`;
+  const { source } = reciterById(reciterId);
+  if (source.kind === 'islamic') {
+    return `https://cdn.islamic.network/quran/audio/${bitrate}/${source.edition}/${globalAyah}.mp3`;
+  }
+  const { surah, ayah } = ayahOfGlobal(globalAyah);
+  const folder = bitrate === 64 && source.low ? source.low : source.high;
+  return `https://everyayah.com/data/${folder}/${pad3(surah)}${pad3(ayah)}.mp3`;
 }
+
+const pad3 = (n: number) => String(n).padStart(3, '0');

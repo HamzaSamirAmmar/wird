@@ -34,6 +34,17 @@ export interface LeaderboardEntry {
   /** Consecutive most-recent days with every duty completed (as of the window's end). */
   currentStreak: number;
   isMe: boolean;
+  /**
+   * Average wrap-up time over the window's completed days, as seconds after each day's
+   * midnight (Damascus) — the ranking's timing tiebreak. null when no day was completed
+   * (or from a server that predates the column).
+   */
+  meanFinishSecs: number | null;
+  /**
+   * Tie-aware place (1, 2, 2, 4…) over the ranking criteria only. Falls back to the row
+   * position for a server that predates the column.
+   */
+  place: number;
 }
 
 export interface DutyFollowupRow {

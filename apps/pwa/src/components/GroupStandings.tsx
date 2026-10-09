@@ -1,5 +1,15 @@
 import * as React from 'react';
-import { ArrowDown, ArrowUp, ChevronDown, Flame, Medal, Trophy, Users } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  Clock,
+  Flame,
+  Info,
+  Medal,
+  Trophy,
+  Users,
+} from 'lucide-react';
 import {
   LEADERBOARD_WINDOWS,
   LEADERBOARD_WINDOW_LABELS,
@@ -20,11 +30,11 @@ import {
   cn,
 } from '@wird/ui-web';
 import { supabase } from '../lib/supabase';
-import { todayISO } from '../lib/dates';
 import { getMetaJSON, setMetaJSON } from '../lib/offline';
 
 const WINDOW_KEY = 'wird.leaderboard.window';
 const RANK_KEY = 'wird.leaderboard.rank';
+const TABLE_KEY = 'wird.leaderboard.table';
 /** How long a "you moved up/down" chip stays after the change was first seen. */
 const MOVE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -110,26 +120,46 @@ function useRankMovement(win: LeaderboardWindow, rank: number | null): number {
   return delta;
 }
 
+/**
+ * Average wrap-up time as a clock time: «٥:٤٠ ص». Past midnight (a day finished the next
+ * morning on average) it says so rather than wrapping around to look early.
+ */
+function formatFinish(secs: number): string {
+  const total = Math.round(secs / 60);
+  const days = Math.floor(total / 1440);
+  const mins = total % 1440;
+  const h24 = Math.floor(mins / 60);
+  const m = mins % 60;
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  const clock = `${ar(h12)}:${String(m)
+    .padStart(2, '0')
+    .replace(/\d/g, (d) => ar(Number(d)))} ${h24 < 12 ? 'ص' : 'م'}`;
+  return days > 0 ? `${clock} +${ar(days)}ي` : clock;
+}
+
 /** Cache-first fetch of one window's board. `onData` may fire twice: cached, then fresh. */
 async function loadBoard(
   win: LeaderboardWindow,
+  today: string,
   isCancelled: () => boolean,
   onData: (entries: LeaderboardEntry[]) => void,
 ): Promise<'ok' | 'failed'> {
-  // v2: day-based entries (daysAssigned/daysCompleted) — older cached boards used
-  // per-duty counts with different field names, so they must not be read back.
-  const cacheKey = `leaderboard:v2:${win}`;
+  // Keyed by day: a board is only true for the day it was computed on. Keyed by window
+  // alone, yesterday's board (yesterday's streaks, yesterday's "finished today") stayed on
+  // screen after midnight until a refresh happened to succeed — which read as the streak
+  // not resetting. v3: adds place / meanFinishSecs.
+  const cacheKey = `leaderboard:v3:${win}:${today}`;
   const cached = await getMetaJSON<LeaderboardEntry[]>(cacheKey);
   if (isCancelled()) return 'ok';
   if (cached) onData(cached);
   if (!navigator.onLine) return cached ? 'ok' : 'failed';
 
-  const { from, to } = leaderboardWindowRange(win, todayISO());
+  const { from, to } = leaderboardWindowRange(win, today);
   const { data, error } = await supabase.rpc('group_leaderboard', { p_from: from, p_to: to });
   if (isCancelled()) return 'ok';
   // A failed refresh keeps the cached board rather than blanking it.
   if (error) return cached ? 'ok' : 'failed';
-  const fresh = (data ?? []).map((r) => ({
+  const fresh = (data ?? []).map((r, i) => ({
     employeeId: r.employee_id,
     fullName: r.full_name,
     daysAssigned: r.assigned_count,
@@ -137,6 +167,8 @@ async function loadBoard(
     completionRate: Number(r.completion_rate),
     currentStreak: r.current_streak,
     isMe: r.is_me,
+    meanFinishSecs: r.mean_finish_secs == null ? null : Number(r.mean_finish_secs),
+    place: r.place ?? i + 1,
   }));
   onData(fresh);
   await setMetaJSON(cacheKey, fresh);
@@ -159,16 +191,33 @@ async function loadBoard(
  */
 export function GroupStandings({
   reloadKey,
+  today,
   groupName,
 }: {
   reloadKey: number;
+  /** Today's date (follows midnight) — the boards are computed and cached per day. */
+  today: string;
   groupName?: string | null;
 }) {
   const [win, setWin] = React.useState<LeaderboardWindow>(readSavedWindow);
   const [entries, setEntries] = React.useState<LeaderboardEntry[] | null>(null);
-  const [today, setToday] = React.useState<LeaderboardEntry[] | null>(null);
+  const [todayBoard, setTodayBoard] = React.useState<LeaderboardEntry[] | null>(null);
   const [failed, setFailed] = React.useState(false);
-  const [tableOpen, setTableOpen] = React.useState(false);
+  const [tableOpen, setTableOpen] = React.useState(() => {
+    try {
+      return localStorage.getItem(TABLE_KEY) !== '0';
+    } catch {
+      return true;
+    }
+  });
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(TABLE_KEY, tableOpen ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [tableOpen]);
 
   React.useEffect(() => {
     try {
@@ -181,23 +230,23 @@ export function GroupStandings({
   React.useEffect(() => {
     let cancelled = false;
     const isCancelled = () => cancelled;
-    loadBoard(win, isCancelled, (e) => {
+    loadBoard(win, today, isCancelled, (e) => {
       setEntries(e);
       setFailed(false);
-      if (win === '1d') setToday(e);
+      if (win === '1d') setTodayBoard(e);
     }).then((r) => {
       if (!cancelled && r === 'failed') setFailed(true);
     });
     // Today's pulse is always shown, whatever window is selected.
-    if (win !== '1d') loadBoard('1d', isCancelled, setToday);
+    if (win !== '1d') loadBoard('1d', today, isCancelled, setTodayBoard);
     return () => {
       cancelled = true;
     };
-  }, [win, reloadKey]);
+  }, [win, reloadKey, today]);
 
   const myIndex = entries?.findIndex((e) => e.isMe) ?? -1;
   const myEntry = myIndex >= 0 && entries ? entries[myIndex]! : null;
-  const movement = useRankMovement(win, myEntry && myEntry.daysAssigned > 0 ? myIndex + 1 : null);
+  const movement = useRankMovement(win, myEntry && myEntry.daysAssigned > 0 ? myEntry.place : null);
 
   // Offline with nothing cached, or a group of nobody: stay silent rather than pushing an
   // error card under the duties.
@@ -252,12 +301,12 @@ export function GroupStandings({
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {today && <TodayPulse entries={today} />}
+          {todayBoard && <TodayPulse entries={todayBoard} />}
 
           {myEntry && (
             <StandingStrip
               entry={myEntry}
-              rank={myIndex + 1}
+              rank={myEntry.place}
               total={entries.length}
               movement={movement}
             />
@@ -298,8 +347,10 @@ export function GroupStandings({
                 className={cn('h-4 w-4 transition-transform', tableOpen && 'rotate-180')}
               />
             </button>
-            {tableOpen && <RankTable entries={entries} />}
+            {tableOpen && <RankTable entries={entries} win={win} />}
           </div>
+
+          <RankingRules />
         </div>
       )}
     </section>
@@ -495,6 +546,8 @@ function Podium({ spots }: { spots: LeaderboardEntry[] }) {
 }
 
 function PodiumSpot({ entry, place }: { entry: LeaderboardEntry; place: 1 | 2 | 3 }) {
+  // Ties share a place: two people level at the top both read «١».
+  const shownPlace = Math.min(entry.place, place);
   const s = PLACE[place];
   const pct = Math.round(entry.completionRate * 100);
 
@@ -529,7 +582,7 @@ function PodiumSpot({ entry, place }: { entry: LeaderboardEntry; place: 1 | 2 | 
         )}
       >
         <span className="font-display text-base font-bold leading-none tabular-nums">
-          {ar(place)}
+          {ar(shownPlace)}
         </span>
       </div>
     </div>
@@ -564,10 +617,54 @@ const medalDot: Record<number, string> = {
   3: 'bg-linear-to-br from-[#f2d3b9] to-[#c3895c] text-[#6a3f1d]',
 };
 
-/** The complete group ranking, folded away by default. */
-function RankTable({ entries }: { entries: LeaderboardEntry[] }) {
+type SortKey = 'place' | 'rate' | 'finish' | 'streak';
+
+const SORT_LABELS: Record<SortKey, string> = {
+  place: 'المركز',
+  rate: 'الإنجاز',
+  finish: 'الوقت',
+  streak: 'السلسلة',
+};
+
+/**
+ * The complete group ranking. The official order is the place column; the chips re-sort
+ * the rows by one criterion (best first) without changing anyone's place — handy for
+ * "who finishes earliest" or "who has the longest streak".
+ */
+function RankTable({ entries, win }: { entries: LeaderboardEntry[]; win: LeaderboardWindow }) {
+  const [sort, setSort] = React.useState<SortKey>('place');
+
+  const rows = React.useMemo(() => {
+    if (sort === 'place') return entries;
+    const val = (e: LeaderboardEntry): number => {
+      if (sort === 'rate') return e.daysAssigned === 0 ? -1 : e.completionRate;
+      if (sort === 'streak') return e.currentStreak;
+      return e.meanFinishSecs === null ? -Infinity : -e.meanFinishSecs; // earlier is better
+    };
+    return [...entries].sort((a, b) => val(b) - val(a) || a.place - b.place);
+  }, [entries, sort]);
+
   return (
     <Card variant="flat" className="animate-fade-in overflow-hidden">
+      <div className="flex items-center gap-1 overflow-x-auto border-b border-neutral-100 px-2 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <span className="shrink-0 ps-1 pe-1 text-[11px] text-neutral-400">ترتيب حسب</span>
+        {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setSort(k)}
+            aria-pressed={sort === k}
+            className={cn(
+              'shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors',
+              sort === k
+                ? 'bg-primary-700 text-white'
+                : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200',
+            )}
+          >
+            {SORT_LABELS[k]}
+          </button>
+        ))}
+      </div>
       <Table>
         <TableHeader>
           <TableRow>
@@ -575,14 +672,20 @@ function RankTable({ entries }: { entries: LeaderboardEntry[] }) {
             <TableHead className="px-2">الاسم</TableHead>
             <TableHead className="px-2 text-center">الأيام</TableHead>
             <TableHead className="px-2 text-center">الإنجاز</TableHead>
-            <TableHead className="px-2 text-center">
+            <TableHead
+              className="px-2 text-center"
+              title={win === '1d' ? 'وقت الإتمام' : 'متوسط وقت الإتمام'}
+            >
+              <Clock className="mx-auto h-3.5 w-3.5" />
+            </TableHead>
+            <TableHead className="px-2 text-center" title="السلسلة">
               <Flame className="mx-auto h-3.5 w-3.5" />
             </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {entries.map((entry, i) => {
-            const rank = i + 1;
+          {rows.map((entry) => {
+            const rank = entry.place;
             const pct = Math.round(entry.completionRate * 100);
             const unranked = entry.daysAssigned === 0;
             const nothing = entry.daysCompleted === 0;
@@ -609,7 +712,11 @@ function RankTable({ entries }: { entries: LeaderboardEntry[] }) {
                 </TableCell>
                 <TableCell className="px-2">
                   <div className="flex min-w-0 items-center gap-2">
-                    <Avatar name={entry.fullName} size="sm" />
+                    <Avatar
+                      name={entry.fullName}
+                      size="sm"
+                      className="hidden min-[400px]:inline-flex"
+                    />
                     <span className="truncate font-medium text-neutral-900">{entry.fullName}</span>
                     {entry.isMe && (
                       <span className="shrink-0 rounded-full bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-700">
@@ -633,6 +740,13 @@ function RankTable({ entries }: { entries: LeaderboardEntry[] }) {
                 >
                   {unranked ? '—' : `${ar(pct)}%`}
                 </TableCell>
+                <TableCell className="whitespace-nowrap px-2 text-center text-[11px] tabular-nums text-neutral-500">
+                  {entry.meanFinishSecs === null ? (
+                    <span className="text-neutral-300">—</span>
+                  ) : (
+                    formatFinish(entry.meanFinishSecs)
+                  )}
+                </TableCell>
                 <TableCell className="px-2 text-center">
                   {entry.currentStreak > 0 ? (
                     <span className="text-xs font-medium tabular-nums text-accent-600">
@@ -647,6 +761,77 @@ function RankTable({ entries }: { entries: LeaderboardEntry[] }) {
           })}
         </TableBody>
       </Table>
+    </Card>
+  );
+}
+
+/**
+ * How the board is decided, in the group's own words. Mirrors the SQL exactly
+ * (group_leaderboard / employee_current_streak) — change one, change the other.
+ */
+function RankingRules() {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <Card variant="flat" className="overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between px-3.5 py-2.5 text-start text-xs font-semibold text-neutral-700"
+      >
+        <span className="flex items-center gap-1.5">
+          <Info className="h-3.5 w-3.5 text-primary-600" />
+          كيف يُحسب الترتيب؟
+        </span>
+        <ChevronDown
+          className={cn('h-4 w-4 text-neutral-400 transition-transform', open && 'rotate-180')}
+        />
+      </button>
+      {open && (
+        <div className="animate-fade-in border-t border-neutral-100 px-3.5 pb-3.5 pt-2.5 text-xs leading-relaxed text-neutral-600">
+          <p>
+            <b className="text-neutral-800">اليوم المكتمل</b> هو يوم أتممتَ فيه كل أوراده (الحفظ
+            والمراجعتين). إتمام بعضها لا يُحتسب يوماً مكتملاً.
+          </p>
+          <ol className="mt-2.5 flex list-none flex-col gap-1.5">
+            {[
+              [
+                'نسبة الإنجاز',
+                'الأيام المكتملة من الأيام التي أُسند لك فيها ورد خلال المدة المختارة — ويدخل فيها اليوم.',
+              ],
+              ['عدد الأيام المكتملة', 'عند تساوي النسبة يتقدّم الأكثر أياماً مكتملة.'],
+              [
+                'وقت الإتمام',
+                'ثم الأبكر في متوسط وقت إتمام أيامه المكتملة (وقت آخر خطوة في اليوم). إتمام يومٍ فائت متأخراً يُحسب تأخراً لذلك اليوم.',
+              ],
+              ['السلسلة', 'ثم الأطول سلسلةً. ومن تساووا في كل ذلك يتشاركون المركز نفسه.'],
+            ].map(([title, body], i) => (
+              <li key={title} className="flex gap-2">
+                <span className="mt-px flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full bg-primary-50 text-[10px] font-bold text-primary-700">
+                  {ar(i + 1)}
+                </span>
+                <span>
+                  <b className="text-neutral-800">{title}:</b> {body}
+                </span>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-3 rounded-lg bg-accent-50/70 px-3 py-2 text-accent-900 ring-1 ring-inset ring-accent-100">
+            <span className="flex items-center gap-1 font-semibold">
+              <Flame className="h-3.5 w-3.5 text-accent-600" />
+              السلسلة
+            </span>
+            <p className="mt-1">
+              عدد الأيام المكتملة المتتالية حتى اليوم. ورد اليوم لا يقطعها ما دام اليوم لم ينتهِ،
+              فإن انتهى اليوم (منتصف الليل) دون إتمامه بدأت السلسلة من الصفر. الأيام التي لم يُسند
+              فيها ورد لا تقطعها ولا تزيدها.
+            </p>
+          </div>
+          <p className="mt-2.5 text-neutral-500">
+            الأيام التي لم يُسند فيها ورد لا تُحتسب لك ولا عليك.
+          </p>
+        </div>
+      )}
     </Card>
   );
 }

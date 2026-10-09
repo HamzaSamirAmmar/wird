@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { HISTORY_DAYS, addDays, todayISO } from '../lib/dates';
+import { HISTORY_DAYS, addDays } from '../lib/dates';
 import { cn } from '@wird/ui-web';
 
 const dayFormat = new Intl.DateTimeFormat('ar-u-nu-latn', { weekday: 'narrow' });
@@ -18,8 +18,15 @@ const monthFormat = new Intl.DateTimeFormat('ar-u-nu-latn', { month: 'short' });
  * having it sit at whichever edge the surrounding direction happens to start from. It also
  * makes scrollLeft = 0 mean "today", which is what the reset below relies on.
  */
-export function DayStrip({ value, onChange }: { value: string; onChange: (iso: string) => void }) {
-  const today = todayISO();
+export function DayStrip({
+  value,
+  today,
+  onChange,
+}: {
+  value: string;
+  today: string;
+  onChange: (iso: string) => void;
+}) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   // Newest first: index 0 is today, index HISTORY_DAYS is the oldest visible day.
@@ -28,11 +35,23 @@ export function DayStrip({ value, onChange }: { value: string; onChange: (iso: s
     [today],
   );
 
-  // Jump the rail back to today whenever the selection leaves the visible scroll area —
-  // otherwise returning to today via the "العودة لليوم" button moves the highlight off-screen.
+  // Keep the selected day in view: back to the start for today (the "العودة إلى اليوم"
+  // button), and onto an older day when the page opens on it (back from the reader, a
+  // notification link) — otherwise the highlight sits off-screen.
+  const first = React.useRef(true);
   React.useEffect(() => {
-    if (value !== today) return;
-    scrollRef.current?.scrollTo({ left: 0, behavior: 'smooth' });
+    const rail = scrollRef.current;
+    if (!rail) return;
+    const behavior: ScrollBehavior = first.current ? 'instant' : 'smooth';
+    first.current = false;
+    if (value === today) {
+      rail.scrollTo({ left: 0, behavior });
+      return;
+    }
+    const cell = rail.querySelector<HTMLElement>(`[data-day="${value}"]`);
+    if (!cell) return;
+    const left = cell.offsetLeft - rail.clientWidth / 2 + cell.clientWidth / 2;
+    rail.scrollTo({ left: Math.max(0, left), behavior });
   }, [value, today]);
 
   return (
@@ -57,6 +76,7 @@ export function DayStrip({ value, onChange }: { value: string; onChange: (iso: s
             onClick={() => onChange(iso)}
             aria-pressed={selected}
             aria-label={iso}
+            data-day={iso}
             className={cn(
               'flex w-11 shrink-0 flex-col items-center gap-1 rounded-xl py-2 transition-colors duration-150',
               selected ? 'bg-white text-primary-800' : 'text-primary-100/70 active:bg-white/10',

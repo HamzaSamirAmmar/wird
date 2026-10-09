@@ -51,7 +51,8 @@ registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html')));
 
 // ─── 1b. Recitation audio (cache-first) ───────────────────────────────────────
 //
-// cdn.islamic.network sends no CORS headers, so the app cannot read the MP3s it fetches
+// The reciter hosts (cdn.islamic.network, everyayah.com — mirrors AUDIO_ORIGINS in
+// lib/reciters.ts) send no CORS headers, so the app cannot read the MP3s it fetches
 // page-side — but the Cache API can store the opaque responses a `no-cors` fetch
 // yields, and a media-element load is itself a no-cors request that happily consumes
 // them. This route therefore serves every request for the CDN from the audio cache,
@@ -64,7 +65,8 @@ registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html')));
 // runtime caching": that rule guards Supabase API responses. Cross-origin opaque
 // audio can only be offline-able here.)
 registerRoute(
-  ({ url }) => url.origin === 'https://cdn.islamic.network',
+  ({ url }) =>
+    url.origin === 'https://cdn.islamic.network' || url.origin === 'https://everyayah.com',
   new CacheFirst({ cacheName: 'wird-audio-v1', plugins: [new RangeRequestsPlugin()] }),
 );
 

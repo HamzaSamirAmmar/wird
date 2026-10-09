@@ -1,24 +1,69 @@
 // ─── التفسير الميسر — offline tafseer lookup ─────────────────────────────────
 //
-// The whole tafseer ships as one static asset (public/tafseer/muyassar.json, built by
-// packages/quran-data/scripts/generate-tafseer.mjs): a plain array of 6236 strings
-// indexed by global ayah number − 1. It is precached by the service worker, so the
-// long-press sheet works offline from the first install.
+// The whole tafseer ships as one static asset (public/tafseer/muyassar.v2.json, built by
+// packages/quran-data/scripts/generate-tafseer.mjs), precached by the service worker, so
+// the ayah sheet works offline from the first install.
+//
+// The book explains some stretches of ayat as ONE passage (2:219–220, at-Takwīr 1–14…), so
+// the asset is a list of passages with their ayah ranges rather than a string per ayah —
+// the sheet shows «تفسير الآيات ١–١٤» once instead of the same text under every ayah.
 
-import { globalAyahIndex } from '@wird/quran-data';
+import { SURAHS, globalAyahIndex } from '@wird/quran-data';
 import type { MushafData } from './mushafPages';
 
-const ASSET_URL = '/tafseer/muyassar.json';
+const ASSET_URL = '/tafseer/muyassar.v2.json';
 
-let inFlight: Promise<string[]> | null = null;
+/** One tafseer passage: the ayat it explains (one, or a run) and its text. */
+export interface TafseerPassage {
+  surah: number;
+  ayahFrom: number;
+  ayahTo: number;
+  text: string;
+}
+
+export interface Tafseer {
+  /** The passage covering an ayah. */
+  passageOf(surah: number, ayah: number): TafseerPassage;
+  /** The surah's introduction (تسمية السورة / من مقاصد السورة), "" when it has none. */
+  introOf(surah: number): string;
+}
+
+interface Asset {
+  v: 2;
+  intros: string[];
+  passages: [number, number, number, string][];
+}
+
+function build(asset: Asset): Tafseer {
+  const passages: TafseerPassage[] = asset.passages.map(([surah, ayahFrom, ayahTo, text]) => ({
+    surah,
+    ayahFrom,
+    ayahTo,
+    text,
+  }));
+  // Global ayah ordinal − 1 → passage, so a lookup is one array read.
+  const byAyah = new Array<TafseerPassage>(6236);
+  for (const p of passages) {
+    for (let a = p.ayahFrom; a <= p.ayahTo; a++) byAyah[globalAyahIndex(p.surah, a) - 1] = p;
+  }
+  return {
+    passageOf: (surah, ayah) =>
+      byAyah[globalAyahIndex(surah, ayah) - 1] ?? { surah, ayahFrom: ayah, ayahTo: ayah, text: '' },
+    introOf: (surah) =>
+      surah >= 1 && surah <= SURAHS.length ? (asset.intros[surah - 1] ?? '') : '',
+  };
+}
+
+let inFlight: Promise<Tafseer> | null = null;
 
 /** Loads (once) and memoises the tafseer. Concurrent callers share one request. */
-export function loadTafseer(): Promise<string[]> {
+export function loadTafseer(): Promise<Tafseer> {
   inFlight ??= fetch(ASSET_URL)
     .then((res) => {
       if (!res.ok) throw new Error(`Tafseer unavailable (${res.status})`);
-      return res.json() as Promise<string[]>;
+      return res.json() as Promise<Asset>;
     })
+    .then(build)
     .catch((err) => {
       inFlight = null; // let a later attempt retry rather than latching the failure
       throw err;
