@@ -3,7 +3,9 @@ import {
   ArrowRightLeft,
   ChevronLeft,
   Plus,
+  Pencil,
   Search,
+  Trash2,
   UserPlus,
   UserRound,
   Users,
@@ -235,6 +237,12 @@ function GroupMembersDialog({
   onBulkCreate: (group: GroupRow) => void;
   onMembersChanged: () => void;
 }) {
+  const [renaming, setRenaming] = React.useState(false);
+  const [nameDraft, setNameDraft] = React.useState('');
+  const [manageError, setManageError] = React.useState<string | null>(null);
+  const [savingName, setSavingName] = React.useState(false);
+  const [confirmingDelete, setConfirmingDelete] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState<'members' | 'add-existing'>('members');
   const [members, setMembers] = React.useState<MemberRow[] | null>(null);
   const [candidates, setCandidates] = React.useState<CandidateRow[] | null>(null);
@@ -280,6 +288,9 @@ function GroupMembersDialog({
     setCandidateQuery('');
     setTransferError(null);
     setTransferSuccess(null);
+    setRenaming(false);
+    setConfirmingDelete(false);
+    setManageError(null);
     setMembers(null);
     setCandidates(null);
 
@@ -342,6 +353,48 @@ function GroupMembersDialog({
     });
   }
 
+  async function handleRename(e: React.FormEvent) {
+    e.preventDefault();
+    if (!group) return;
+    const parsed = createGroupSchema.safeParse({ name: nameDraft });
+    if (!parsed.success) {
+      setManageError(parsed.error.issues[0]?.message ?? 'خطأ في البيانات');
+      return;
+    }
+    setSavingName(true);
+    setManageError(null);
+    const { error } = await supabase
+      .from('groups')
+      .update({ name: parsed.data.name })
+      .eq('id', group.id);
+    setSavingName(false);
+    if (error) {
+      setManageError('تعذر تغيير اسم المجموعة');
+      return;
+    }
+    onMembersChanged();
+    onClose();
+  }
+
+  async function handleDeleteGroup() {
+    if (!group) return;
+    setDeleting(true);
+    setManageError(null);
+    const { error } = await supabase.from('groups').delete().eq('id', group.id);
+    setDeleting(false);
+    if (error) {
+      setManageError(
+        error.code === '23503'
+          ? 'لا يمكن حذف مجموعة فيها مستخدمون أو مشرفون؛ انقلهم إلى مجموعة أخرى أولاً'
+          : 'تعذر حذف المجموعة',
+      );
+      setConfirmingDelete(false);
+      return;
+    }
+    onMembersChanged();
+    onClose();
+  }
+
   async function handleTransferSubmit() {
     if (!group || selectedCandidates.size === 0) return;
     setTransferring(true);
@@ -374,6 +427,82 @@ function GroupMembersDialog({
           <DialogTitle>{group?.name}</DialogTitle>
         </DialogHeader>
         <DialogBody className="gap-4">
+          {canTransfer && group && (
+            <div className="flex flex-col gap-3 rounded-lg border border-neutral-100 p-3">
+              {manageError && <Alert variant="danger">{manageError}</Alert>}
+              {renaming ? (
+                <form onSubmit={handleRename} className="flex items-end gap-2">
+                  <Field label="اسم المجموعة" htmlFor="rename-group" className="flex-1">
+                    <Input
+                      id="rename-group"
+                      value={nameDraft}
+                      onChange={(e) => setNameDraft(e.target.value)}
+                      autoFocus
+                      required
+                    />
+                  </Field>
+                  <Button type="button" variant="outline" onClick={() => setRenaming(false)}>
+                    إلغاء
+                  </Button>
+                  <Button type="submit" loading={savingName}>
+                    حفظ
+                  </Button>
+                </form>
+              ) : confirmingDelete ? (
+                <div className="flex flex-col gap-3">
+                  <Alert variant="danger" title={`حذف مجموعة ${group.name}؟`}>
+                    ستُحذف المجموعة وجميع الأوراد المُسندة لها ولا يمكن التراجع. يجب نقل أعضائها قبل
+                    الحذف.
+                  </Alert>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setConfirmingDelete(false)}
+                    >
+                      تراجع
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      loading={deleting}
+                      onClick={handleDeleteGroup}
+                    >
+                      نعم، احذف
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setNameDraft(group.name);
+                      setManageError(null);
+                      setRenaming(true);
+                    }}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    تغيير الاسم
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setManageError(null);
+                      setConfirmingDelete(true);
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    حذف المجموعة
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
           <Tabs
             value={activeTab}
             onValueChange={(val) => {
@@ -491,8 +620,8 @@ function GroupMembersDialog({
               {transferError && <Alert variant="danger">{transferError}</Alert>}
 
               <Alert variant="info">
-                اختر المستخدمين لنقلهم إلى مجموعة &ldquo;{group?.name}&rdquo;. الأوراد المُسندة
-                سابقاً تبقى كما هي؛ والتغيير يسري على الإسناد القادم.
+                اختر المستخدمين لنقلهم إلى مجموعة &ldquo;{group?.name}&rdquo;. تُحذف أوراد المستخدم
+                في مجموعته السابقة بسجلّها كاملاً، ويُسند إليه كل أوراد هذه المجموعة بنفس تواريخها.
               </Alert>
 
               {loadingCandidates ? (

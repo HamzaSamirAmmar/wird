@@ -55,7 +55,7 @@ Stack per app: React 19, react-router-dom v7 (declarative `<Routes>`; no data lo
 
 Most write-path logic is in **Postgres triggers**, not app code (`supabase/migrations/20260827074248_initial_schema.sql` and later migrations). Do not try to replicate these in TS:
 
-- **Group move**: changing an employee's `group_id` deletes **all** their duties (history included) and backfills the new group's assignments from today (Damascus) on (`backfill_group_duties`).
+- **Group move**: changing an employee's `group_id` deletes **all** their duties (history included) and backfills **every** assignment of the new group, past dates too, so they hold the same days as existing members (`backfill_group_duties`, `20261009000000`). Deleting a group (superadmin, dashboard) is blocked while any profile still has it as `group_id`/`admin_group_id`; its assignments cascade.
 - **Fan-out**: inserting a `duty_group_assignments` row auto-creates one `duties` row per _active employee_ in the group (`fanout_group_assignment`). Apps only ever write to `duty_group_assignments`.
 - **Propagate**: updating a group assignment propagates scope/date/category to its **still-`pending`** duties only, and reseeds their checklists (`propagate_group_assignment_update`). Duties already `in_progress`/`completed` are intentionally left alone.
 - **Deleting** a group assignment cascades to its duties (FK is `on delete cascade` — deliberately changed from SET NULL by a migration; don't revert).
