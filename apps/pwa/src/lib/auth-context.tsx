@@ -59,11 +59,22 @@ function mirrorSession(session: Session | null) {
   );
 }
 
+// How long the splash waits on supabase-js to restore the session before opening on the cached
+// profile. Restoring an expired access token means a token refresh, which is never aborted
+// (see fetchWithTimeout), so on Wi-Fi without internet it can hang indefinitely — and the app
+// sat on the loading screen with a full, usable cache behind it. When the OS already says
+// there is no network, the refresh would only retry with backoff (~30 s) before failing, so
+// the wait is just long enough for a still-valid stored session to come back from storage.
+const RESTORE_WAIT_MS = 6000;
+const RESTORE_WAIT_OFFLINE_MS = 400;
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = React.useState<Session | null>(null);
   const [profile, setProfile] = React.useState<Profile | null>(null);
   const [offlineSession, setOfflineSession] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
+  const profileRef = React.useRef<Profile | null>(null);
+  profileRef.current = profile;
 
   /** Cache first (instant, works offline), then the network refreshes it. */
   const loadProfile = React.useCallback(async (userId: string) => {
@@ -82,8 +93,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let mounted = true;
 
     async function restore() {
-      const { data, error } = await supabase.auth.getSession();
+      // The refresh is left running when we stop waiting: if it lands, onAuthStateChange
+      // upgrades the offline session to the real one.
+      const pending = supabase.auth.getSession();
+      const slow = Symbol('slow');
+      const result = await Promise.race([
+        pending,
+        new Promise<typeof slow>((resolve) =>
+          setTimeout(
+            () => resolve(slow),
+            navigator.onLine ? RESTORE_WAIT_MS : RESTORE_WAIT_OFFLINE_MS,
+          ),
+        ),
+      ]);
       if (!mounted) return;
+      if (result === slow) {
+        const cached = await getMetaJSON<Profile>(PROFILE_KEY);
+        if (cached && mounted) {
+          setProfile(cached);
+          setOfflineSession(true);
+        }
+        // A stored session that was merely slow to read (or a refresh that eventually lands)
+        // still has to become the real session.
+        void pending.then(({ data }) => {
+          if (!mounted || !data.session) return;
+          setSession(data.session);
+          setOfflineSession(false);
+          mirrorSession(data.session);
+        });
+        return;
+      }
+      const { data, error } = result;
       if (data.session) {
         setSession(data.session);
         setOfflineSession(false);
@@ -108,7 +148,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setOfflineSession(false);
         mirrorSession(newSession);
         // Token refreshes don't change the profile; don't refetch it every hour.
-        if (event !== 'TOKEN_REFRESHED') await loadProfile(newSession.user.id);
+        // (Unless there is none yet: an offline-opened app that never found a cached profile.)
+        if (event !== 'TOKEN_REFRESHED' || !profileRef.current) {
+          await loadProfile(newSession.user.id);
+        }
       } else if (event === 'SIGNED_OUT') {
         setSession(null);
         setProfile(null);
