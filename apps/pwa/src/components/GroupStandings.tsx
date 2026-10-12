@@ -821,8 +821,8 @@ function RankingRules() {
           </li>
           <li>
             • <b className="text-neutral-800">السلسلة</b>{' '}
-            <Flame className="inline h-3 w-3 text-accent-600" /> أيام متتالية أتممتها، وتبدأ من جديد
-            إذا انتهى يوم دون إتمام ورده.
+            <Flame className="inline h-3 w-3 text-accent-600" /> أيام متتالية أتممتها في يومها،
+            وتبدأ من جديد إذا فاتك يوم، حتى لو أتممته بعد ذلك.
           </li>
         </ul>
       )}
