@@ -6,7 +6,8 @@ const dayFormat = new Intl.DateTimeFormat('ar-u-nu-latn', { weekday: 'short' });
 const monthFormat = new Intl.DateTimeFormat('ar-u-nu-latn', { month: 'long', year: 'numeric' });
 
 /**
- * A one-week date rail. Stepping moves by a whole week; picking a day selects it.
+ * A one-week date rail. Stepping moves by a whole week and selects its first day (Saturday);
+ * picking a day selects it.
  * Under dir="rtl" the row already runs right-to-left, so the days stay in calendar order.
  */
 export function WeekStrip({
@@ -26,7 +27,7 @@ export function WeekStrip({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <IconButton aria-label="الأسبوع السابق" onClick={() => onChange(addDays(value, -7))}>
+        <IconButton aria-label="الأسبوع السابق" onClick={() => onChange(addDays(weekStart, -7))}>
           <ChevronRight className="h-4.5 w-4.5" />
         </IconButton>
 
@@ -34,7 +35,7 @@ export function WeekStrip({
           {monthFormat.format(new Date(`${value}T00:00:00`))}
         </div>
 
-        <IconButton aria-label="الأسبوع التالي" onClick={() => onChange(addDays(value, 7))}>
+        <IconButton aria-label="الأسبوع التالي" onClick={() => onChange(addDays(weekStart, 7))}>
           <ChevronLeft className="h-4.5 w-4.5" />
         </IconButton>
       </div>
